@@ -81,6 +81,10 @@ try {
     [adminName, adminEmail, adminPass]
   );
 
+  // Xóa các tài khoản demo (@demo.com) khỏi Supabase — chỉ giữ accounts thật.
+  const del = await client.query(`DELETE FROM users WHERE email ILIKE '%@demo.com'`);
+  if (del.rowCount) console.log(`✓ Đã xóa ${del.rowCount} tài khoản demo (@demo.com) khỏi Supabase.`);
+
   const { rows: tleft } = await client.query(
     `SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1`
   );
