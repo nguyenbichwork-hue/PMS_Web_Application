@@ -23,6 +23,29 @@ function remote(): Pool {
   return pool;
 }
 
+// Truy vấn Supabase có THỬ LẠI — chịu được DNS/kết nối chập chờn lúc cold start.
+async function remoteQuery<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+): Promise<{ rows: T[] }> {
+  let last: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return (await remote().query(sql, params)) as unknown as { rows: T[] };
+    } catch (e) {
+      last = e;
+      // Kết nối hỏng (DNS/mạng) → bỏ pool để tạo lại ở lần sau.
+      const code = (e as { code?: string })?.code;
+      if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "ETIMEDOUT") {
+        try { await pool?.end(); } catch { /* ignore */ }
+        pool = null;
+      }
+      if (i < 2) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 // Bảng users ĐỘC LẬP trên Supabase (không FK sang companies — Supabase chỉ giữ
 // accounts). company_id để trống; vai trò/trạng thái vẫn ràng buộc như local.
 const REMOTE_USERS_DDL = `
@@ -46,13 +69,13 @@ interface AccountRow {
 /** Đảm bảo bảng users tồn tại trên Supabase. */
 export async function ensureRemoteUsers(): Promise<void> {
   if (!accountsOnSupabase) return;
-  await remote().query(REMOTE_USERS_DDL);
+  await remoteQuery(REMOTE_USERS_DDL);
 }
 
 /** Kéo users Supabase -> local (upsert theo email; company_id để NULL). */
 export async function pullUsersIntoLocal(runLocal: Run): Promise<number> {
   if (!accountsOnSupabase) return 0;
-  const { rows } = await remote().query<AccountRow>(
+  const { rows } = await remoteQuery<AccountRow>(
     `SELECT name, email, password, department, role, status FROM users`
   );
   for (const u of rows) {
@@ -68,6 +91,27 @@ export async function pullUsersIntoLocal(runLocal: Run): Promise<number> {
   return rows.length;
 }
 
+/** Kéo MỘT tài khoản (theo email) từ Supabase về local — dùng khi đăng nhập,
+ *  để tài khoản mới thêm trên Supabase đăng nhập được ngay, không cần restart. */
+export async function syncOneUserToLocal(email: string, runLocal: Run): Promise<void> {
+  if (!accountsOnSupabase) return;
+  const { rows } = await remoteQuery<AccountRow>(
+    `SELECT name, email, password, department, role, status
+       FROM users WHERE lower(email)=lower($1) LIMIT 1`,
+    [email]
+  );
+  const u = rows[0];
+  if (!u) return;
+  await runLocal(
+    `INSERT INTO users (name, email, password, department, role, company_id, status)
+     VALUES ($1,$2,$3,$4,$5,NULL,$6)
+     ON CONFLICT (email) DO UPDATE SET
+       name=EXCLUDED.name, password=EXCLUDED.password, department=EXCLUDED.department,
+       role=EXCLUDED.role, status=EXCLUDED.status`,
+    [u.name, u.email, u.password, u.department, u.role, u.status]
+  );
+}
+
 /** Đẩy các user THẬT ở local (email không phải @demo.com) lên Supabase. */
 export async function pushLocalRealUsers(runLocal: Run): Promise<number> {
   if (!accountsOnSupabase) return 0;
@@ -76,7 +120,7 @@ export async function pushLocalRealUsers(runLocal: Run): Promise<number> {
        FROM users WHERE email NOT ILIKE '%@demo.com'`
   )) as unknown as AccountRow[];
   for (const u of rows) {
-    await remote().query(
+    await remoteQuery(
       `INSERT INTO users (name, email, password, department, role, status)
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (email) DO UPDATE SET

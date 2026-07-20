@@ -1,7 +1,8 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { queryOne } from "./db";
+import { queryOne, query } from "./db";
+import { accountsOnSupabase, syncOneUserToLocal } from "./accounts";
 import type { Role, User } from "./types";
 
 const COOKIE = "pms_session";
@@ -37,11 +38,25 @@ function verifySessionValue(raw: string | undefined): number | null {
 }
 
 export async function login(email: string, password: string): Promise<User | null> {
-  const user = await queryOne<User & { password: string }>(
-    `SELECT id, name, email, password, department, role, company_id, status
-       FROM users WHERE lower(email) = lower($1) LIMIT 1`,
-    [email]
-  );
+  const read = () =>
+    queryOne<User & { password: string }>(
+      `SELECT id, name, email, password, department, role, company_id, status
+         FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [email]
+    );
+
+  let user = await read();
+  // ACCOUNTS_ONLY: chỉ chạm Supabase khi CẦN — tài khoản chưa có ở local, hoặc
+  // mật khẩu local không khớp (có thể đã đổi trên master). Đăng nhập đúng &
+  // lặp lại đi thẳng local, không round-trip Supabase → nhanh.
+  if (accountsOnSupabase && (!user || user.password !== password)) {
+    try {
+      await syncOneUserToLocal(email, (sql, params) => query(sql, params) as Promise<Record<string, unknown>[]>);
+      user = await read();
+    } catch (e) {
+      console.error("[accounts] đồng bộ tài khoản khi đăng nhập thất bại (bỏ qua):", e);
+    }
+  }
   if (!user || user.password !== password || user.status !== "Active") return null;
   const jar = await cookies();
   jar.set(COOKIE, makeSessionValue(user.id), {
