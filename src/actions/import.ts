@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { withTransaction, firstRow, type Executor } from "@/lib/db";
+import { withTransaction, firstRow, query, type Executor } from "@/lib/db";
+import { pushLocalRealUsers } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parseWorkbook } from "@/lib/import-excel";
@@ -168,6 +169,13 @@ export async function importExcelAction(formData: FormData): Promise<ImportResul
     });
   } catch (e) {
     return { ok: false, error: "Lỗi khi ghi dữ liệu: " + (e instanceof Error ? e.message : String(e)) };
+  }
+
+  // Đồng bộ tài khoản thật vừa nhập lên Supabase (no-op nếu không ACCOUNTS_ONLY).
+  try {
+    await pushLocalRealUsers((sql, params) => query(sql, params));
+  } catch (e) {
+    console.error("[accounts] đẩy user lên Supabase sau import thất bại (bỏ qua):", e);
   }
 
   // Làm mới các trang bị ảnh hưởng.

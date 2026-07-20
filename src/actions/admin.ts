@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { query } from "@/lib/db";
+import { pushLocalRealUsers } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
@@ -37,6 +38,8 @@ export async function saveUserAction(formData: FormData) {
     );
     await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "User", documentId: rows[0]?.id, action: "Create", newValue: `${name} · ${role}` });
   }
+  // Đồng bộ tài khoản thật lên Supabase (no-op nếu không bật ACCOUNTS_ONLY).
+  await pushLocalRealUsers((sql, params) => query(sql, params));
   revalidatePath("/settings");
 }
 

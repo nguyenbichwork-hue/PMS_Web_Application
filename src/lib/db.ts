@@ -30,7 +30,11 @@ export type Executor = <T = Row>(sql: string, params?: unknown[]) => Promise<T[]
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const USE_PG = !!DATABASE_URL;
-const SHOULD_SEED = USE_PG ? process.env.DB_SEED === "true" : true;
+// ACCOUNTS_ONLY=true: Supabase chỉ giữ tài khoản (users); toàn bộ nghiệp vụ
+// (PR/PO…) vẫn chạy PGlite local. Xem src/lib/accounts.ts.
+const ACCOUNTS_ONLY = process.env.ACCOUNTS_ONLY === "true";
+const FULL_PG = USE_PG && !ACCOUNTS_ONLY; // toàn bộ DB chạy trên Postgres/Supabase
+const SHOULD_SEED = FULL_PG ? process.env.DB_SEED === "true" : true;
 
 interface Driver {
   ready: Promise<void>;
@@ -70,6 +74,21 @@ async function initialize(
       await seedMoreData(db);
     } catch (e) {
       console.warn("[db] seedMoreData bỏ qua:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Chế độ ACCOUNTS_ONLY: kéo tài khoản từ Supabase (master) vào local để
+  // đăng nhập & JOIN nghiệp vụ chạy được trên PGlite. Best-effort.
+  if (ACCOUNTS_ONLY) {
+    try {
+      const { ensureRemoteUsers, pullUsersIntoLocal } = await import("./accounts");
+      await ensureRemoteUsers();
+      const runLocal = async (sql: string, params: unknown[] = []) =>
+        (await db.query(sql, params)).rows as Record<string, unknown>[];
+      const n = await pullUsersIntoLocal(runLocal);
+      console.log(`[accounts] đồng bộ ${n} tài khoản từ Supabase vào local.`);
+    } catch (e) {
+      console.error("[accounts] đồng bộ khi khởi động thất bại (bỏ qua):", e);
     }
   }
 
@@ -157,7 +176,7 @@ function bootstrapPglite(): Driver {
 }
 
 function driver(): Driver {
-  if (!g.__pms_driver) g.__pms_driver = USE_PG ? bootstrapPg() : bootstrapPglite();
+  if (!g.__pms_driver) g.__pms_driver = FULL_PG ? bootstrapPg() : bootstrapPglite();
   return g.__pms_driver;
 }
 
