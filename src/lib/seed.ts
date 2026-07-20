@@ -1,8 +1,8 @@
-import type { PGlite } from "@electric-sql/pglite";
+import type { QueryDb } from "./db";
 import { evaluateMatch } from "./matching";
 
 // Seeds demo data exactly once (guarded by a company-count check).
-export async function seed(pg: PGlite): Promise<void> {
+export async function seed(pg: QueryDb): Promise<void> {
   const existing = await pg.query<{ c: number }>(`SELECT count(*)::int AS c FROM companies`);
   if ((existing.rows[0]?.c ?? 0) > 0) return;
 
@@ -258,7 +258,7 @@ export async function seed(pg: PGlite): Promise<void> {
 // khác nhau, đủ trạng thái nghiệp vụ. Chạy sau seed() mỗi lần khởi động nhưng
 // CHỈ NẠP MỘT LẦN (mốc: đã có NCC 'SUP-DELL'). Không xóa dữ liệu hiện có.
 // =====================================================================
-export async function seedMoreData(pg: PGlite): Promise<void> {
+export async function seedMoreData(pg: QueryDb): Promise<void> {
   const done = await pg.query<{ c: number }>(`SELECT count(*)::int c FROM suppliers WHERE supplier_code='SUP-DELL'`);
   if ((done.rows[0]?.c ?? 0) > 0) return;
 

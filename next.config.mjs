@@ -31,7 +31,8 @@ const securityHeaders = [
 const nextConfig = {
   // PGlite must run as a native/server package, not bundled by Turbopack/webpack.
   // exceljs (đọc file import) cũng chạy phía server, không bundle.
-  serverExternalPackages: ["@electric-sql/pglite", "exceljs"],
+  // pg (node-postgres) cũng phải external — có native binding, bundle sẽ vỡ.
+  serverExternalPackages: ["@electric-sql/pglite", "exceljs", "pg"],
   experimental: {
     // Cho phép upload file Excel qua Server Action (mặc định chỉ 1MB).
     serverActions: { bodySizeLimit: "15mb" },

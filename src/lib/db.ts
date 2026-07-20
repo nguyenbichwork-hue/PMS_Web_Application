@@ -1,105 +1,189 @@
 import "server-only";
-import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
 import path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { Pool, types } from "pg";
 
 // ---------------------------------------------------------------------
-// Embedded PostgreSQL (PGlite). A single instance is cached on the Node
-// global so it survives Next.js dev hot-reloads. Data is persisted to the
-// ./.pglite directory, so demo data outlives a server restart.
-// To move to real Supabase/Postgres later, swap this module for a `pg`
-// Pool — the query() signature below is intentionally driver-agnostic.
+// Dual-mode database layer.
+//   • DATABASE_URL set   -> real PostgreSQL (Supabase) via node-postgres.
+//   • DATABASE_URL empty -> embedded PGlite (local, zero-config, persisted
+//                           to ./.pglite). This is the original behaviour.
+// The exported API — query()/queryOne()/exec()/withTransaction() — is
+// IDENTICAL in both modes, so the rest of the app never changes. SQL uses
+// $1..$n placeholders, which both engines accept unchanged.
+//
+// Demo seeding:
+//   • PGlite mode  -> always seed (local demo, as before).
+//   • Postgres mode -> seed ONLY when DB_SEED=true. So a real Supabase with
+//                      real accounts is never polluted with demo/test data.
 // ---------------------------------------------------------------------
 
 type Row = Record<string, unknown>;
 
-interface DbHandle {
-  pg: PGlite;
-  ready: Promise<void>;
+/** Minimal query surface used by seed()/MISA sync — satisfied by both engines. */
+export interface QueryDb {
+  query: <T = Row>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
 }
 
-const g = globalThis as unknown as { __pms_db?: DbHandle };
+export type Executor = <T = Row>(sql: string, params?: unknown[]) => Promise<T[]>;
 
-function bootstrap(): DbHandle {
-  const pg = new PGlite(path.join(process.cwd(), ".pglite"));
-  const ready = (async () => {
-    const schema = fs.readFileSync(
-      path.join(process.cwd(), "src", "lib", "schema.sql"),
-      "utf8"
-    );
-    await pg.exec(schema);
-    // Additive migrations (idempotent) — runs on every startup, before seed.
-    const migrations = fs.readFileSync(
-      path.join(process.cwd(), "src", "lib", "migrations.sql"),
-      "utf8"
-    );
-    await pg.exec(migrations);
-    // Seed only once (guarded inside seed()).
+const DATABASE_URL = process.env.DATABASE_URL;
+const USE_PG = !!DATABASE_URL;
+const SHOULD_SEED = USE_PG ? process.env.DB_SEED === "true" : true;
+
+interface Driver {
+  ready: Promise<void>;
+  run: <T = Row>(sql: string, params?: unknown[]) => Promise<T[]>;
+  execMulti: (sql: string) => Promise<void>;
+  transaction: <T>(cb: (exec: Executor) => Promise<T>) => Promise<T>;
+}
+
+// Cached on the Node global so it survives Next.js dev hot-reloads and is
+// reused across requests in production.
+const g = globalThis as unknown as { __pms_driver?: Driver };
+
+function readSql(file: string): string {
+  return fs.readFileSync(path.join(process.cwd(), "src", "lib", file), "utf8");
+}
+
+// Shared one-time initialisation: schema + additive migrations (both
+// idempotent), then (optionally) guarded demo seed, then best-effort MISA
+// master-data sync. Runs against whichever engine is active.
+async function initialize(
+  db: QueryDb,
+  execMulti: (sql: string) => Promise<void>
+): Promise<void> {
+  await execMulti(readSql("schema.sql"));
+  await execMulti(readSql("migrations.sql"));
+
+  if (SHOULD_SEED) {
     const { seed, seedMoreData } = await import("./seed");
-    await seed(pg);
-    // Dữ liệu bổ sung (nhiều NCC/thiết bị/chuỗi mua sắm) — idempotent, thêm 1 lần.
-    // Bọc try/catch để một sự cố seed (vd chạy chồng) không làm sập khởi tạo DB.
+    // seed() is guarded (no-op when data exists); wrap so a concurrent
+    // cold-start race on a shared DB cannot crash initialisation.
     try {
-      await seedMoreData(pg);
+      await seed(db);
+    } catch (e) {
+      console.warn("[db] seed bỏ qua:", e instanceof Error ? e.message : e);
+    }
+    try {
+      await seedMoreData(db);
     } catch (e) {
       console.warn("[db] seedMoreData bỏ qua:", e instanceof Error ? e.message : e);
     }
-    // MISA là NGUỒN master data: sau seed, đồng bộ (upsert theo mã) để MISA
-    // "tiếp quản" danh mục. Best-effort — lỗi mạng MISA không được làm hỏng
-    // khởi động. Tắt bằng MISA_AUTO_SYNC=false. Dùng pg.query trực tiếp vì
-    // ready chưa resolve (query() sẽ tự chờ ready -> deadlock).
-    if (process.env.MISA_AUTO_SYNC !== "false") {
-      try {
-        const { syncMisaMasterData } = await import("./misa/sync");
-        const run = async (sql: string, params: unknown[] = []) =>
-          (await pg.query(sql, params)).rows as Record<string, unknown>[];
-        const res = await syncMisaMasterData(run);
-        console.log(`[MISA] đồng bộ master data (${res.mode}): ${res.total} bản ghi`, res.counts);
-      } catch (err) {
-        console.error("[MISA] đồng bộ khi khởi động thất bại (bỏ qua):", err);
-      }
+  }
+
+  // MISA is the master-data source: upsert by code after seeding. Best-effort
+  // — a MISA network error must never break startup. Disable with
+  // MISA_AUTO_SYNC=false (recommended on Supabase to skip per-cold-start sync).
+  if (process.env.MISA_AUTO_SYNC !== "false") {
+    try {
+      const { syncMisaMasterData } = await import("./misa/sync");
+      const run = async (sql: string, params: unknown[] = []) =>
+        (await db.query(sql, params)).rows as Record<string, unknown>[];
+      const res = await syncMisaMasterData(run);
+      console.log(`[MISA] đồng bộ master data (${res.mode}): ${res.total} bản ghi`, res.counts);
+    } catch (err) {
+      console.error("[MISA] đồng bộ khi khởi động thất bại (bỏ qua):", err);
     }
-  })();
-  return { pg, ready };
+  }
 }
 
-function handle(): DbHandle {
-  if (!g.__pms_db) g.__pms_db = bootstrap();
-  return g.__pms_db;
+// ---------------------------------------------------------------------
+// PostgreSQL (Supabase) driver — node-postgres connection pool.
+// ---------------------------------------------------------------------
+function bootstrapPg(): Driver {
+  // Return int8 (BIGINT) and numeric as JS numbers so row shapes match the
+  // PGlite path the app was written against (ids/money are used as numbers).
+  types.setTypeParser(20, (v) => (v === null ? null : Number(v))); // int8
+  types.setTypeParser(1700, (v) => (v === null ? null : Number(v))); // numeric
+
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false }, // Supabase requires TLS
+    max: Number(process.env.DB_POOL_MAX ?? 5),
+  });
+
+  const run: Driver["run"] = async (sql, params = []) =>
+    (await pool.query(sql, params as unknown[])).rows as never;
+
+  const execMulti = async (sql: string) => {
+    await pool.query(sql); // simple-query protocol runs multi-statement scripts
+  };
+
+  const db = { query: (sql: string, params?: unknown[]) => pool.query(sql, params as unknown[]) } as unknown as QueryDb;
+  const ready = initialize(db, execMulti);
+
+  const transaction: Driver["transaction"] = async (cb) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const exec: Executor = async (sql, params = []) =>
+        (await client.query(sql, params as unknown[])).rows as never;
+      const result = await cb(exec);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  };
+
+  return { ready, run, execMulti, transaction };
 }
+
+// ---------------------------------------------------------------------
+// PGlite driver — embedded Postgres persisted to ./.pglite (local dev).
+// ---------------------------------------------------------------------
+function bootstrapPglite(): Driver {
+  const pg = new PGlite(path.join(process.cwd(), ".pglite"));
+
+  const run: Driver["run"] = async (sql, params = []) =>
+    (await pg.query(sql, params as unknown[])).rows as never;
+
+  const execMulti = (sql: string) => pg.exec(sql).then(() => undefined);
+
+  const ready = initialize(pg as unknown as QueryDb, execMulti);
+
+  const transaction: Driver["transaction"] = (cb) =>
+    pg.transaction(async (tx) => {
+      const exec: Executor = async (sql, params = []) => (await tx.query(sql, params)).rows as never;
+      return cb(exec);
+    }) as never;
+
+  return { ready, run, execMulti, transaction };
+}
+
+function driver(): Driver {
+  if (!g.__pms_driver) g.__pms_driver = USE_PG ? bootstrapPg() : bootstrapPglite();
+  return g.__pms_driver;
+}
+
+// ---------------------------------------------------------------------
+// Public API (unchanged signatures).
+// ---------------------------------------------------------------------
 
 /** Run a parameterized query and return typed rows. */
-export async function query<T = Row>(
-  sql: string,
-  params: unknown[] = []
-): Promise<T[]> {
-  const h = handle();
-  await h.ready;
-  const res = await h.pg.query<T>(sql, params);
-  return res.rows;
+export async function query<T = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
+  const d = driver();
+  await d.ready;
+  return d.run<T>(sql, params);
 }
 
 /** Run a query and return the first row (or null). */
-export async function queryOne<T = Row>(
-  sql: string,
-  params: unknown[] = []
-): Promise<T | null> {
+export async function queryOne<T = Row>(sql: string, params: unknown[] = []): Promise<T | null> {
   const rows = await query<T>(sql, params);
   return rows[0] ?? null;
 }
 
 /** Execute raw SQL (no params) — for multi-statement scripts. */
 export async function exec(sql: string): Promise<void> {
-  const h = handle();
-  await h.ready;
-  await h.pg.exec(sql);
+  const d = driver();
+  await d.ready;
+  await d.execMulti(sql);
 }
-
-// ---------------------------------------------------------------------
-// Transactions. A driver-agnostic executor is passed to the callback so
-// business helpers can run either inside a transaction or standalone.
-// ---------------------------------------------------------------------
-export type Executor = <T = Row>(sql: string, params?: unknown[]) => Promise<T[]>;
 
 /** The default (non-transactional) executor. */
 export const dbExec: Executor = (sql, params = []) => query(sql, params);
@@ -116,10 +200,7 @@ export async function firstRow<T = Row>(
 
 /** Run a callback inside a DB transaction; auto-commit on success, rollback on throw. */
 export async function withTransaction<T>(cb: (exec: Executor) => Promise<T>): Promise<T> {
-  const h = handle();
-  await h.ready;
-  return h.pg.transaction(async (tx) => {
-    const exec: Executor = async (sql, params = []) => (await tx.query(sql, params)).rows as never;
-    return cb(exec);
-  }) as Promise<T>;
+  const d = driver();
+  await d.ready;
+  return d.transaction(cb);
 }
