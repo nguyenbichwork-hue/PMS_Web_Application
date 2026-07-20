@@ -31,19 +31,21 @@
 
 ## 1. Đăng nhập & 5 vai trò
 
-Mở web → tự chuyển tới trang đăng nhập. Nhập **email + mật khẩu**. Trang login có sẵn nút **tài khoản demo** (bấm để điền email).
+Mở web → tự chuyển tới trang đăng nhập. Nhập **email + mật khẩu** do Quản trị viên cấp. Trang đăng nhập **chỉ nhận tài khoản thật** (không còn danh sách tài khoản mẫu).
 
-**Mật khẩu demo chung: `password`**
+**Tài khoản Quản trị đầu tiên:** `admin@k-homes.vn` · mật khẩu `123456` → **nên đổi ngay** sau lần đăng nhập đầu (Cấu hình → Người dùng → đặt lại mật khẩu). Từ tài khoản Quản trị, bạn tạo thêm người dùng **thủ công** (Cấu hình → Người dùng) hoặc **nhập hàng loạt bằng Excel** (xem mục 11). Người dùng nhập từ Excel dùng mật khẩu mặc định `password`, mỗi người tự đổi sau.
 
-| Vai trò | Email demo | Làm được gì |
-|---|---|---|
-| **Nhân viên** | `employee@demo.com` | Tạo yêu cầu mua (PR), theo dõi PR của mình, đính kèm báo giá |
-| **Mua hàng** | `purchasing@demo.com` | Điều chỉnh & duyệt & gửi PO, nhận hàng, quản lý NCC/hàng hóa |
-| **Quản lý** | `manager@demo.com` | Phê duyệt / từ chối yêu cầu mua |
-| **Kế toán** | `finance@demo.com` | Nhập hóa đơn, xem đối chiếu, ghi nhận thanh toán |
-| **Quản trị** | `admin@demo.com` | Quản lý người dùng, dữ liệu nền, cấu hình, nhập Excel |
+Hệ thống có **5 vai trò**, mỗi vai trò chỉ thấy menu & thao tác thuộc quyền của mình:
 
-> Mỗi vai trò chỉ thấy menu & thao tác thuộc quyền của mình. Dữ liệu được **lọc theo công ty** (mỗi người chỉ thấy dữ liệu công ty mình; Nhân viên chỉ thấy PR do chính mình tạo). Bấm **Đăng xuất** ở góc trên phải.
+| Vai trò | Làm được gì |
+|---|---|
+| **Nhân viên** | Tạo yêu cầu mua (PR), theo dõi PR của mình, đính kèm báo giá |
+| **Mua hàng** | Điều chỉnh & duyệt & gửi PO, nhận hàng, quản lý NCC/hàng hóa |
+| **Quản lý** | Phê duyệt / từ chối yêu cầu mua |
+| **Kế toán** | Nhập hóa đơn, xem đối chiếu, ghi nhận thanh toán |
+| **Quản trị** | Quản lý người dùng, dữ liệu nền, cấu hình, nhập Excel |
+
+> Dữ liệu được **lọc theo công ty** (mỗi người chỉ thấy dữ liệu công ty mình; Nhân viên chỉ thấy PR do chính mình tạo). Bấm **Đăng xuất** ở góc trên phải.
 
 ---
 
@@ -272,6 +274,10 @@ Menu **Cấu hình** (chỉ **Quản trị**). Các tab:
 **Hóa đơn thứ 2 báo "vượt số lượng"?** → Tổng số lượng các hóa đơn đã vượt số đã nhận. Kiểm tra lại số lượng.
 
 **Xuất PDF ra file thế nào?** → Bấm "Xuất PDF / In" → trong hộp thoại in chọn **"Save as PDF / Lưu dưới dạng PDF"**.
+
+**Đổi mật khẩu của tôi?** → Quản trị viên đổi giúp trong **Cấu hình → Người dùng** (mở người dùng → nhập mật khẩu mới → Lưu). Tài khoản Quản trị đầu tiên `admin@k-homes.vn` nên đổi mật khẩu `123456` ngay sau lần đăng nhập đầu.
+
+**Tài khoản nhập từ Excel đăng nhập bằng gì?** → Email trong file Excel + mật khẩu mặc định `password`; mỗi người nên đổi lại sau.
 
 **Mở trên điện thoại?** → Mở hệ thống bằng trình duyệt trên điện thoại; giao diện tự co gọn (menu ☰, bảng cuộn ngang).
 
