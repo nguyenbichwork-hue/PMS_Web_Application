@@ -188,6 +188,22 @@ body {
   animation: fadeUp 0.35s ease both;
 }
 
+/* Chuyển TRANG: fade nhanh & nhẹ hơn fade-up (snappy, ít trễ cảm giác). */
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-page {
+  animation: pageIn 0.2s ease-out both;
+  will-change: opacity, transform;
+}
+
 /* Chuyển sáng↔tối mượt: chỉ bật transition màu trong lúc đổi theme
    (class .theme-transition được gắn/gỡ tạm thời bởi nút đổi giao diện). */
 .theme-transition,
@@ -204,7 +220,8 @@ body {
 
 /* Tôn trọng người dùng tắt hiệu ứng chuyển động */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-up {
+  .animate-fade-up,
+  .animate-page {
     animation: none;
   }
   .lift {
