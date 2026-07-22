@@ -184,7 +184,7 @@ export function DueBadge({ date, active }: { date?: string | null; active?: bool
 }
 
 /** Nút tải Excel — dùng thẻ <a> để trình duyệt tải file trực tiếp. */
-export function ExportButton({ href }: { href: string }) {
+export function ExportButton({ href, label = "Xuất Excel" }: { href: string; label?: string }) {
   return (
     <a
       href={href}
@@ -193,7 +193,7 @@ export function ExportButton({ href }: { href: string }) {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M12 15V3" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
       </svg>
-      Xuất Excel
+      {label}
     </a>
   );
 }

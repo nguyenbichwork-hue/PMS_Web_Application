@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
-import { Card, PageHeader, StatusBadge, Th, Td } from "@/components/ui";
+import { Card, PageHeader, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
 import { money, date } from "@/lib/format";
 import { POActions } from "./POActions";
 import { POEditor } from "./POEditor";
@@ -143,6 +143,12 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="space-y-4">
+          <Card className="p-5">
+            <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
+            <p className="mb-3 text-xs text-slate-400">Mẫu MISA (34 cột) — 🟡 người tạo điền · 🟢 kế toán bổ sung sau.</p>
+            <ExportButton href={`/export/po-misa/${poId}`} label="Xuất Excel (mẫu MISA)" />
+          </Card>
+
           <POActions poId={poId} status={po.status} canManage={canManage} />
 
           <AttachmentPanel documentType="PO" documentId={poId} attachments={attachments} canManage={canManage} />
