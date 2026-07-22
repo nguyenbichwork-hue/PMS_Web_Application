@@ -1,12 +1,27 @@
 "use client";
-import { useState } from "react";
-import { saveSupplierAction } from "@/actions/master";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { saveSupplierAction, deleteSupplierAction } from "@/actions/master";
 import { Field, inputCls, Button } from "@/components/ui";
 import type { Supplier } from "@/lib/types";
 
 export function SupplierManager({ supplier }: { supplier?: Supplier }) {
   const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const router = useRouter();
   const editing = !!supplier;
+
+  const remove = () => {
+    if (!supplier) return;
+    if (!confirm(`Xóa nhà cung cấp "${supplier.supplier_name}" (${supplier.supplier_code})?`)) return;
+    start(async () => {
+      const res = await deleteSupplierAction(supplier.id);
+      if (!res.ok) { alert(res.error ?? "Không xóa được."); return; }
+      setOpen(false);
+      if (res.deactivated) alert("NCC đã phát sinh chứng từ (PO/hóa đơn) nên được chuyển sang 'Ngưng' thay vì xóa.");
+      router.refresh();
+    });
+  };
 
   return (
     <>
@@ -48,6 +63,9 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
                 <Field label="Số tài khoản">
                   <input name="bank_account" defaultValue={supplier?.bank_account ?? ""} className={inputCls} />
                 </Field>
+                <Field label="Số tiền nợ (₫)">
+                  <input name="debt" type="number" step="any" defaultValue={supplier?.debt ?? 0} className={inputCls} />
+                </Field>
                 <Field label="Điều khoản TT">
                   <select name="payment_term" defaultValue={supplier?.payment_term ?? "NET30"} className={inputCls}>
                     {["COD", "NET15", "NET30", "NET45", "NET60"].map((t) => <option key={t}>{t}</option>)}
@@ -71,7 +89,12 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
                   <input name="address" defaultValue={supplier?.address ?? ""} className={inputCls} />
                 </Field>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-2">
+                {editing && (
+                  <button type="button" onClick={remove} disabled={pending} className="mr-auto text-sm font-semibold text-rose-500 hover:underline disabled:opacity-40">
+                    Xóa
+                  </button>
+                )}
                 <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Hủy</Button>
                 <Button type="submit">Lưu</Button>
               </div>

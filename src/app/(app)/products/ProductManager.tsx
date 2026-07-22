@@ -1,12 +1,27 @@
 "use client";
-import { useState } from "react";
-import { saveProductAction } from "@/actions/master";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { saveProductAction, deleteProductAction } from "@/actions/master";
 import { Field, inputCls, Button } from "@/components/ui";
 import type { Product, Supplier } from "@/lib/types";
 
 export function ProductManager({ product, suppliers }: { product?: Product; suppliers: Supplier[] }) {
   const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const router = useRouter();
   const editing = !!product;
+
+  const remove = () => {
+    if (!product) return;
+    if (!confirm(`Xóa hàng hóa "${product.item_name}" (${product.item_code})?`)) return;
+    start(async () => {
+      const res = await deleteProductAction(product.id);
+      if (!res.ok) { alert(res.error ?? "Không xóa được."); return; }
+      setOpen(false);
+      if (res.deactivated) alert("Hàng hóa đã phát sinh chứng từ nên được chuyển sang 'Ngưng' thay vì xóa.");
+      router.refresh();
+    });
+  };
 
   return (
     <>
@@ -57,7 +72,12 @@ export function ProductManager({ product, suppliers }: { product?: Product; supp
                   </Field>
                 )}
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-2">
+                {editing && (
+                  <button type="button" onClick={remove} disabled={pending} className="mr-auto text-sm font-semibold text-rose-500 hover:underline disabled:opacity-40">
+                    Xóa
+                  </button>
+                )}
                 <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Hủy</Button>
                 <Button type="submit">Lưu</Button>
               </div>

@@ -1,9 +1,11 @@
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { Card, StatusBadge, EmptyState, ExportButton } from "@/components/ui";
+import { money } from "@/lib/format";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { SupplierManager } from "./SupplierManager";
+import { SectionImport } from "@/components/SectionImport";
 import type { Supplier } from "@/lib/types";
 
 export default async function SuppliersPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -24,6 +26,11 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = await query<Supplier>(`SELECT * FROM suppliers ${clause} ORDER BY supplier_name`, params);
 
+  const eq = new URLSearchParams();
+  if (sp.q) eq.set("q", sp.q);
+  if (sp.status) eq.set("status", sp.status);
+  const exportQs = eq.toString();
+
   return (
     <div>
       <ModuleBanner
@@ -31,7 +38,13 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         icon="🏭"
         title="Nhà cung cấp"
         subtitle="Quản lý danh mục nhà cung cấp"
-        action={canManage ? <SupplierManager /> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton href={`/export/suppliers?${exportQs}`} />
+            {canManage && <SectionImport section="suppliers" variant="light" />}
+            {canManage && <SupplierManager />}
+          </div>
+        }
       />
       <Filters
         searchPlaceholder="Tìm nhà cung cấp…"
@@ -49,7 +62,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           <Card key={r.id} className="lift p-5">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-lg font-bold text-white shadow-sm">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-500 text-lg font-bold text-white shadow-sm">
                   {r.supplier_name.charAt(0)}
                 </div>
                 <div>
@@ -64,6 +77,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
               <Row label="Mã số thuế" value={r.tax_code ?? "—"} />
               <Row label="Liên hệ" value={r.contact_name ? `${r.contact_name}${r.phone ? " · " + r.phone : ""}` : "—"} />
               <Row label="Email" value={r.email ?? "—"} />
+              <Row label="Công nợ" value={money(r.debt ?? 0)} />
               <Row label="Điều khoản TT" value={`${r.payment_term ?? "—"} · ${r.currency}`} />
             </dl>
 

@@ -35,16 +35,19 @@ export interface ParsedWorkbook {
 
 const VALID_ROLES = ["Employee", "Purchasing", "Manager", "Finance", "Admin"];
 
-/** Chuẩn hóa chuỗi để so khớp: bỏ dấu, ký tự đặc biệt, chỉ còn a-z0-9. */
-const norm = (s: unknown) =>
+/** Chuẩn hóa chuỗi để so khớp: bỏ dấu, ký tự đặc biệt, chỉ còn a-z0-9.
+ *  Lưu ý: NFD KHÔNG tách được "đ/Đ" (U+0111/U+0110) — phải map thủ công về "d",
+ *  nếu không "Địa chỉ" → "iachi", "Điện thoại" → "ienthoai" sẽ không khớp alias. */
+export const norm = (s: unknown) =>
   String(s ?? "")
     .toLowerCase()
+    .replace(/đ/g, "d")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]/g, "");
 
 /** Lấy chuỗi hiển thị từ ô exceljs (xử lý hyperlink / formula / rich text). */
-function cellStr(v: ExcelJS.CellValue): string {
+export function cellStr(v: ExcelJS.CellValue): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") return v.trim();
   if (typeof v === "number" || typeof v === "boolean") return String(v);
@@ -89,7 +92,7 @@ function headerMap(ws: ExcelJS.Worksheet): Map<string, number> {
 }
 
 /** Trả về chỉ số cột khớp alias (ưu tiên bằng, rồi startsWith). */
-function colOf(hmap: Map<string, number>, aliases: string[]): number | null {
+export function colOf(hmap: Map<string, number>, aliases: string[]): number | null {
   for (const a of aliases) {
     for (const [h, col] of hmap) {
       if (h === a) return col;

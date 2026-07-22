@@ -34,7 +34,14 @@ const USE_PG = !!DATABASE_URL;
 // (PR/PO…) vẫn chạy PGlite local. Xem src/lib/accounts.ts.
 const ACCOUNTS_ONLY = process.env.ACCOUNTS_ONLY === "true";
 const FULL_PG = USE_PG && !ACCOUNTS_ONLY; // toàn bộ DB chạy trên Postgres/Supabase
-const SHOULD_SEED = FULL_PG ? process.env.DB_SEED === "true" : true;
+// Seed dữ liệu DEMO:
+//   • Full-Postgres → chỉ khi DB_SEED=true (Supabase thật không bị bẩn demo).
+//   • Local/PGlite  → mặc định BẬT (trải nghiệm demo cho máy mới)…
+//   • …NHƯNG DB_SEED=false TẮT demo ở MỌI chế độ — dùng khi đã chuyển sang
+//     nhập dữ liệu THẬT (không tự sinh lại demo mỗi lần khởi động).
+const SHOULD_SEED = FULL_PG
+  ? process.env.DB_SEED === "true"
+  : process.env.DB_SEED !== "false";
 
 interface Driver {
   ready: Promise<void>;
@@ -74,6 +81,23 @@ async function initialize(
       await seedMoreData(db);
     } catch (e) {
       console.warn("[db] seedMoreData bỏ qua:", e instanceof Error ? e.message : e);
+    }
+  } else {
+    // Không seed demo (đã chuyển sang nhập THẬT): vẫn đảm bảo tối thiểu 1 pháp
+    // nhân để tạo PR được (form PR bắt buộc chọn Công ty). Chỉ thêm khi bảng
+    // companies TRỐNG → không ghi đè dữ liệu thật người dùng đã nhập, và MST/
+    // địa chỉ để TRỐNG (không phải giá trị demo giả) để tự điền trong Cấu hình.
+    try {
+      const { rows } = await db.query<{ c: number }>(`SELECT count(*)::int AS c FROM companies`);
+      if ((rows[0]?.c ?? 0) === 0) {
+        await db.query(
+          `INSERT INTO companies (company_code, company_name, tax_code, address)
+           VALUES ('KH','K-Homès',NULL,NULL) ON CONFLICT (company_code) DO NOTHING`
+        );
+        console.log("[db] baseline: tạo pháp nhân K-Homès (trống MST/địa chỉ) để nhập dữ liệu thật.");
+      }
+    } catch (e) {
+      console.warn("[db] baseline company bỏ qua:", e instanceof Error ? e.message : e);
     }
   }
 
@@ -176,7 +200,18 @@ function bootstrapPglite(): Driver {
 }
 
 function driver(): Driver {
-  if (!g.__pms_driver) g.__pms_driver = FULL_PG ? bootstrapPg() : bootstrapPglite();
+  if (!g.__pms_driver) {
+    const d = FULL_PG ? bootstrapPg() : bootstrapPglite();
+    // Nếu KHỞI TẠO thất bại (vd PGlite WASM "Aborted()" do dữ liệu .pglite hỏng
+    // hoặc bị khóa sau lần tắt không sạch), XÓA cache để lần gọi kế tiếp bootstrap
+    // lại từ đầu — tránh kẹt driver lỗi vĩnh viễn khiến MỌI request (kể cả đăng
+    // nhập) trả 500 cho tới khi restart thủ công.
+    d.ready.catch((e) => {
+      console.error("[db] khởi tạo DB thất bại, sẽ thử lại ở request sau:", e);
+      if (g.__pms_driver === d) g.__pms_driver = undefined;
+    });
+    g.__pms_driver = d;
+  }
   return g.__pms_driver;
 }
 

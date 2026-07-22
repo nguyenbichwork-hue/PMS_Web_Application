@@ -27,7 +27,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         <div className="mt-6 flex justify-center gap-2">
           <button
             onClick={reset}
-            className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white"
           >
             Thử lại
           </button>

@@ -112,6 +112,13 @@ export async function syncOneUserToLocal(email: string, runLocal: Run): Promise<
   );
 }
 
+/** Xóa MỘT tài khoản (theo email) trên Supabase — dùng khi xóa user ở app.
+ *  Best-effort: chỉ chạy khi bật ACCOUNTS_ONLY. */
+export async function deleteRemoteUser(email: string): Promise<void> {
+  if (!accountsOnSupabase) return;
+  await remoteQuery(`DELETE FROM users WHERE lower(email)=lower($1)`, [email]);
+}
+
 /** Đẩy các user THẬT ở local (email không phải @demo.com) lên Supabase. */
 export async function pushLocalRealUsers(runLocal: Run): Promise<number> {
   if (!accountsOnSupabase) return 0;

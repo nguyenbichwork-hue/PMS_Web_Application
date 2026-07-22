@@ -1,234 +1,136 @@
 @import "tailwindcss";
 
-/* Bật dark mode theo class .dark trên <html> (toggle thủ công) */
+/* Dark mode theo class .dark trên <html> */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Bảng màu thương hiệu — tím/chàm rực rỡ */
-  --color-brand-50: #f5f3ff;
-  --color-brand-100: #ede9fe;
-  --color-brand-200: #ddd6fe;
-  --color-brand-300: #c4b5fd;
-  --color-brand-400: #a78bfa;
-  --color-brand-500: #8b5cf6;
-  --color-brand-600: #7c3aed;
-  --color-brand-700: #6d28d9;
-  --color-brand-800: #5b21b6;
-  --color-brand-900: #4c1d95;
-  --color-brand-950: #2e1065;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  /* ============================================================
+     THƯƠNG HIỆU K‑HOMÈS — accent CAM (lấy từ logo). Phẳng, không gradient.
+     ============================================================ */
+  --color-brand-50:  #fff3ec;
+  --color-brand-100: #ffe1ce;
+  --color-brand-200: #fec29d;
+  --color-brand-300: #fc9e6b;
+  --color-brand-400: #fa7f41;
+  --color-brand-500: #f26a21;
+  --color-brand-600: #de560f;
+  --color-brand-700: #b8440c;
+  --color-brand-800: #92370f;
+  --color-brand-900: #762f10;
+  --color-brand-950: #401607;
+
+  /* Nền/tông tối "sang" dùng cho sidebar & chế độ tối */
+  --color-ink-900: #0d0e11;   /* nền trang tối nhất */
+  --color-ink-850: #121317;   /* sidebar / thanh trên */
+  --color-ink-800: #16171c;   /* thẻ (card) */
+  --color-ink-750: #1c1e24;   /* bề mặt nâng nhẹ / hover */
+  --color-ink-700: #23252c;   /* viền rõ */
+  --color-ink-600: #2c2f37;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-/* =====================================================================
-   MÀU NHẤN (accent) THAY ĐỔI ĐƯỢC — Admin chọn ở Cấu hình → Giao diện.
-   Ghi đè thang màu brand-* theo thuộc tính data-accent trên <html>.
-   Mọi thành phần dùng brand-* (sidebar, nút, link, tab, logo…) tự đổi theo.
-   Không đặt data-accent = giữ tím (violet) mặc định ở @theme phía trên.
-   ===================================================================== */
-:root[data-accent="blue"] {
-  --color-brand-50: #eff6ff; --color-brand-100: #dbeafe; --color-brand-200: #bfdbfe; --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa; --color-brand-500: #3b82f6; --color-brand-600: #2563eb; --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af; --color-brand-900: #1e3a8a; --color-brand-950: #172554;
-}
-:root[data-accent="emerald"] {
-  --color-brand-50: #ecfdf5; --color-brand-100: #d1fae5; --color-brand-200: #a7f3d0; --color-brand-300: #6ee7b7;
-  --color-brand-400: #34d399; --color-brand-500: #10b981; --color-brand-600: #059669; --color-brand-700: #047857;
-  --color-brand-800: #065f46; --color-brand-900: #064e3b; --color-brand-950: #022c22;
-}
-:root[data-accent="rose"] {
-  --color-brand-50: #fff1f2; --color-brand-100: #ffe4e6; --color-brand-200: #fecdd3; --color-brand-300: #fda4af;
-  --color-brand-400: #fb7185; --color-brand-500: #f43f5e; --color-brand-600: #e11d48; --color-brand-700: #be123c;
-  --color-brand-800: #9f1239; --color-brand-900: #881337; --color-brand-950: #4c0519;
-}
-:root[data-accent="amber"] {
-  --color-brand-50: #fffbeb; --color-brand-100: #fef3c7; --color-brand-200: #fde68a; --color-brand-300: #fcd34d;
-  --color-brand-400: #fbbf24; --color-brand-500: #f59e0b; --color-brand-600: #d97706; --color-brand-700: #b45309;
-  --color-brand-800: #92400e; --color-brand-900: #78350f; --color-brand-950: #451a03;
-}
-:root[data-accent="teal"] {
-  --color-brand-50: #f0fdfa; --color-brand-100: #ccfbf1; --color-brand-200: #99f6e4; --color-brand-300: #5eead4;
-  --color-brand-400: #2dd4bf; --color-brand-500: #14b8a6; --color-brand-600: #0d9488; --color-brand-700: #0f766e;
-  --color-brand-800: #115e59; --color-brand-900: #134e4a; --color-brand-950: #042f2e;
-}
+/* Màu nhấn thay đổi được (Admin → Giao diện). Mặc định = cam ở @theme trên. */
+:root[data-accent="blue"]    { --color-brand-400:#60a5fa; --color-brand-500:#3b82f6; --color-brand-600:#2563eb; --color-brand-700:#1d4ed8; --color-brand-300:#93c5fd; }
+:root[data-accent="emerald"] { --color-brand-400:#34d399; --color-brand-500:#10b981; --color-brand-600:#059669; --color-brand-700:#047857; --color-brand-300:#6ee7b7; }
+:root[data-accent="rose"]    { --color-brand-400:#fb7185; --color-brand-500:#f43f5e; --color-brand-600:#e11d48; --color-brand-700:#be123c; --color-brand-300:#fda4af; }
+:root[data-accent="violet"]  { --color-brand-400:#a78bfa; --color-brand-500:#8b5cf6; --color-brand-600:#7c3aed; --color-brand-700:#6d28d9; --color-brand-300:#c4b5fd; }
+:root[data-accent="teal"]    { --color-brand-400:#2dd4bf; --color-brand-500:#14b8a6; --color-brand-600:#0d9488; --color-brand-700:#0f766e; --color-brand-300:#5eead4; }
 
-/* Phóng to nhẹ toàn hệ thống (mặc định trình duyệt 16px). Vì Tailwind dùng rem,
-   chữ + khoảng cách + thành phần đều to lên cân đối. */
-html {
-  font-size: 17px;
-}
-
-html,
-body {
-  height: 100%;
-}
+/* Font hệ thống lớn hơn chút cho dễ nhìn & sang (Tailwind dùng rem nên mọi thứ nở cân đối) */
+html { font-size: 18px; }
+html, body { height: 100%; }
 
 body {
-  color: #0f172a;
+  color: #191b21;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  background:
-    radial-gradient(1200px 600px at 100% -10%, #ede9fe 0%, transparent 55%),
-    radial-gradient(1000px 500px at -10% 110%, #dbeafe 0%, transparent 50%),
-    #f6f7fb;
-  background-attachment: fixed;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
+  background: #f3f4f7;               /* sáng: nền phẳng, KHÔNG gradient */
 }
 
-/* Tiêu đề dạng gradient */
-.text-gradient {
-  background: linear-gradient(90deg, var(--color-brand-700), var(--color-brand-500) 55%, var(--color-brand-400));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+/* Tiêu đề: dùng màu đặc, không gradient (giữ tên class để nơi cũ vẫn chạy) */
+.text-gradient { color: #14161b; }
+.dark .text-gradient { color: #f4f5f7; }
 
-/* Hiệu ứng kính mờ cho thanh trên */
+/* Thanh trên: mờ nhẹ tinh tế, không gradient */
 .glass {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: saturate(180%) blur(12px);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: saturate(140%) blur(10px);
 }
 
 /* Nâng nhẹ khi hover */
-.lift {
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-.lift:hover {
-  transform: translateY(-2px);
-}
+.lift { transition: transform .18s ease, box-shadow .18s ease; }
+.lift:hover { transform: translateY(-2px); }
 
-/* Thanh cuộn mảnh */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #c4b5fd transparent;
-}
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-*::-webkit-scrollbar-thumb {
-  background: #ddd6fe;
-  border-radius: 999px;
-}
+/* Thanh cuộn mảnh, trung tính */
+* { scrollbar-width: thin; scrollbar-color: #c9ccd3 transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb { background: #cdd0d7; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #b3b7c0; background-clip: padding-box; }
 
 /* =====================================================================
-   CHẾ ĐỘ TỐI — remap các lớp trung tính (slate/white) sang tông tối.
-   Cách này phủ toàn app mà không phải sửa từng trang; màu nhấn (gradient,
-   badge màu) giữ nguyên nên giao diện vẫn rực rỡ.
+   CHẾ ĐỘ TỐI — charcoal cao cấp kiểu launcher (Epic-inspired). Phẳng.
+   Remap các lớp trung tính slate/white → tông tối, phủ toàn app.
    ===================================================================== */
-.dark body {
-  color: #e2e8f0;
-  background:
-    radial-gradient(1200px 600px at 100% -10%, #2e1065 0%, transparent 55%),
-    radial-gradient(1000px 500px at -10% 110%, #1e3a8a 0%, transparent 50%),
-    #0b1020;
-}
-.dark .glass {
-  background: rgba(17, 24, 39, 0.75);
-}
+.dark body { color: #e7e8ec; background: var(--color-ink-900); }
+.dark .glass { background: rgba(18, 19, 23, 0.82); }
+
+.dark *::-webkit-scrollbar-thumb { background: #2c2f37; background-clip: padding-box; }
+.dark *::-webkit-scrollbar-thumb:hover { background: #3a3d47; background-clip: padding-box; }
+.dark { scrollbar-color: #2c2f37 transparent; }
 
 /* Bề mặt */
-.dark .bg-white { background-color: #111a2e !important; }
+.dark .bg-white { background-color: var(--color-ink-800) !important; }
 .dark .bg-slate-50,
 .dark .bg-slate-50\/60,
-.dark .bg-slate-50\/40 { background-color: #0f1728 !important; }
-.dark .bg-slate-100 { background-color: #1e293b !important; }
+.dark .bg-slate-50\/40 { background-color: var(--color-ink-850) !important; }
+.dark .bg-slate-100 { background-color: var(--color-ink-750) !important; }
 
 /* Chữ trung tính */
-.dark .text-slate-900 { color: #f1f5f9 !important; }
-.dark .text-slate-800 { color: #e2e8f0 !important; }
-.dark .text-slate-700 { color: #cbd5e1 !important; }
-.dark .text-slate-600 { color: #a3b2c7 !important; }
-.dark .text-slate-500 { color: #94a3b8 !important; }
-.dark .text-slate-400 { color: #64748b !important; }
+.dark .text-slate-900 { color: #f4f5f7 !important; }
+.dark .text-slate-800 { color: #e7e8ec !important; }
+.dark .text-slate-700 { color: #ccced6 !important; }
+.dark .text-slate-600 { color: #a6a9b3 !important; }
+.dark .text-slate-500 { color: #8b8f9a !important; }
+.dark .text-slate-400 { color: #6b6f7a !important; }
 
 /* Viền */
 .dark .border-slate-200,
-.dark .border-slate-200\/70 { border-color: #263248 !important; }
-.dark .border-slate-100 { border-color: #1c2740 !important; }
-.dark .border-slate-300 { border-color: #334155 !important; }
+.dark .border-slate-200\/70 { border-color: var(--color-ink-700) !important; }
+.dark .border-slate-100 { border-color: #1b1d23 !important; }
+.dark .border-slate-300 { border-color: var(--color-ink-600) !important; }
 
 /* Ô nhập & hover hàng bảng */
-.dark input,
-.dark select,
-.dark textarea { color: #e2e8f0; }
-.dark .hover\:bg-slate-50:hover { background-color: #172033 !important; }
+.dark input, .dark select, .dark textarea { color: #e7e8ec; }
+.dark .hover\:bg-slate-50:hover { background-color: var(--color-ink-750) !important; }
 
 /* =====================================================================
-   MOBILE — giữ bố cục "toàn vẹn" trên điện thoại.
+   MOBILE — bảng rộng cuộn ngang trong khung, không phá vỡ trang.
    ===================================================================== */
-/* Bảng rộng: cho cuộn ngang trong khung của nó, không phá vỡ chiều rộng
-   trang. Áp cho div bọc trực tiếp <table> (Card, hoặc khung viền bảng).
-   min-width:max-content giữ cột không bị bóp méo → cuộn thay vì chồng chữ. */
 @media (max-width: 767px) {
-  main div:has(> table) {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
-  main div:has(> table) > table {
-    min-width: max-content;
-  }
-  /* Không cho bất kỳ phần tử nào đẩy trang tràn ngang */
-  main img,
-  main pre,
-  main canvas {
-    max-width: 100%;
-  }
+  main div:has(> table) { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  main div:has(> table) > table { min-width: max-content; }
+  main img, main pre, main canvas { max-width: 100%; }
 }
 
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.animate-fade-up {
-  animation: fadeUp 0.35s ease both;
+/* ---------------- Animations (giữ nguyên, không 'both' để không tạo containing-block) --------------- */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade-up { animation: fadeUp .35s ease backwards; }
+
+@keyframes pageIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.animate-page { animation: pageIn .2s ease-out backwards; }
+
+@keyframes modalIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+.animate-modal-in { animation: modalIn .12s ease-out; }
+
+.theme-transition, .theme-transition *, .theme-transition *::before, .theme-transition *::after {
+  transition: background-color .3s ease, color .3s ease, border-color .3s ease, fill .3s ease, box-shadow .3s ease !important;
 }
 
-/* Chuyển TRANG: fade nhanh & nhẹ hơn fade-up (snappy, ít trễ cảm giác). */
-@keyframes pageIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.animate-page {
-  animation: pageIn 0.2s ease-out both;
-  will-change: opacity, transform;
-}
-
-/* Chuyển sáng↔tối mượt: chỉ bật transition màu trong lúc đổi theme
-   (class .theme-transition được gắn/gỡ tạm thời bởi nút đổi giao diện). */
-.theme-transition,
-.theme-transition *,
-.theme-transition *::before,
-.theme-transition *::after {
-  transition:
-    background-color 0.3s ease,
-    color 0.3s ease,
-    border-color 0.3s ease,
-    fill 0.3s ease,
-    box-shadow 0.3s ease !important;
-}
-
-/* Tôn trọng người dùng tắt hiệu ứng chuyển động */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-up,
-  .animate-page {
-    animation: none;
-  }
-  .lift {
-    transition: none;
-  }
-  .theme-transition,
-  .theme-transition * {
-    transition: none !important;
-  }
+  .animate-fade-up, .animate-page, .animate-modal-in { animation: none; }
+  .lift { transition: none; }
+  .theme-transition, .theme-transition * { transition: none !important; }
 }

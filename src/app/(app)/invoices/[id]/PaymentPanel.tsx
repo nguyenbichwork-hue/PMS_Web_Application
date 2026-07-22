@@ -72,7 +72,7 @@ export function PaymentPanel({
         <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-900"><span>Còn lại</span><span>{fmt(remaining)}</span></div>
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
       </div>
 
       {payments.length > 0 && (

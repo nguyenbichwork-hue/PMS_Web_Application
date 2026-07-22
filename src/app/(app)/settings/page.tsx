@@ -57,7 +57,7 @@ export default async function SettingsPage() {
           levels: Array.isArray(r.levels) ? r.levels : JSON.parse(r.levels as unknown as string),
         }))}
         users={users}
-        companies={companies.map((c) => ({ id: c.id, company_code: c.company_code, company_name: c.company_name, tax_code: c.tax_code, status: c.status }))}
+        companies={companies.map((c) => ({ id: c.id, company_code: c.company_code, company_name: c.company_name, tax_code: c.tax_code, address: c.address, status: c.status }))}
         audit={audit}
       />
     </div>

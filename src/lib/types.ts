@@ -31,6 +31,7 @@ export interface Supplier {
   bank_account: string | null;
   payment_term: string | null;
   currency: string;
+  debt: number;
   status: string;
 }
 

@@ -16,7 +16,7 @@ export function AutoPrint() {
       <div className="flex gap-2">
         <button
           onClick={() => window.print()}
-          className="rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm"
         >
           In / Lưu PDF
         </button>

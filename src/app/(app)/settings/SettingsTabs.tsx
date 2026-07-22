@@ -1,39 +1,29 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction } from "@/actions/admin";
-import { importExcelAction, type ImportResult } from "@/actions/import";
-import { Card, Button, Field, inputCls, StatusBadge, Th, Td } from "@/components/ui";
+import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, type UsageItem } from "@/actions/admin";
+import { saveCompanyAction, deleteCompanyAction } from "@/actions/master";
+import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
+import { Modal } from "@/components/Modal";
+import { SectionImport } from "@/components/SectionImport";
 import { AccentPicker } from "@/components/AccentPicker";
 import { Icon } from "@/components/icons";
 import { money, date } from "@/lib/format";
 
 interface Rule { id: number; amount_min: number; amount_max: number | null; levels: string[] }
 interface UserRow { id: number; name: string; email: string; department: string | null; role: string; company_id: number | null; company_name: string | null; status: string }
-interface CompanyRow { id: number; company_code: string; company_name: string; tax_code: string | null; status: string }
+interface CompanyRow { id: number; company_code: string; company_name: string; tax_code: string | null; address: string | null; status: string }
 interface AuditRow { id: number; actor_name: string | null; action: string; document_type: string; document_id: number | null; field: string | null; old_value: string | null; new_value: string | null; created_at: string }
 
 const TABS = [
   { key: "rules", label: "Luồng duyệt", icon: "flow" },
   { key: "users", label: "Người dùng", icon: "users" },
   { key: "companies", label: "Công ty", icon: "company" },
-  { key: "import", label: "Nhập Excel", icon: "import" },
   { key: "theme", label: "Giao diện", icon: "palette" },
   { key: "audit", label: "Nhật ký", icon: "log" },
 ] as const;
 
 const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold text-slate-800">{title}</h3>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -62,7 +52,7 @@ export function SettingsTabs({ rules, users, companies, audit }: { rules: Rule[]
             key={t.key}
             onClick={() => select(t.key)}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              tab === t.key ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
+              tab === t.key ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
             }`}
           >
             <Icon name={t.icon} size={16} /> {t.label}
@@ -74,7 +64,6 @@ export function SettingsTabs({ rules, users, companies, audit }: { rules: Rule[]
         {tab === "rules" && <RulesPanel rules={rules} />}
         {tab === "users" && <UsersPanel users={users} companies={companies} />}
         {tab === "companies" && <CompaniesPanel companies={companies} />}
-        {tab === "import" && <ImportPanel />}
         {tab === "theme" && <AccentPicker />}
         {tab === "audit" && <AuditPanel audit={audit} />}
       </div>
@@ -130,7 +119,7 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
       <p className="mt-2 text-xs text-slate-400">Chuỗi duyệt nhập các vai trò cách nhau dấu phẩy, theo thứ tự. VD: <code>Manager, Finance, Admin</code></p>
 
       {editing && (
-        <Modal title={editing === "new" ? "Thêm ngưỡng duyệt" : "Sửa ngưỡng duyệt"} onClose={() => setEditing(null)}>
+        <Modal open title={editing === "new" ? "Thêm ngưỡng duyệt" : "Sửa ngưỡng duyệt"} onClose={() => setEditing(null)}>
           <form action={async (fd) => { await saveApprovalRuleAction(fd); setEditing(null); router.refresh(); }} className="space-y-3">
             {editing !== "new" && <input type="hidden" name="id" value={editing.id} />}
             <div className="grid grid-cols-2 gap-3">
@@ -154,13 +143,41 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
 // ---------------- Người dùng ----------------
 function UsersPanel({ users, companies }: { users: UserRow[]; companies: CompanyRow[] }) {
   const [editing, setEditing] = useState<UserRow | "new" | null>(null);
+  const [pending, start] = useTransition();
+  const [confirming, setConfirming] = useState<{ user: UserRow; usage: UsageItem[] } | null>(null);
   const router = useRouter();
+
+  const remove = (u: UserRow) => {
+    if (!confirm(`Xóa tài khoản "${u.name}" (${u.email})?`)) return;
+    start(async () => {
+      const res = await deleteUserAction(u.id);
+      if (res.ok) { router.refresh(); return; }
+      // Tài khoản đã phát sinh dữ liệu → mở bảng thông báo để xác nhận xóa cưỡng bức.
+      if (res.hasData) { setConfirming({ user: u, usage: res.usage ?? [] }); return; }
+      alert(res.error ?? "Không xóa được tài khoản.");
+    });
+  };
+
+  const forceRemove = () => {
+    if (!confirming) return;
+    const uid = confirming.user.id;
+    start(async () => {
+      const res = await forceDeleteUserAction(uid);
+      setConfirming(null);
+      if (!res.ok) alert(res.error ?? "Không xóa được tài khoản.");
+      else router.refresh();
+    });
+  };
 
   return (
     <Card className="p-5">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-700">Người dùng & phân quyền</h3>
-        <Button onClick={() => setEditing("new")}>+ Thêm người dùng</Button>
+        <div className="flex items-center gap-2">
+          <ExportButton href="/export/users" />
+          <SectionImport section="users" variant="light" />
+          <Button onClick={() => setEditing("new")}>+ Thêm người dùng</Button>
+        </div>
       </div>
       <div className="overflow-hidden rounded-lg border border-slate-200">
         <table className="w-full">
@@ -174,7 +191,12 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
                 <Td><span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{ROLE_VI[u.role] ?? u.role}</span></Td>
                 <Td>{u.company_name ?? "—"}</Td>
                 <Td><StatusBadge status={u.status} /></Td>
-                <Td><button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(u)}>Sửa</button></Td>
+                <Td>
+                  <div className="flex gap-3">
+                    <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(u)}>Sửa</button>
+                    <button className="text-sm text-rose-500 hover:underline disabled:opacity-40" onClick={() => remove(u)} disabled={pending}>Xóa</button>
+                  </div>
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -182,7 +204,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
       </div>
 
       {editing && (
-        <Modal title={editing === "new" ? "Thêm người dùng" : "Sửa người dùng"} onClose={() => setEditing(null)}>
+        <Modal open title={editing === "new" ? "Thêm người dùng" : "Sửa người dùng"} onClose={() => setEditing(null)}>
           <form action={async (fd) => { await saveUserAction(fd); setEditing(null); router.refresh(); }} className="space-y-3">
             {editing !== "new" && <input type="hidden" name="id" value={editing.id} />}
             <div className="grid grid-cols-2 gap-3">
@@ -216,129 +238,138 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
           </form>
         </Modal>
       )}
+
+      {/* Bảng thông báo khi tài khoản ĐÃ phát sinh dữ liệu — cho xóa cưỡng bức */}
+      {confirming && (
+        <Modal
+          open
+          onClose={() => setConfirming(null)}
+          title="Tài khoản đã phát sinh dữ liệu"
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={() => setConfirming(null)}>Hủy</Button>
+              <button
+                onClick={forceRemove}
+                disabled={pending}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+              >
+                {pending ? "Đang xóa…" : "Xóa luôn (chuyển dữ liệu cho tôi)"}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-600">
+            Tài khoản <b>{confirming.user.name}</b> ({confirming.user.email}) đang gắn với các dữ liệu sau:
+          </p>
+          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full">
+              <thead><tr><Th>Loại dữ liệu</Th><Th className="text-right">Số lượng</Th></tr></thead>
+              <tbody>
+                {confirming.usage.map((x) => (
+                  <tr key={x.label} className="hover:bg-slate-50">
+                    <Td>{x.label}</Td>
+                    <Td className="text-right font-semibold text-slate-700">{x.count}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            Nếu bấm <b>Xóa luôn</b>, toàn bộ dữ liệu trên sẽ được <b>chuyển sang tài khoản Quản trị của bạn</b> (giữ nguyên chứng từ),
+            sau đó tài khoản này bị xóa — kể cả trên Supabase. Không thể hoàn tác.
+          </p>
+        </Modal>
+      )}
     </Card>
   );
 }
 
 // ---------------- Công ty ----------------
 function CompaniesPanel({ companies }: { companies: CompanyRow[] }) {
-  return (
-    <Card className="p-5">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">Pháp nhân (Companies)</h3>
-      <div className="overflow-hidden rounded-lg border border-slate-200">
-        <table className="w-full">
-          <thead><tr><Th>Mã</Th><Th>Tên công ty</Th><Th>Mã số thuế</Th><Th>Trạng thái</Th></tr></thead>
-          <tbody>
-            {companies.map((c) => (
-              <tr key={c.id}>
-                <Td className="font-medium">{c.company_code}</Td>
-                <Td>{c.company_name}</Td>
-                <Td>{c.tax_code ?? "—"}</Td>
-                <Td><StatusBadge status={c.status} /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
-}
-
-// ---------------- Nhập Excel ----------------
-const ENTITY_LABELS: { key: keyof ImportResult; label: string }[] = [
-  { key: "companies", label: "Công ty" },
-  { key: "business_units", label: "Phòng ban" },
-  { key: "users", label: "Người dùng" },
-  { key: "suppliers", label: "Nhà cung cấp" },
-  { key: "products", label: "Hàng hóa" },
-  { key: "rules", label: "Hạn mức duyệt" },
-];
-
-function ImportPanel() {
+  const [editing, setEditing] = useState<CompanyRow | "new" | null>(null);
   const [pending, start] = useTransition();
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const [fileName, setFileName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const submit = () => {
-    const f = inputRef.current?.files?.[0];
-    if (!f) { setResult({ ok: false, error: "Chưa chọn file Excel." }); return; }
-    const fd = new FormData();
-    fd.append("file", f);
-    setResult(null);
+  const remove = (c: CompanyRow) => {
+    if (!confirm(`Xóa pháp nhân "${c.company_name}" (${c.company_code})?`)) return;
     start(async () => {
-      const res = await importExcelAction(fd);
-      setResult(res);
-      if (res.ok) router.refresh();
+      const res = await deleteCompanyAction(c.id);
+      if (!res.ok) { alert(res.error ?? "Không xóa được pháp nhân."); return; }
+      if (res.deactivated) alert("Pháp nhân đã có chứng từ tham chiếu → đã chuyển sang trạng thái Ngưng.");
+      router.refresh();
     });
   };
 
   return (
     <Card className="p-5">
-      <h3 className="text-sm font-semibold text-slate-700">Nhập dữ liệu từ file Excel</h3>
-      <p className="mt-1 text-xs text-slate-500">
-        Chọn file theo mẫu <b>08_Du_Lieu_Can_Chuan_Bi.xlsx</b> (6 sheet: Công ty, Phòng ban, Người dùng,
-        Nhà cung cấp, Hàng hóa, Hạn mức duyệt). Trùng mã/email sẽ được <b>cập nhật</b>, không xóa dữ liệu cũ.
-      </p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-          📎 Chọn file .xlsx
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
-          />
-        </label>
-        {fileName && <span className="max-w-[220px] truncate text-sm text-slate-500">{fileName}</span>}
-        <Button onClick={submit} disabled={pending}>
-          {pending ? "Đang nhập…" : "Nhập dữ liệu"}
-        </Button>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-700">Pháp nhân (Companies)</h3>
+        <Button onClick={() => setEditing("new")}>+ Thêm pháp nhân</Button>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-slate-200">
+        <table className="w-full">
+          <thead>
+            <tr>
+              <Th>Mã</Th><Th>Tên công ty</Th><Th>Mã số thuế</Th><Th>Địa chỉ</Th><Th>Trạng thái</Th><Th className="text-right">Thao tác</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {companies.length === 0 && (
+              <tr><Td className="text-slate-400" colSpan={6}>Chưa có pháp nhân nào — bấm “+ Thêm pháp nhân”.</Td></tr>
+            )}
+            {companies.map((c) => (
+              <tr key={c.id} className="hover:bg-slate-50">
+                <Td className="font-medium">{c.company_code}</Td>
+                <Td>{c.company_name}</Td>
+                <Td className="tabular-nums">{c.tax_code ?? "—"}</Td>
+                <Td className="max-w-xs truncate text-slate-500">{c.address ?? "—"}</Td>
+                <Td><StatusBadge status={c.status} /></Td>
+                <Td>
+                  <div className="flex justify-end gap-3">
+                    <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(c)}>Sửa</button>
+                    <button className="text-sm text-rose-500 hover:underline disabled:opacity-40" onClick={() => remove(c)} disabled={pending}>Xóa</button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {result && !result.ok && (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          ✕ {result.error}
-        </div>
-      )}
-
-      {result && result.ok && (
-        <div className="mt-4 space-y-3">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            ✓ Nhập thành công. Sheet đọc được: {result.sheetsFound?.join(", ") || "—"}
-          </div>
-          <div className="overflow-hidden rounded-lg border border-slate-200">
-            <table className="w-full">
-              <thead><tr><Th>Nhóm dữ liệu</Th><Th className="text-right">Thêm mới</Th><Th className="text-right">Cập nhật</Th><Th className="text-right">Bỏ qua</Th></tr></thead>
-              <tbody>
-                {ENTITY_LABELS.map(({ key, label }) => {
-                  const e = result[key] as { added: number; updated: number; skipped: number } | undefined;
-                  if (!e) return null;
-                  return (
-                    <tr key={key} className="hover:bg-slate-50">
-                      <Td className="font-medium">{label}</Td>
-                      <Td className="text-right text-emerald-700">{e.added}</Td>
-                      <Td className="text-right text-indigo-700">{e.updated}</Td>
-                      <Td className="text-right text-slate-400">{e.skipped}</Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {result.warnings && result.warnings.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              <div className="mb-1 font-semibold">Ghi chú ({result.warnings.length}):</div>
-              <ul className="list-disc space-y-0.5 pl-4">
-                {result.warnings.slice(0, 20).map((w, i) => <li key={i}>{w}</li>)}
-                {result.warnings.length > 20 && <li>… và {result.warnings.length - 20} dòng khác</li>}
-              </ul>
+      {editing && (
+        <Modal open title={editing === "new" ? "Thêm pháp nhân" : "Sửa pháp nhân"} onClose={() => setEditing(null)}>
+          <form action={async (fd) => { await saveCompanyAction(fd); setEditing(null); router.refresh(); }} className="space-y-3">
+            {editing !== "new" && <input type="hidden" name="id" value={editing.id} />}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mã pháp nhân" required>
+                <input
+                  name="company_code"
+                  defaultValue={editing === "new" ? "" : editing.company_code}
+                  className={inputCls}
+                  required
+                  disabled={editing !== "new"}
+                  placeholder="VD: KH"
+                />
+              </Field>
+              <Field label="Trạng thái">
+                <select name="status" defaultValue={editing === "new" ? "Active" : editing.status} className={inputCls}>
+                  <option value="Active">Đang dùng</option><option value="Inactive">Ngưng</option>
+                </select>
+              </Field>
             </div>
-          )}
-        </div>
+            <Field label="Tên công ty" required>
+              <input name="company_name" defaultValue={editing === "new" ? "" : editing.company_name} className={inputCls} required placeholder="VD: Công ty TNHH K-Homès" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mã số thuế"><input name="tax_code" defaultValue={editing === "new" ? "" : editing.tax_code ?? ""} className={inputCls} /></Field>
+              <Field label="Địa chỉ"><input name="address" defaultValue={editing === "new" ? "" : editing.address ?? ""} className={inputCls} /></Field>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
+              <Button type="submit">Lưu</Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </Card>
   );

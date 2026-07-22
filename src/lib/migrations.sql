@@ -49,6 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_pay_invoice ON payments(invoice_id);
 -- =====================================================================
 ALTER TABLE suppliers      ADD COLUMN IF NOT EXISTS misa_id TEXT;
 ALTER TABLE suppliers      ADD COLUMN IF NOT EXISTS source  TEXT NOT NULL DEFAULT 'local';
+-- Công nợ (số tiền nợ) NCC — nhập từ cột "Số tiền nợ" của file danh sách NCC.
+ALTER TABLE suppliers      ADD COLUMN IF NOT EXISTS debt    NUMERIC(18,2) NOT NULL DEFAULT 0;
 ALTER TABLE products       ADD COLUMN IF NOT EXISTS misa_id TEXT;
 ALTER TABLE products       ADD COLUMN IF NOT EXISTS source  TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE business_units ADD COLUMN IF NOT EXISTS misa_id TEXT;

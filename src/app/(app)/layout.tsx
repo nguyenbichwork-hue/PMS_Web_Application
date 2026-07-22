@@ -45,9 +45,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
             <ThemeToggle />
             <form action={logoutAction}>
-              <button className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 md:px-3">
+              <button className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 md:px-3" aria-label="Đăng xuất">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" />
+                </svg>
                 <span className="hidden sm:inline">Đăng xuất</span>
-                <span className="sm:hidden" aria-label="Đăng xuất">⎋</span>
               </button>
             </form>
           </div>

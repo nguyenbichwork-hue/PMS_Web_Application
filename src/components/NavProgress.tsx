@@ -81,8 +81,8 @@ export function NavProgress() {
           height: "100%",
           width: `${width}%`,
           transition: "width .3s ease",
-          background: "linear-gradient(90deg,#7c3aed,#4f46e5 55%,#db2777)",
-          boxShadow: "0 0 10px rgba(124,58,237,.6)",
+          background: "var(--color-brand-500, #f26a21)",
+          boxShadow: "0 0 10px rgba(242,106,33,.5)",
         }}
       />
     </div>

@@ -40,7 +40,7 @@ export function Pagination({ page, total, per = 20 }: { page: number; total: num
             key={p}
             onClick={() => go(p)}
             className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm transition ${
-              p === page ? "bg-gradient-to-r from-brand-500 to-brand-600 font-semibold text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              p === page ? "bg-brand-500 font-semibold text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
             }`}
           >
             {p}

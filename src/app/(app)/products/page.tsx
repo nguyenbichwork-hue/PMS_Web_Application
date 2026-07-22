@@ -1,9 +1,10 @@
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { Card, StatusBadge, EmptyState, ExportButton } from "@/components/ui";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { ProductManager } from "./ProductManager";
+import { SectionImport } from "@/components/SectionImport";
 import type { Product, Supplier } from "@/lib/types";
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -31,6 +32,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const suppliers = await query<Supplier>(`SELECT * FROM suppliers ORDER BY supplier_name`);
   const cats = await query<{ category: string }>(`SELECT DISTINCT category FROM products WHERE category IS NOT NULL`);
 
+  const eq = new URLSearchParams();
+  if (sp.q) eq.set("q", sp.q);
+  if (sp.category) eq.set("category", sp.category);
+  const exportQs = eq.toString();
+
   return (
     <div>
       <ModuleBanner
@@ -38,7 +44,13 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         icon="🔧"
         title="Hàng hóa"
         subtitle="Danh mục hàng hóa & vật tư"
-        action={canManage ? <ProductManager suppliers={suppliers} /> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton href={`/export/products?${exportQs}`} />
+            {canManage && <SectionImport section="products" variant="light" />}
+            {canManage && <ProductManager suppliers={suppliers} />}
+          </div>
+        }
       />
       <Filters
         searchPlaceholder="Tìm hàng hóa…"
