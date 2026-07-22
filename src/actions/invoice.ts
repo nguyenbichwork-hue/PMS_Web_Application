@@ -94,10 +94,12 @@ export async function createInvoiceAction(formData: FormData) {
     );
     // Nhiều hóa đơn/PO: trừ số lượng đã được xuất hóa đơn ở các hóa đơn TRƯỚC,
     // để hóa đơn hiện tại chỉ đối chiếu với phần CÒN LẠI (chống xuất hóa đơn vượt).
+    // LOẠI hóa đơn 'Failed' (Sai lệch) — hóa đơn hỏng KHÔNG được giữ chỗ số lượng,
+    // nếu không một hóa đơn sai lúc chưa nhận hàng sẽ khóa cứng PO (phần còn lại=0).
     const invoicedBefore = await queryOne<{ q: string }>(
       `SELECT COALESCE(sum(ii.quantity),0) AS q
          FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
-        WHERE i.po_id = $1`,
+        WHERE i.po_id = $1 AND i.status <> 'Failed'`,
       [po_id]
     );
 

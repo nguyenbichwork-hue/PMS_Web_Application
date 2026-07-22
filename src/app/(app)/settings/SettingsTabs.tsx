@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, type UsageItem } from "@/actions/admin";
+import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, type UsageItem } from "@/actions/admin";
 import { saveCompanyAction, deleteCompanyAction } from "@/actions/master";
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
 import { Modal } from "@/components/Modal";
@@ -395,6 +395,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   const [auto, setAuto] = useState(true);
   const [updatedAt, setUpdatedAt] = useState("");
   const [busy, start] = useTransition();
+  const router = useRouter();
 
   // Tự động làm mới mỗi 4 giây (poll) khi bật.
   useEffect(() => {
@@ -437,6 +438,20 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
       const res = await clearAuditLogAction();
       if (!res.ok) { alert(res.error ?? "Không dọn được nhật ký."); setAuto(true); return; }
       setRows([]);
+    });
+  };
+
+  // ⚠️ TẠM (demo): xóa TOÀN BỘ lịch sử chứng từ, giữ tài khoản + danh mục.
+  const clearHistory = () => {
+    if (!confirm("⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt.\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo.")) return;
+    if (!confirm("Xác nhận LẦN 2: xóa sạch toàn bộ chứng từ để làm lại demo?")) return;
+    setAuto(false);
+    start(async () => {
+      const res = await clearAllHistoryAction();
+      if (!res.ok) { alert(res.error ?? "Xóa thất bại."); setAuto(true); return; }
+      setRows([]);
+      router.refresh();
+      alert("Đã xóa toàn bộ lịch sử chứng từ. Có thể bắt đầu demo lại từ đầu.");
     });
   };
 
@@ -502,6 +517,26 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
             {rows.length === 0 && <tr><Td className="text-slate-400" colSpan={6}>Chưa có nhật ký.</Td></tr>}
           </tbody>
         </table>
+      </div>
+
+      {/* ⚠️ TẠM (demo) — Khu vực nguy hiểm: reset toàn bộ chứng từ. Bỏ khi hết cần demo. */}
+      <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-rose-700">⚠️ Khu vực nguy hiểm · reset demo</h4>
+            <p className="mt-0.5 text-xs text-rose-600/80">
+              Xóa TOÀN BỘ chứng từ (PR/PO/Nhận hàng/Hóa đơn/Thanh toán/Lịch sử/Bình luận/Nhật ký).
+              Giữ tài khoản + danh mục. Dùng để làm lại demo từ đầu — <b>không hoàn tác được</b>.
+            </p>
+          </div>
+          <button
+            onClick={clearHistory}
+            disabled={busy}
+            className="shrink-0 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+          >
+            {busy ? "Đang xóa…" : "Xóa toàn bộ lịch sử"}
+          </button>
+        </div>
       </div>
     </Card>
   );

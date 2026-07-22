@@ -234,3 +234,36 @@ export async function clearAuditLogAction(): Promise<{ ok: boolean; deleted: num
   revalidatePath("/settings");
   return { ok: true, deleted: rows.length };
 }
+
+// ⚠️ TẠM THỜI (tiện làm demo) — Xóa TOÀN BỘ lịch sử chứng từ: PR/PO/GR/Hóa đơn/
+// thanh toán/lịch sử duyệt/điều chỉnh/bình luận/đính kèm/nhật ký. GIỮ NGUYÊN tài
+// khoản + danh mục (công ty, NCC, hàng hóa, ngưỡng duyệt). Chỉ ADMIN. Khi hết cần
+// demo có thể bỏ action này + nút trong Cấu hình → Nhật ký.
+export async function clearAllHistoryAction(): Promise<{ ok: boolean; error?: string }> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) return { ok: false, error: "Chỉ Quản trị được dùng chức năng này." };
+  // Danh sách bảng CỐ ĐỊNH (whitelist) — xóa theo thứ tự con → cha, trong 1 transaction.
+  const TABLES = [
+    "invoice_matching", "invoice_items", "payments", "invoices",
+    "goods_receipt_items", "goods_receipts",
+    "po_change_history", "purchase_order_items", "purchase_orders",
+    "purchase_request_items", "purchase_requests",
+    "approval_history", "comments", "attachments", "audit_log",
+  ];
+  try {
+    // Chỉ xóa bảng THỰC SỰ tồn tại (vd bảng `comments` có thể chưa migrate nếu
+    // server chưa restart) — tránh cả transaction hỏng vì 1 bảng chưa có.
+    const present = await query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1::text[])`,
+      [TABLES]
+    );
+    const existing = new Set(present.map((r) => r.tablename));
+    await withTransaction(async (exec) => {
+      for (const t of TABLES) if (existing.has(t)) await exec(`DELETE FROM ${t}`);
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Xóa thất bại." };
+  }
+  for (const p of ["/dashboard", "/purchase-requests", "/purchase-orders", "/goods-receipts", "/invoices", "/settings", "/my-tasks"]) revalidatePath(p);
+  return { ok: true };
+}

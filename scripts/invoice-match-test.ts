@@ -55,7 +55,7 @@ async function matchInvoice(poId: number, supplierInput: number | null, lines: I
     poPrice: findPoPrice(poIndex, { itemCode: l.item_code, description: l.description }),
   }));
   const received = await one(`SELECT COALESCE(sum(gri.received_qty),0) AS q FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id=gri.gr_id WHERE gr.po_id=$1`, [poId]);
-  const invoicedBefore = await one(`SELECT COALESCE(sum(ii.quantity),0) AS q FROM invoice_items ii JOIN invoices i ON i.id=ii.invoice_id WHERE i.po_id=$1`, [poId]);
+  const invoicedBefore = await one(`SELECT COALESCE(sum(ii.quantity),0) AS q FROM invoice_items ii JOIN invoices i ON i.id=ii.invoice_id WHERE i.po_id=$1 AND i.status <> 'Failed'`, [poId]);
 
   const invQty = lines.reduce((s, l) => s + Number(l.quantity), 0);
   const poQty = Number(p.po_qty ?? 0);
@@ -103,6 +103,16 @@ check(nameOf(r.checks, "Price") === "PASS" && r.overall === "MATCHED", `Mã gõ 
 // 7) Mã KHÔNG có trên PO (sai hẳn) → Price WARNING (dòng không có trên PO)
 r = await matchInvoice(poId, sup.id as number, [{ item_code: "SAI-MA-999", description: "Hàng lạ", quantity: 3, unit_price: 15000000 }]);
 check(nameOf(r.checks, "Price") === "WARNING", `Mã không có trên PO → Price WARNING  (Price=${nameOf(r.checks, "Price")})`);
+
+// 8) Hóa đơn FAILED không "giữ chỗ" số lượng: tạo 1 hóa đơn Failed (qty=3 = full PO),
+//    hóa đơn MỚI qty=3 vẫn phải đối chiếu với phần còn lại = 3 (Quantity KHÔNG FAIL).
+const failInv = await one(
+  `INSERT INTO invoices (invoice_number,invoice_date,supplier_id,po_id,total_amount,vat_amount,status,match_result)
+   VALUES ('INV-FAIL',current_date,$1,$2,49500000,4500000,'Failed','FAILED') RETURNING id`, [sup.id, poId]
+);
+await pg.query(`INSERT INTO invoice_items (invoice_id,item_code,description,quantity,unit_price,amount) VALUES ($1,'BOSCH-COOK-01','Bếp từ Bosch',3,15000000,45000000)`, [failInv.id]);
+r = await matchInvoice(poId, sup.id as number, [{ item_code: "BOSCH-COOK-01", quantity: 3, unit_price: 15000000 }]);
+check(nameOf(r.checks, "Quantity") !== "FAIL" && r.overall === "MATCHED", `Hóa đơn Failed KHÔNG giữ chỗ SL → hóa đơn mới vẫn MATCHED  (${r.overall})`);
 
 console.log(`\n${fail === 0 ? "✅ ALL PASSED" : "❌ FAILURES"}  (${pass} passed, ${fail} failed)`);
 process.exit(fail === 0 ? 0 : 1);
