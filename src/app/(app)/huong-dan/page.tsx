@@ -104,7 +104,11 @@ export default async function GuidePage() {
         {has("pr.approve") && (
           <Section icon="tasks" tone="amber" title="Phê duyệt yêu cầu mua">
             <p>Mở yêu cầu đang <b>Chờ duyệt</b>. Khung bên phải hiển thị <b>luồng phê duyệt</b> theo giá trị (cấu hình ở Cấu hình → Luồng duyệt).</p>
-            <p>Bấm <b>Duyệt</b> (kèm nhận xét) hoặc <b>Từ chối</b>. Khi duyệt đủ cấp, hệ thống <b>tự tạo Đơn đặt hàng (PO)</b>.</p>
+            <p>Bấm <b>Duyệt</b> (kèm lý do) hoặc <b>Từ chối</b>. Khi duyệt đủ cấp, hệ thống <b>tự tạo Đơn đặt hàng (PO)</b>.</p>
+            <p>🔁 PR bị <b>Từ chối</b> có thể bấm <b>“↻ Mở lại PR”</b> để trình duyệt lại từ đầu.</p>
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-700 ring-1 ring-inset ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">
+              ⚖️ <b>Phân tách nhiệm vụ:</b> bạn <b>không thể tự duyệt PR do chính mình tạo</b> — phải người khác duyệt.
+            </p>
           </Section>
         )}
 
@@ -112,8 +116,11 @@ export default async function GuidePage() {
           <Section icon="po" tone="indigo" title="Xử lý đơn đặt hàng (PO)">
             <Step n={1}>Mở PO vừa được tạo tự động (trạng thái <b>Nháp</b>).</Step>
             <Step n={2}>Điều chỉnh nếu cần: nhà cung cấp, ngày giao, điều khoản, đơn giá — mọi thay đổi được lưu lịch sử.</Step>
-            <Step n={3}>Bấm <b>Duyệt PO</b> → <b>Xuất PDF / In</b> hoặc <b>Gửi nhà cung cấp</b>.</Step>
+            <Step n={3}>Bấm <b>Duyệt PO</b> → <b>Xuất PDF / In</b>, <b>Xuất Excel (mẫu MISA 34 cột)</b> hoặc <b>Gửi nhà cung cấp</b>.</Step>
             <Step n={4}>Khi NCC xác nhận, bấm <b>NCC xác nhận</b>; cần hủy thì <b>Hủy PO</b> (ghi lý do).</Step>
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-white/[0.04] dark:ring-white/10">
+              🔒 Chỉ sửa nội dung PO khi còn <b>Nháp</b>. Đã duyệt rồi thì <b>khóa</b> — mọi người chỉ <b>bình luận</b>, không sửa.
+            </p>
           </Section>
         )}
 
@@ -130,7 +137,8 @@ export default async function GuidePage() {
             <Section icon="invoice" tone="emerald" title="Hóa đơn & đối chiếu">
               <Step n={1}>Menu <b>Hóa đơn → + Nhập hóa đơn</b> (hoặc từ PO).</Step>
               <Step n={2}>Nhập số hóa đơn, ngày, <b>chọn NCC thật</b>, VAT; chọn <b>PO</b> và thêm dòng hàng.</Step>
-              <Step n={3}>Lưu → hệ thống tự <b>đối chiếu 4 bước</b>: Nhà cung cấp · Số lượng (không vượt phần còn lại) · Đơn giá theo dòng · VAT & Tổng tiền.</Step>
+              <Step n={3}>Lưu → hệ thống tự <b>đối chiếu 4 bước</b>: Nhà cung cấp · Số lượng (không vượt phần còn lại) · Đơn giá theo dòng · VAT & Tổng tiền. Sai lệch trong <b>ngưỡng cấu hình</b> (Cấu hình → Đối chiếu) thì vẫn coi là khớp.</Step>
+              <Step n={4}><b>Chống trùng:</b> cùng nhà cung cấp + cùng số hóa đơn sẽ bị chặn không cho nhập lại.</Step>
               <div className="mt-1 flex flex-wrap gap-2 text-[13px] font-semibold">
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/25">KHỚP — cho thanh toán</span>
                 <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/25">CẢNH BÁO — kiểm tra lại</span>
@@ -157,6 +165,13 @@ export default async function GuidePage() {
         )}
 
         {/* Chung cho mọi người */}
+        <Section icon="invoice" tone="cyan" title="Bình luận & Truy vết chứng từ">
+          <ul className="ml-4 list-disc space-y-1">
+            <li>💬 <b>Bình luận:</b> mọi chứng từ (PR/PO) đều có khung <b>Bình luận</b> ở trang chi tiết — trao đổi tự do, <b>không đổi trạng thái</b>. Đơn <b>đã duyệt</b> thì nhân viên vẫn bình luận được (chỉ không sửa nội dung). Bình luận mới nhất còn hiện ở <b>Bảng điều khiển</b>.</li>
+            <li>🔗 <b>Xem chuỗi chứng từ:</b> nút <b>“Xem chuỗi chứng từ”</b> ở chi tiết PR/PO/Hóa đơn mở màn <b>truy vết</b> cả chuỗi <b>Yêu cầu mua → Đơn hàng → Nhận hàng → Hóa đơn → Thanh toán</b> kèm số đã trả / còn lại.</li>
+          </ul>
+        </Section>
+
         <Section icon="tasks" tone="indigo" title="Việc của tôi & chuông thông báo">
           <p>
             <b>Chuông</b> trên thanh trên hiện <b>số việc đang chờ bạn</b>. Bấm chuông (hoặc menu <b>“Việc của tôi”</b>) để xem
@@ -177,8 +192,10 @@ export default async function GuidePage() {
           <Section icon="settings" tone="slate" title="Cấu hình hệ thống (Quản trị)">
             <ul className="ml-4 list-disc space-y-1">
               <li><b>Luồng duyệt:</b> thêm/sửa ngưỡng phê duyệt theo giá trị.</li>
+              <li><b>Đối chiếu:</b> đặt <b>ngưỡng sai lệch (%)</b> cho đơn giá / tổng tiền / số lượng khi đối chiếu hóa đơn.</li>
               <li><b>Người dùng:</b> thêm/sửa vai trò, công ty, đặt lại mật khẩu; <b>nhập/xuất Excel</b> tài khoản; <b>xóa</b> (nếu đã có dữ liệu → hiện bảng liệt kê & cho xóa kèm chuyển dữ liệu về bạn).</li>
-              <li><b>Công ty / Nhật ký:</b> danh sách pháp nhân & nhật ký hệ thống (realtime).</li>
+              <li><b>Công ty:</b> thêm/sửa pháp nhân (mã, tên, MST, địa chỉ).</li>
+              <li><b>Nhật ký:</b> nhật ký hệ thống (realtime); Admin có thể <b>dọn nhật ký</b>. <i>(Có nút “Xóa toàn bộ lịch sử” — chỉ dùng để reset dữ liệu demo, sẽ gỡ khi lên thật.)</i></li>
               <li><b>Giao diện:</b> đổi <b>màu nhấn</b> & <b>sáng/tối</b>, lưu trên trình duyệt.</li>
             </ul>
           </Section>

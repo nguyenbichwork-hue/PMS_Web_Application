@@ -9,6 +9,15 @@ PR  →  Approval (multi-level, configurable)  →  PO (auto-generated)
 
 Một hệ thống workflow thật (database, trạng thái, phân quyền, kiểm tra dữ liệu) — không phải form PO đơn giản.
 
+### Tính năng chính
+- **Quy trình end-to-end**: PR → duyệt nhiều cấp theo ngưỡng tiền → PO tự sinh → Nhận hàng (từng phần) → Hóa đơn → đối chiếu → thanh toán từng đợt.
+- **Phê duyệt & kiểm soát**: luồng duyệt cấu hình được; **mở lại PR bị từ chối**; **SoD** (không tự duyệt PR của mình); **khóa sửa PO sau khi duyệt**.
+- **Đối chiếu hóa đơn ↔ PO**: 3-way match (NCC · SL · Đơn giá theo dòng · VAT · Tổng tiền) với **ngưỡng tolerance cấu hình**; **chống trùng hóa đơn**; hóa đơn từng phần.
+- **Truy vết**: màn **Document Chain** (PR→PO→GRN→INV→Payment) + **bình luận độc lập** trên chứng từ + **audit log** realtime.
+- **Master data & tích hợp**: CRUD Công ty/NCC/Hàng hóa, **Nhập/Xuất Excel**, **Xuất PO ra mẫu MISA 34 cột**, đồng bộ **MISA** (MOCK/LIVE).
+- **Phân quyền**: 5 vai trò, `can()` 2 lớp + **scope theo công ty** (chống IDOR); phiên đăng nhập ký HMAC.
+- **Hướng dẫn ngay trong app**: menu **Hướng dẫn** (trang `/huong-dan`) — chỉ hiện phần người dùng có quyền.
+
 ---
 
 ## 1. Chạy nhanh
@@ -53,14 +62,18 @@ Hệ thống dùng **tài khoản thật** (không còn tài khoản demo `@demo
 1. **Nhân viên** tạo **PR** (Yêu cầu mua) → gửi duyệt.
 2. **Quản lý / Kế toán** **Duyệt / Từ chối** theo ngưỡng cấu hình (bảng `approval_rules`).
    Khi PR được duyệt hết chuỗi → **PO tự động được sinh** (Draft).
-3. **Mua hàng** mở PO → điều chỉnh giá / ngày giao (ghi **lịch sử điều chỉnh**) →
-   **Duyệt PO** → **Xuất PDF** / **Gửi email NCC**.
-4. **Mua hàng / Kế toán** → **Nhận hàng (GR)** → nhập số lượng thực nhận.
-5. **Kế toán** → **Hóa đơn** → nhập hóa đơn cho PO → hệ thống **tự đối chiếu** (xem §4).
-6. **Dashboard**: thẻ số liệu + biểu đồ (theo tháng / NCC / công ty).
+3. **Mua hàng** mở PO (Nháp) → điều chỉnh giá / ngày giao (ghi **lịch sử điều chỉnh**, chỉ khi Nháp) →
+   **Duyệt PO** → **Xuất PDF** / **Xuất Excel mẫu MISA** / **Gửi email NCC**.
+4. **Mua hàng / Kế toán** → **Nhận hàng (GR)** → nhập số lượng thực nhận (từng phần được cộng dồn).
+5. **Kế toán** → **Hóa đơn** → nhập hóa đơn cho PO → hệ thống **tự đối chiếu** (xem §4); **chống trùng** cùng NCC+số HĐ.
+6. **Thanh toán** từng đợt trên hóa đơn đã Khớp/Cảnh báo → **Đã thanh toán**.
+7. **Truy vết & trao đổi**: nút **“Xem chuỗi chứng từ”** + khung **Bình luận** ở mọi chi tiết; **Dashboard** có thẻ số liệu, biểu đồ, bình luận gần đây.
 
 > Master data (NCC, hàng hóa, pháp nhân) nhập tay trong app, **Nhập Excel**, hoặc
 > **đồng bộ từ MISA** (Cấu hình). MISA chạy chế độ MOCK khi chưa điền credential.
+>
+> **Phạm vi so với đặc tả**: hệ thống hiện ≈ tập con MVP — xem
+> [`Note_PR_PO_Project/GAP_VA_ROADMAP_theo_DacTa.md`](../Note_PR_PO_Project/GAP_VA_ROADMAP_theo_DacTa.md) (nội bộ) để biết phần còn thiếu & lộ trình.
 
 ---
 
@@ -104,26 +117,32 @@ scripts/
   set-admin-password.mjs    # Đặt mật khẩu Admin trên Supabase (từ ADMIN_PASSWORD)
 ```
 
-### Database (11+ bảng)
+### Database (20+ bảng)
 
-`companies`, `business_units`, `users`, `suppliers`, `products`, `approval_rules`,
+`companies`, `business_units`, `users`, `suppliers`, `products`, `warehouses`, `units`,
+`approval_rules`, `match_settings`,
 `purchase_requests` (+items), `approval_history`, `purchase_orders` (+items, +change_history),
-`goods_receipts` (+items), `invoices` (+items), `invoice_matching`, `attachments`.
+`goods_receipts` (+items), `invoices` (+items), `invoice_matching`, `payments`,
+`comments`, `attachments`, `audit_log`, `misa_sync_state`.
 
-Xem toàn bộ trong `src/lib/schema.sql`.
+DDL nền ở `src/lib/schema.sql`; các bảng bổ sung (idempotent) ở `src/lib/migrations.sql`.
 
 ---
 
-## 4. Matching engine — 4 checks
+## 4. Matching engine — 3-way match
 
-| Check     | Điều kiện hợp lệ                          |
-|-----------|-------------------------------------------|
-| Supplier  | Invoice.supplier == PO.supplier           |
-| Quantity  | Invoice.qty ≤ Received qty (và ≤ PO qty)  |
-| Price     | Invoice.unit_price == PO.unit_price       |
-| Amount    | Invoice.total ≈ Expected amount (PO)      |
+| Check     | Điều kiện hợp lệ                                         |
+|-----------|---------------------------------------------------------|
+| Supplier  | NCC hóa đơn == NCC trên PO (null → cảnh báo)             |
+| Quantity  | SL hóa đơn ≤ SL đã nhận (GR) **và** ≤ SL trên PO         |
+| Price     | Đơn giá **theo từng dòng** (map mã→tên, chuẩn hóa chuỗi) |
+| VAT       | Tiền thuế khớp kỳ vọng (chỉ cảnh báo khi lệch)          |
+| Amount    | Tổng hóa đơn ≈ tổng kỳ vọng (chia tỷ lệ nếu từng phần)   |
 
-Kết quả tổng: **MATCHED** / **WARNING** / **FAILED** — kèm lý do cụ thể.
+- Kết quả tổng: **MATCHED** / **WARNING** / **FAILED** — kèm lý do tiếng Việt.
+- **Ngưỡng tolerance** (giá / tổng tiền / số lượng) cấu hình ở **Cấu hình → Đối chiếu** (bảng `match_settings`).
+- **Chống trùng**: cùng NCC + cùng số hóa đơn → chặn. Hóa đơn **Failed không giữ chỗ** số lượng còn lại của PO.
+- Logic thuần ở `src/lib/matching.ts` (`buildPoPriceIndex`/`findPoPrice`/`evaluateMatch`) — test ở §6.
 
 ---
 
@@ -146,6 +165,8 @@ không phải sửa code:
 ## 6. Kiểm thử
 
 ```bash
-node scripts/flow-test.mjs   # test end-to-end: PR → approval chain → PO → GR → Invoice match
-npx tsc --noEmit             # type-check
+node scripts/flow-test.mjs                                   # end-to-end: PR → approval → PO → GR → Invoice
+node --experimental-strip-types scripts/matching-test.ts     # engine đối chiếu + map + tolerance (13 case)
+node --experimental-strip-types scripts/invoice-match-test.ts# kết quả đối chiếu khi nhập hóa đơn cho PO (8 case)
+npx tsc --noEmit                                             # type-check
 ```
