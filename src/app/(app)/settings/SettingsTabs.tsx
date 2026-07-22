@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, type UsageItem } from "@/actions/admin";
+import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, type UsageItem } from "@/actions/admin";
 import { saveCompanyAction, deleteCompanyAction } from "@/actions/master";
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
 import { Modal } from "@/components/Modal";
@@ -388,6 +388,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   const [rows, setRows] = useState<AuditRow[]>(audit);
   const [auto, setAuto] = useState(true);
   const [updatedAt, setUpdatedAt] = useState("");
+  const [busy, start] = useTransition();
 
   // Tự động làm mới mỗi 4 giây (poll) khi bật.
   useEffect(() => {
@@ -412,6 +413,27 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     };
   }, [auto]);
 
+  // Dọn nhật ký (dữ liệu ảo/demo) → tạm dừng auto để kết quả không bị ghi đè ngay.
+  const removeOne = (a: AuditRow) => {
+    if (!confirm(`Xóa dòng nhật ký này?\n${a.action} · ${a.document_type}${a.document_id ? ` #${a.document_id}` : ""}`)) return;
+    setAuto(false);
+    setRows((p) => p.filter((x) => x.id !== a.id)); // xóa lạc quan
+    start(async () => {
+      const res = await deleteAuditEntryAction(a.id);
+      if (!res.ok) { alert(res.error ?? "Không xóa được."); setAuto(true); }
+    });
+  };
+
+  const clearAll = () => {
+    if (!confirm("Dọn SẠCH toàn bộ nhật ký? Thao tác này không thể hoàn tác.")) return;
+    setAuto(false);
+    start(async () => {
+      const res = await clearAuditLogAction();
+      if (!res.ok) { alert(res.error ?? "Không dọn được nhật ký."); setAuto(true); return; }
+      setRows([]);
+    });
+  };
+
   return (
     <Card className="p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -432,11 +454,18 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
           >
             {auto ? "⏸ Tạm dừng" : "▶ Tự động làm mới"}
           </button>
+          <button
+            onClick={clearAll}
+            disabled={busy || rows.length === 0}
+            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-100 disabled:opacity-40"
+          >
+            🧹 Dọn sạch
+          </button>
         </div>
       </div>
       <div className="overflow-auto rounded-lg border border-slate-200">
         <table className="w-full">
-          <thead><tr><Th>Thời gian</Th><Th>Người</Th><Th>Hành động</Th><Th>Chứng từ</Th><Th>Thay đổi</Th></tr></thead>
+          <thead><tr><Th>Thời gian</Th><Th>Người</Th><Th>Hành động</Th><Th>Chứng từ</Th><Th>Thay đổi</Th><Th className="text-right">Xóa</Th></tr></thead>
           <tbody>
             {rows.map((a) => (
               <tr key={a.id} className={`hover:bg-slate-50 ${AUTH_ACTIONS.has(a.action) ? "bg-slate-50/40" : ""}`}>
@@ -452,9 +481,19 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
                   {a.old_value && a.new_value ? " → " : ""}
                   {a.new_value ?? ""}
                 </Td>
+                <Td className="text-right">
+                  <button
+                    onClick={() => removeOne(a)}
+                    disabled={busy}
+                    title="Xóa dòng này"
+                    className="text-rose-400 transition hover:text-rose-600 disabled:opacity-40"
+                  >
+                    ✕
+                  </button>
+                </Td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><Td className="text-slate-400" /><Td>Chưa có nhật ký.</Td><Td /><Td /><Td /></tr>}
+            {rows.length === 0 && <tr><Td className="text-slate-400" colSpan={6}>Chưa có nhật ký.</Td></tr>}
           </tbody>
         </table>
       </div>

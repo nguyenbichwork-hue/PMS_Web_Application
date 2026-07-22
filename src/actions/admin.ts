@@ -215,3 +215,22 @@ export async function deleteApprovalRuleAction(id: number) {
   await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "ApprovalRule", documentId: id, action: "Delete" });
   revalidatePath("/settings");
 }
+
+/** Xóa MỘT dòng nhật ký — CHỈ ADMIN. Dùng để dọn vết dữ liệu ảo/demo. KHÔNG tự
+ *  ghi log việc xóa (nếu ghi lại thì nhật ký không bao giờ sạch). */
+export async function deleteAuditEntryAction(id: number): Promise<{ ok: boolean; error?: string }> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) return { ok: false, error: "Bạn không có quyền." };
+  await query(`DELETE FROM audit_log WHERE id=$1`, [id]);
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** Dọn SẠCH toàn bộ nhật ký — CHỈ ADMIN. Trả về số dòng đã xóa. */
+export async function clearAuditLogAction(): Promise<{ ok: boolean; deleted: number; error?: string }> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) return { ok: false, deleted: 0, error: "Bạn không có quyền." };
+  const rows = await query<{ id: number }>(`DELETE FROM audit_log RETURNING id`);
+  revalidatePath("/settings");
+  return { ok: true, deleted: rows.length };
+}

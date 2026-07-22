@@ -20,40 +20,47 @@ npm run dev
 
 Mở http://localhost:3000 → tự chuyển tới trang đăng nhập.
 
-> Lần chạy đầu tiên hệ thống tự tạo schema + nạp dữ liệu demo (mất vài giây).
+> Lần chạy đầu tiên hệ thống tự tạo schema (mất vài giây). Việc có nạp dữ liệu
+> mẫu hay không phụ thuộc cấu hình bên dưới.
 
-### Tài khoản demo (mật khẩu: `password`)
+### Đăng nhập
 
-| Role       | Email                | Quyền chính                                  |
-|------------|----------------------|----------------------------------------------|
-| Employee   | employee@demo.com    | Tạo PR, xem PR của mình                        |
-| Purchasing | purchasing@demo.com  | Convert PR→PO, quản lý NCC/hàng hóa, gửi PO    |
-| Manager    | manager@demo.com     | Duyệt / từ chối PR                             |
-| Finance    | finance@demo.com     | Nhập Invoice, kiểm tra matching, thanh toán    |
-| Admin      | admin@demo.com       | Quản lý user, master data, cấu hình workflow   |
+Hệ thống dùng **tài khoản thật** (không còn tài khoản demo `@demo.com`):
 
-Reset dữ liệu demo: dừng server rồi chạy `npm run db:reset`.
+| Tài khoản              | Vai trò   | Quyền chính                                      |
+|------------------------|-----------|--------------------------------------------------|
+| `admin@k-homes.vn`     | Quản trị  | Quản lý user, pháp nhân, master data, cấu hình workflow, **dọn Nhật ký** |
+
+> Mật khẩu Admin đặt qua `ADMIN_PASSWORD` trong `.env.local` (không ghi vào repo).
+> Tạo thêm tài khoản trong **Cấu hình → Người dùng** hoặc **Nhập Excel**.
+
+### Chế độ dữ liệu (chọn trong `.env.local`)
+
+| Chế độ | Điều kiện | Ghi chú |
+|---|---|---|
+| **Local demo** | không có `DATABASE_URL` | PGlite, tự seed dữ liệu mẫu — dùng để dùng thử nhanh |
+| **ACCOUNTS_ONLY** ✅ | `DATABASE_URL` + `ACCOUNTS_ONLY=true` | Supabase giữ **tài khoản**, nghiệp vụ chạy PGlite local |
+| **Full-Postgres** | `DATABASE_URL`, `ACCOUNTS_ONLY≠true` | Toàn bộ DB trên Supabase/Postgres |
+
+> **Tắt hẳn dữ liệu mẫu**: đặt `DB_SEED=false` — áp dụng cho mọi chế độ, dùng khi
+> đã chuyển sang **nhập dữ liệu THẬT** (hệ thống chỉ tạo sẵn 1 pháp nhân trống để
+> bắt đầu). Reset DB local: dừng server rồi `npm run db:reset`.
 
 ---
 
-## 2. Kịch bản demo end-to-end (5 phút)
+## 2. Luồng nghiệp vụ end-to-end
 
-1. **Manager** đăng nhập → mở PR `PR-2026-0006` (Pending Approval) → **Duyệt**.
-   → PR nhỏ (<20 triệu) chỉ cần Manager → PR chuyển **Approved** và **PO tự động được tạo**.
-2. **Purchasing** đăng nhập → mở PO vừa sinh → điều chỉnh giá / ngày giao (được ghi **lịch sử điều chỉnh**) → **Duyệt PO** → **Download PDF** / **Send Email Supplier**.
-3. **Purchasing/Finance** → **Goods Receipt** → tạo GR, nhập số lượng thực nhận.
-4. **Finance** → **Invoice** → nhập hóa đơn cho PO → hệ thống **tự đối chiếu 4 bước** và hiện kết quả.
-5. Xem **Dashboard**: cards + biểu đồ (theo tháng / NCC / công ty).
+1. **Nhân viên** tạo **PR** (Yêu cầu mua) → gửi duyệt.
+2. **Quản lý / Kế toán** **Duyệt / Từ chối** theo ngưỡng cấu hình (bảng `approval_rules`).
+   Khi PR được duyệt hết chuỗi → **PO tự động được sinh** (Draft).
+3. **Mua hàng** mở PO → điều chỉnh giá / ngày giao (ghi **lịch sử điều chỉnh**) →
+   **Duyệt PO** → **Xuất PDF** / **Gửi email NCC**.
+4. **Mua hàng / Kế toán** → **Nhận hàng (GR)** → nhập số lượng thực nhận.
+5. **Kế toán** → **Hóa đơn** → nhập hóa đơn cho PO → hệ thống **tự đối chiếu** (xem §4).
+6. **Dashboard**: thẻ số liệu + biểu đồ (theo tháng / NCC / công ty).
 
-### Dữ liệu matching có sẵn (Invoice module)
-
-| Invoice        | Kịch bản              | Kết quả  |
-|----------------|-----------------------|----------|
-| INV-BOSCH-0001 | Khớp hoàn toàn         | MATCHED  |
-| INV-BOSCH-0002 | Khớp hoàn toàn         | MATCHED  |
-| INV-BOSCH-0003 | Khớp hoàn toàn         | MATCHED  |
-| INV-BOSCH-0004 | Sai **số lượng** (6>4) | FAILED   |
-| INV-BOSCH-0005 | Sai **đơn giá** (+2tr) | FAILED   |
+> Master data (NCC, hàng hóa, pháp nhân) nhập tay trong app, **Nhập Excel**, hoặc
+> **đồng bộ từ MISA** (Cấu hình). MISA chạy chế độ MOCK khi chưa điền credential.
 
 ---
 
@@ -63,8 +70,9 @@ Reset dữ liệu demo: dừng server rồi chạy `npm run db:reset`.
 |----------------|-----------|
 | Frontend       | Next.js 15 (App Router) · TypeScript · TailwindCSS v4 · Recharts |
 | Backend        | Next.js Server Actions (clean, database-first) |
-| Database       | **PostgreSQL** qua **PGlite** (Postgres 16 nhúng, chạy local, không cần cài đặt) |
-| Auth           | Session cookie theo role (5 role) |
+| Database       | **PostgreSQL** — tri-mode: **PGlite** nhúng (local) ⇄ **Supabase** (accounts-only) ⇄ Supabase (full). Xem `src/lib/db.ts` |
+| Auth           | Session cookie ký HMAC theo role (5 role) |
+| Tích hợp       | **MISA AMIS** (đồng bộ master data, MOCK/LIVE) · **Nhập Excel** (gộp hoặc theo phần) |
 | PDF            | jsPDF + autotable (sinh PDF PO) |
 | Matching engine| Logic thuần `src/lib/matching.ts` (4 checks) |
 
@@ -74,9 +82,12 @@ Reset dữ liệu demo: dừng server rồi chạy `npm run db:reset`.
 src/
   lib/
     schema.sql        # Toàn bộ DDL (database-first)
-    db.ts             # PGlite singleton + auto init/seed
-    seed.ts           # Dữ liệu demo (companies, supplier, products, 5 chuỗi PR→PO→GR→Invoice)
+    db.ts             # Tầng DB tri-mode (PGlite ⇄ Supabase) + auto init, seed có điều kiện
+    accounts.ts       # Đồng bộ tài khoản Supabase ⇄ local (chế độ ACCOUNTS_ONLY)
+    seed.ts           # Dữ liệu MẪU (chỉ chạy khi DB_SEED bật; tắt bằng DB_SEED=false)
     auth.ts           # Đăng nhập + ma trận phân quyền can()
+    misa/             # Client + đồng bộ master data từ MISA AMIS (MOCK/LIVE)
+    import-excel.ts   # Nhập Excel danh mục (NCC, hàng hóa, tài khoản…)
     approval.ts       # Resolve chuỗi phê duyệt theo ngưỡng (bảng approval_rules)
     matching.ts       # Engine đối chiếu Invoice (Supplier/Quantity/Price/Amount)
     po-generate.ts    # Tự sinh PO Draft từ PR đã duyệt
@@ -85,8 +96,12 @@ src/
   app/(app)/          # Dashboard, PR, PO, GR, Invoice, Suppliers, Products, Settings
   components/         # Sidebar, Filters, UI kit
 scripts/
-  flow-test.mjs       # Test tích hợp end-to-end (node scripts/flow-test.mjs)
-  reset-db.mjs        # Reset dữ liệu demo
+  flow-test.mjs             # Test tích hợp end-to-end (node scripts/flow-test.mjs)
+  reset-db.mjs              # Reset DB local (xóa .pglite)
+  check-db.mjs              # Đếm bản ghi các bảng chính trên DB đang cấu hình
+  clean-accounts.mjs        # Dọn tài khoản Supabase (giữ whitelist tài khoản thật)
+  supabase-accounts-only.mjs# Dọn Supabase còn đúng bảng users (chế độ ACCOUNTS_ONLY)
+  set-admin-password.mjs    # Đặt mật khẩu Admin trên Supabase (từ ADMIN_PASSWORD)
 ```
 
 ### Database (11+ bảng)
@@ -112,15 +127,19 @@ Kết quả tổng: **MATCHED** / **WARNING** / **FAILED** — kèm lý do cụ 
 
 ---
 
-## 5. Chuyển sang Supabase / Postgres thật (khi lên production)
+## 5. Supabase / Postgres (đã tích hợp)
 
-Thiết kế đã **database-first** nên việc chuyển đổi rất gọn:
+Tầng DB đã **database-first** và hỗ trợ Supabase sẵn — bật bằng biến môi trường,
+không phải sửa code:
 
-1. Chạy `src/lib/schema.sql` trên Supabase (SQL Editor) — schema tương thích Postgres.
-2. Thay `src/lib/db.ts`: đổi PGlite bằng `pg.Pool` (hoặc `@supabase/supabase-js`) — giữ nguyên chữ ký `query()/queryOne()`.
-3. Thay `src/lib/auth.ts` bằng Supabase Auth; chuyển `attachments.file_url` sang Supabase Storage.
+1. Đặt `DATABASE_URL` (Supabase, Transaction pooler) trong `.env.local`.
+2. Chọn chế độ: `ACCOUNTS_ONLY=true` (Supabase chỉ giữ tài khoản) hoặc bỏ trống
+   (full-Postgres). Nạp schema: `npm run db:migrate`.
+3. Toàn bộ query là SQL Postgres tham số hóa (`query()/queryOne()`) — chạy nguyên
+   trên cả PGlite lẫn Supabase.
 
-Toàn bộ query trong app đều là SQL Postgres tham số hóa, không phụ thuộc driver.
+> Còn lại khi lên production: hash mật khẩu người dùng, đặt `PMS_SESSION_SECRET`
+> riêng, chuyển `attachments` sang Supabase Storage (`src/lib/storage.ts`).
 
 ---
 
@@ -130,4 +149,3 @@ Toàn bộ query trong app đều là SQL Postgres tham số hóa, không phụ 
 node scripts/flow-test.mjs   # test end-to-end: PR → approval chain → PO → GR → Invoice match
 npx tsc --noEmit             # type-check
 ```
-# PMS_Web_Application

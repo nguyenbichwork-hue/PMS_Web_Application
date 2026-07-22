@@ -62,12 +62,12 @@ export function SidebarContent({ onNavigate, user }: { onNavigate?: () => void; 
   const pathname = usePathname();
   return (
     <>
-      {/* Thương hiệu */}
+      {/* Thương hiệu — canh theo THÂN chữ logo (dấu È đẩy khối chữ lệch xuống ~1.5px) */}
       <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-white/[0.06] px-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="K‑HOMÈS" className="block h-6 w-auto shrink-0 select-none" />
-        <span className="h-3.5 w-px shrink-0 bg-white/15" />
-        <span className="text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-white/40">Mua hàng</span>
+        <span className="h-3.5 w-px shrink-0 translate-y-px bg-white/15" />
+        <span className="translate-y-px text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-white/40">Mua hàng</span>
       </div>
 
       {/* Điều hướng */}
