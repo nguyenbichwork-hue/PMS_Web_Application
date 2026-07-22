@@ -147,6 +147,9 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
             <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
             <p className="mb-3 text-xs text-slate-400">Mẫu MISA (34 cột) — 🟡 người tạo điền · 🟢 kế toán bổ sung sau.</p>
             <ExportButton href={`/export/po-misa/${poId}`} label="Xuất Excel (mẫu MISA)" />
+            <Link href={`/document-chain?doc=PO&id=${poId}`} className="mt-2 block text-center text-sm font-medium text-brand-600 hover:underline">
+              🔗 Xem chuỗi chứng từ
+            </Link>
           </Card>
 
           <POActions poId={poId} status={po.status} canManage={canManage} />

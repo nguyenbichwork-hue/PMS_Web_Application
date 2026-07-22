@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, type UsageItem } from "@/actions/admin";
+import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, saveMatchSettingsAction, type UsageItem } from "@/actions/admin";
 import { saveCompanyAction, deleteCompanyAction } from "@/actions/master";
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
 import { Modal } from "@/components/Modal";
@@ -17,17 +17,20 @@ interface AuditRow { id: number; actor_name: string | null; action: string; docu
 
 const TABS = [
   { key: "rules", label: "Luồng duyệt", icon: "flow" },
+  { key: "match", label: "Đối chiếu", icon: "invoice" },
   { key: "users", label: "Người dùng", icon: "users" },
   { key: "companies", label: "Công ty", icon: "company" },
   { key: "theme", label: "Giao diện", icon: "palette" },
   { key: "audit", label: "Nhật ký", icon: "log" },
 ] as const;
 
+interface MatchSettings { price: number; amount: number; qty: number }
+
 const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
 
 type TabKey = (typeof TABS)[number]["key"];
 
-export function SettingsTabs({ rules, users, companies, audit }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; audit: AuditRow[] }) {
+export function SettingsTabs({ rules, users, companies, matchSettings, audit }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; matchSettings: MatchSettings; audit: AuditRow[] }) {
   const [tab, setTab] = useState<TabKey>("rules");
 
   // Khôi phục tab từ URL (?tab=) khi mở/quay lại trang.
@@ -62,6 +65,7 @@ export function SettingsTabs({ rules, users, companies, audit }: { rules: Rule[]
 
       <div key={tab} className="animate-fade-up [animation-duration:.25s]">
         {tab === "rules" && <RulesPanel rules={rules} />}
+        {tab === "match" && <TolerancePanel settings={matchSettings} />}
         {tab === "users" && <UsersPanel users={users} companies={companies} />}
         {tab === "companies" && <CompaniesPanel companies={companies} />}
         {tab === "theme" && <AccentPicker />}
@@ -139,6 +143,38 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
           </form>
         </Modal>
       )}
+    </Card>
+  );
+}
+
+// ---------------- Đối chiếu (tolerance) ----------------
+function TolerancePanel({ settings }: { settings: MatchSettings }) {
+  const [pending, start] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const router = useRouter();
+  return (
+    <Card className="p-5">
+      <h3 className="mb-1 text-sm font-semibold text-slate-700">Ngưỡng đối chiếu hóa đơn ↔ PO</h3>
+      <p className="mb-4 text-xs text-slate-400">
+        Mức sai lệch (%) được tự động chấp nhận khi đối chiếu. Trong ngưỡng → coi như khớp; vượt ngưỡng → Sai lệch (FAIL/WARNING).
+      </p>
+      <form
+        action={(fd) => start(async () => { await saveMatchSettingsAction(fd); setSaved(true); router.refresh(); })}
+        className="max-w-lg space-y-3"
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="Đơn giá (%)"><input name="price" type="number" step="0.01" min={0} defaultValue={settings.price} className={inputCls} /></Field>
+          <Field label="Tổng tiền (%)"><input name="amount" type="number" step="0.01" min={0} defaultValue={settings.amount} className={inputCls} /></Field>
+          <Field label="Số lượng (%)"><input name="qty" type="number" step="0.01" min={0} defaultValue={settings.qty} className={inputCls} /></Field>
+        </div>
+        <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+          Gợi ý: Đơn giá 1% · Tổng tiền 1% · Số lượng 0% (không cho vượt số đã nhận). Thuế chỉ chấp nhận sai số làm tròn — không cấu hình ở đây.
+        </p>
+        <div className="flex items-center gap-3 pt-1">
+          <Button type="submit" disabled={pending}>{pending ? "Đang lưu…" : "Lưu ngưỡng"}</Button>
+          {saved && !pending && <span className="text-xs font-medium text-emerald-600">✓ Đã lưu</span>}
+        </div>
+      </form>
     </Card>
   );
 }

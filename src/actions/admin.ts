@@ -208,6 +208,19 @@ export async function fetchAuditAction(): Promise<AuditLogRow[]> {
   );
 }
 
+/** Lưu ngưỡng đối chiếu hóa đơn↔PO (§12.2) — CHỈ ADMIN. */
+export async function saveMatchSettingsAction(formData: FormData) {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");
+  const num = (k: string, d: number) => { const v = Number(formData.get(k)); return Number.isFinite(v) && v >= 0 ? v : d; };
+  await query(
+    `UPDATE match_settings SET price_tolerance_pct=$1, amount_tolerance_pct=$2, qty_tolerance_pct=$3, updated_at=now() WHERE id=1`,
+    [num("price", 1), num("amount", 1), num("qty", 0)]
+  );
+  await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "Config", action: "Update", field: "match_tolerance", newValue: `giá ${num("price",1)}% · tiền ${num("amount",1)}% · SL ${num("qty",0)}%` });
+  revalidatePath("/settings");
+}
+
 export async function deleteApprovalRuleAction(id: number) {
   const admin = await requireUser();
   if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");

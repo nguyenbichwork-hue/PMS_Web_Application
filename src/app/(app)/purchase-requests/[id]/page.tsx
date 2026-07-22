@@ -138,6 +138,9 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
         </Card>
 
         <div className="space-y-4">
+          <Link href={`/document-chain?doc=PR&id=${prId}`} className="block rounded-2xl border border-slate-200/70 bg-white p-3 text-center text-sm font-medium text-brand-600 transition hover:border-slate-300 hover:bg-slate-50">
+            🔗 Xem chuỗi chứng từ
+          </Link>
           <Card className="p-5">
             <h3 className="mb-3 text-sm font-semibold text-slate-700">Luồng phê duyệt</h3>
             <ol className="space-y-2">

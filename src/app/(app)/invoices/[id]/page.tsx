@@ -138,6 +138,10 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
             </div>
           </Card>
 
+          <Link href={`/document-chain?doc=INV&id=${invId}`} className="block rounded-2xl border border-slate-200/70 bg-white p-3 text-center text-sm font-medium text-brand-600 transition hover:border-slate-300 hover:bg-slate-50">
+            🔗 Xem chuỗi chứng từ
+          </Link>
+
           <PaymentPanel invoiceId={invId} total={Number(inv.total_amount)} payments={payments} canPay={canPay} />
 
           <AttachmentPanel

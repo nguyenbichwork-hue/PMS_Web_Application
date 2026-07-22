@@ -112,11 +112,21 @@ export async function createInvoiceAction(formData: FormData) {
     const proratedTotal = poQty > 0 ? (invQty / poQty) * Number(po?.grand_total ?? 0) : Number(po?.grand_total ?? 0);
     const proratedVat = poQty > 0 ? (invQty / poQty) * Number(po?.vat_total ?? 0) : Number(po?.vat_total ?? 0);
 
+    // Ngưỡng đối chiếu cấu hình được (Cấu hình → Đối chiếu). Mặc định giá/tiền 1%, SL 0%.
+    // Bọc try/catch phòng bảng chưa migrate (server chưa restart) → dùng mặc định.
+    let ms: { price_tolerance_pct: string; amount_tolerance_pct: string; qty_tolerance_pct: string } | null = null;
+    try {
+      ms = await queryOne(`SELECT price_tolerance_pct, amount_tolerance_pct, qty_tolerance_pct FROM match_settings WHERE id = 1`);
+    } catch { /* bảng match_settings chưa tồn tại → dùng ngưỡng mặc định */ }
+
     const result = evaluateMatch({
       // Supplier THẬT của hóa đơn — KHÔNG fallback về poSupplierId (nếu để fallback
       // thì thiếu supplier sẽ tự PASS check Supplier). Null → matching trả WARNING.
       invoiceSupplierId: supplierInput,
       poSupplierId,
+      priceTolerancePct: ms ? Number(ms.price_tolerance_pct) : 1,
+      amountTolerancePct: ms ? Number(ms.amount_tolerance_pct) : 1,
+      qtyTolerancePct: ms ? Number(ms.qty_tolerance_pct) : 0,
       invoiceQty: invQty,
       poQty: remainingPoQty,
       receivedQty: remainingReceived,
@@ -134,6 +144,16 @@ export async function createInvoiceAction(formData: FormData) {
   }
 
   const storedSupplier = supplierInput ?? poSupplierId;
+
+  // Chống TRÙNG hóa đơn (UAT-16): cùng nhà cung cấp + cùng số hóa đơn (không phân
+  // biệt hoa/thường) → chặn. Mỗi NCC không được có 2 hóa đơn trùng số.
+  if (storedSupplier && invoice_number.trim()) {
+    const dup = await queryOne<{ id: number; status: string }>(
+      `SELECT id, status FROM invoices WHERE supplier_id = $1 AND lower(invoice_number) = lower($2) LIMIT 1`,
+      [storedSupplier, invoice_number.trim()]
+    );
+    if (dup) throw new Error(`Hóa đơn số "${invoice_number}" của nhà cung cấp này đã tồn tại (không nhập trùng).`);
+  }
 
   // Ghi hóa đơn + dòng + kết quả đối chiếu trong MỘT transaction (nguyên tử).
   const invId = await withTransaction(async (exec) => {

@@ -32,6 +32,16 @@ export default async function SettingsPage() {
        FROM users u LEFT JOIN companies c ON c.id = u.company_id ORDER BY u.id`
   );
   const companies = await query<Company>(`SELECT * FROM companies ORDER BY company_name`);
+  // Bọc try/catch phòng bảng match_settings chưa migrate (server chưa restart).
+  let matchRow: { price_tolerance_pct: string; amount_tolerance_pct: string; qty_tolerance_pct: string } | undefined;
+  try {
+    [matchRow] = await query(`SELECT price_tolerance_pct, amount_tolerance_pct, qty_tolerance_pct FROM match_settings WHERE id = 1`);
+  } catch { /* chưa migrate → dùng mặc định */ }
+  const matchSettings = {
+    price: Number(matchRow?.price_tolerance_pct ?? 1),
+    amount: Number(matchRow?.amount_tolerance_pct ?? 1),
+    qty: Number(matchRow?.qty_tolerance_pct ?? 0),
+  };
   const misaState = await query<{
     data_type: number; label: string | null; last_count: number; last_run: string | null; last_sync_time: string | null;
   }>(
@@ -47,7 +57,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <ModuleBanner accent="slate" icon="⚙️" title="Cấu hình hệ thống" subtitle="MISA · Luồng duyệt · Người dùng · Công ty · Nhật ký hệ thống" />
+      <ModuleBanner accent="slate" icon="⚙️" title="Cấu hình hệ thống" subtitle="MISA · Luồng duyệt · Đối chiếu · Người dùng · Công ty · Nhật ký" />
       <MisaPanel mode={misaMode()} state={misaState} />
       <SettingsTabs
         rules={rules.map((r) => ({
@@ -58,6 +68,7 @@ export default async function SettingsPage() {
         }))}
         users={users}
         companies={companies.map((c) => ({ id: c.id, company_code: c.company_code, company_name: c.company_name, tax_code: c.tax_code, address: c.address, status: c.status }))}
+        matchSettings={matchSettings}
         audit={audit}
       />
     </div>

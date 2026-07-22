@@ -116,3 +116,14 @@ ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS approval_history_status_c
 ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS ah_status_check_v2;
 ALTER TABLE approval_history ADD  CONSTRAINT ah_status_check_v2
   CHECK (status IN ('Approved','Rejected','Submitted','Reopened'));
+
+-- ---------- NGƯỠNG ĐỐI CHIẾU (tolerance) hóa đơn ↔ PO — cấu hình được (§12.2) ----------
+-- 1 dòng duy nhất (id=1). % sai lệch được tự động chấp nhận cho đơn giá/tổng tiền/số lượng.
+CREATE TABLE IF NOT EXISTS match_settings (
+  id                    INT PRIMARY KEY,
+  price_tolerance_pct   NUMERIC(6,3) NOT NULL DEFAULT 1,
+  amount_tolerance_pct  NUMERIC(6,3) NOT NULL DEFAULT 1,
+  qty_tolerance_pct     NUMERIC(6,3) NOT NULL DEFAULT 0,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO match_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

@@ -60,5 +60,12 @@ check(findPoPrice(idx, { itemCode: null, description: "dịch vụ lắp đặt"
 // 10) Không có dòng PO tương ứng → null
 check(findPoPrice(idx, { itemCode: "SAI-MA", description: "không có" }) === null, "map: không tìm thấy → null");
 
+// 11) Tolerance cấu hình: giá lệch 1.5% — ngưỡng mặc định 1% → FAIL
+r = evaluateMatch({ ...base, lines: [{ itemCode: "A", invoicePrice: 101.5, poPrice: 100 }] });
+check(r.checks.find((c) => c.check_name === "Price")?.result === "FAIL", "giá lệch 1.5% · ngưỡng mặc định 1% → Price FAIL");
+// 12) Cùng lệch 1.5% nhưng ngưỡng đơn giá 2% → PASS
+r = evaluateMatch({ ...base, priceTolerancePct: 2, lines: [{ itemCode: "A", invoicePrice: 101.5, poPrice: 100 }] });
+check(r.checks.find((c) => c.check_name === "Price")?.result === "PASS", "giá lệch 1.5% · ngưỡng 2% → Price PASS");
+
 console.log(`\n${fail === 0 ? "✅ ALL PASSED" : "❌ FAILURES"}  (${pass} passed, ${fail} failed)`);
 process.exit(fail === 0 ? 0 : 1);

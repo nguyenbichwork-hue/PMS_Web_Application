@@ -104,12 +104,14 @@ export async function approvePRAction(prId: number, comment: string) {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
 
-  const pr = await queryOne<{ total_amount: string; current_level: number; status: string; company_id: number | null }>(
-    `SELECT total_amount, current_level, status, company_id FROM purchase_requests WHERE id = $1`,
+  const pr = await queryOne<{ total_amount: string; current_level: number; status: string; company_id: number | null; requester_id: number }>(
+    `SELECT total_amount, current_level, status, company_id, requester_id FROM purchase_requests WHERE id = $1`,
     [prId]
   );
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
   if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
+  // SoD (§4.1, UAT-40): không được tự duyệt PR do chính mình tạo (kể cả Admin).
+  if (pr.requester_id === user.id) throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   if (!isNextApprover(chain, pr.current_level, user.role)) {

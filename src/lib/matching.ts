@@ -93,6 +93,10 @@ export interface MatchInput {
   // Tùy chọn: kiểm VAT riêng
   invoiceVat?: number;
   expectedVat?: number;
+  // Tùy chọn: NGƯỠNG sai lệch cấu hình được (%). Mặc định: giá 1%, tiền 1%, SL 0%.
+  priceTolerancePct?: number;
+  amountTolerancePct?: number;
+  qtyTolerancePct?: number;
 }
 
 const TOLERANCE = 0.01; // 1% tolerance for rounding on money comparisons
@@ -108,6 +112,11 @@ export function evaluateMatch(input: MatchInput): {
   checks: CheckOutcome[];
 } {
   const checks: CheckOutcome[] = [];
+
+  // Ngưỡng sai lệch (đổi % → tỷ lệ). Mặc định: giá 1%, tiền 1%, SL 0%.
+  const priceTol = (input.priceTolerancePct ?? 1) / 100;
+  const amountTol = (input.amountTolerancePct ?? 1) / 100;
+  const qtyTol = (input.qtyTolerancePct ?? 0) / 100;
 
   // CHECK 1 — Nhà cung cấp: NCC hóa đơn phải trùng NCC trên PO.
   if (input.invoiceSupplierId && input.poSupplierId) {
@@ -133,13 +142,14 @@ export function evaluateMatch(input: MatchInput): {
   }
 
   // CHECK 2 — Số lượng: không vượt SL trên PO và không vượt SL đã thực nhận (GR).
-  if (input.invoiceQty > input.poQty + 1e-9) {
+  // Áp NGƯỠNG số lượng (qtyTol) nếu được cấu hình.
+  if (input.invoiceQty > input.poQty * (1 + qtyTol) + 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "FAIL",
       reason: `SL hóa đơn (${input.invoiceQty}) vượt SL đặt trên PO (${input.poQty}).`,
     });
-  } else if (input.invoiceQty > input.receivedQty + 1e-9) {
+  } else if (input.invoiceQty > input.receivedQty * (1 + qtyTol) + 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "FAIL",
@@ -167,7 +177,7 @@ export function evaluateMatch(input: MatchInput): {
       if (ln.poPrice == null) {
         missing = true;
         mismatches.push(`Dòng "${ln.description ?? ln.itemCode ?? "?"}" không có trên PO.`);
-      } else if (!approxEqual(ln.invoicePrice, ln.poPrice)) {
+      } else if (!approxEqual(ln.invoicePrice, ln.poPrice, priceTol)) {
         const dir = ln.invoicePrice > ln.poPrice ? "cao hơn" : "thấp hơn";
         mismatches.push(
           `"${ln.description ?? ln.itemCode ?? "?"}": HĐ ${fmt(ln.invoicePrice)} ${dir} PO ${fmt(ln.poPrice)}.`
@@ -183,7 +193,7 @@ export function evaluateMatch(input: MatchInput): {
         reason: mismatches.join(" "),
       });
     }
-  } else if (approxEqual(input.invoiceUnitPrice, input.poUnitPrice)) {
+  } else if (approxEqual(input.invoiceUnitPrice, input.poUnitPrice, priceTol)) {
     checks.push({ check_name: "Price", result: "PASS", reason: "Đơn giá bình quân khớp với PO." });
   } else {
     const dir = input.invoiceUnitPrice > input.poUnitPrice ? "cao hơn" : "thấp hơn";
@@ -209,7 +219,7 @@ export function evaluateMatch(input: MatchInput): {
 
   // CHECK 4 — Tổng tiền: tổng hóa đơn so với tổng kỳ vọng (đã chia theo tỷ lệ SL
   // nếu là hóa đơn từng phần).
-  if (approxEqual(input.invoiceTotal, input.expectedTotal)) {
+  if (approxEqual(input.invoiceTotal, input.expectedTotal, amountTol)) {
     checks.push({
       check_name: "Amount",
       result: "PASS",
