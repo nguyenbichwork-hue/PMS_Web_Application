@@ -11,3 +11,7 @@ next-env.d.ts
 # Local tooling artifacts (not for the public repo)
 cookies.txt
 *.output
+
+# Personal doc generators (Note folder) — keep local, not on GitHub
+scripts/gen-comparison-doc.mjs
+scripts/gen-update-doc.mjs
