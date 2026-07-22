@@ -1,5 +1,5 @@
 // Kiểm thử engine đối chiếu mới. Run: node --experimental-strip-types scripts/matching-test.ts
-import { evaluateMatch } from "../src/lib/matching.ts";
+import { evaluateMatch, buildPoPriceIndex, findPoPrice } from "../src/lib/matching.ts";
 
 let pass = 0, fail = 0;
 const check = (cond: boolean, msg: string) => {
@@ -45,6 +45,20 @@ check(r.checks.find((c) => c.check_name === "Quantity")?.result === "FAIL", "Vư
 // 6) Tương thích ngược: KHÔNG có lines → dùng giá bình quân (seed cũ vẫn chạy)
 r = evaluateMatch({ ...base, invoiceUnitPrice: 110, poUnitPrice: 100 });
 check(r.checks.find((c) => c.check_name === "Price")?.result === "FAIL", "Không có lines → so giá bình quân (FAIL)");
+
+// ---------- MAP dòng hóa đơn → PO (buildPoPriceIndex / findPoPrice) ----------
+const idx = buildPoPriceIndex([
+  { itemCode: "BOSCH-COOK-01", description: "Bếp từ Bosch", unitPrice: 15_000_000 },
+  { itemCode: null, description: "Dịch vụ lắp đặt", unitPrice: 500_000 },
+]);
+// 7) Khớp theo MÃ
+check(findPoPrice(idx, { itemCode: "BOSCH-COOK-01" }) === 15_000_000, "map: khớp theo mã hàng");
+// 8) Chuẩn hóa: hoa/thường + khoảng trắng thừa vẫn khớp (trước đây bị lệch)
+check(findPoPrice(idx, { itemCode: "  bosch-cook-01 " }) === 15_000_000, "map: chuẩn hóa hoa/thường + space vẫn khớp");
+// 9) Không có mã → khớp theo TÊN
+check(findPoPrice(idx, { itemCode: null, description: "dịch vụ lắp đặt" }) === 500_000, "map: khớp theo tên khi thiếu mã");
+// 10) Không có dòng PO tương ứng → null
+check(findPoPrice(idx, { itemCode: "SAI-MA", description: "không có" }) === null, "map: không tìm thấy → null");
 
 console.log(`\n${fail === 0 ? "✅ ALL PASSED" : "❌ FAILURES"}  (${pass} passed, ${fail} failed)`);
 process.exit(fail === 0 ? 0 : 1);

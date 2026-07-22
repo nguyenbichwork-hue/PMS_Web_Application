@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
-import { evaluateMatch, type MatchLine } from "@/lib/matching";
+import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
 import { logAudit } from "@/lib/audit";
 
 /** Chặn IDOR trên hóa đơn theo công ty của PO gốc. Hóa đơn KHÔNG gắn PO thì
@@ -70,24 +70,21 @@ export async function createInvoiceAction(formData: FormData) {
     if (!canAccessCompany(user, po.company_id)) throw new Error("FORBIDDEN"); // chặn IDOR: PO khác công ty
     poSupplierId = po?.supplier_id ?? null;
 
-    // Đơn giá PO theo từng mã hàng (để so khớp theo dòng).
+    // MAP dòng hóa đơn → dòng PO để lấy đơn giá PO đem so (khớp theo MÃ trước,
+    // rồi TÊN; khóa được chuẩn hóa nên không giòn — xem matching.ts).
     const poItems = await query<{ item_code: string | null; description: string; unit_price: string }>(
       `SELECT item_code, description, unit_price FROM purchase_order_items WHERE po_id = $1`,
       [po_id]
     );
-    const priceByCode = new Map<string, number>();
-    const priceByDesc = new Map<string, number>();
-    for (const it of poItems) {
-      if (it.item_code) priceByCode.set(it.item_code, Number(it.unit_price));
-      priceByDesc.set(it.description, Number(it.unit_price));
-    }
-    const matchLines: MatchLine[] = lines.map((l) => {
-      const poPrice =
-        (l.item_code && priceByCode.has(l.item_code) ? priceByCode.get(l.item_code!) : undefined) ??
-        (l.description && priceByDesc.has(l.description) ? priceByDesc.get(l.description) : undefined) ??
-        null;
-      return { itemCode: l.item_code ?? null, description: l.description, invoicePrice: Number(l.unit_price), poPrice: poPrice ?? null };
-    });
+    const poIndex = buildPoPriceIndex(
+      poItems.map((it) => ({ itemCode: it.item_code, description: it.description, unitPrice: Number(it.unit_price) }))
+    );
+    const matchLines: MatchLine[] = lines.map((l) => ({
+      itemCode: l.item_code ?? null,
+      description: l.description,
+      invoicePrice: Number(l.unit_price),
+      poPrice: findPoPrice(poIndex, { itemCode: l.item_code, description: l.description }),
+    }));
 
     const received = await queryOne<{ q: string }>(
       `SELECT COALESCE(sum(gri.received_qty),0) AS q

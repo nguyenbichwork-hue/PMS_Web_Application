@@ -1,10 +1,14 @@
 // =====================================================================
-// Automatic 3-way / 4-check matching engine (pure logic, no DB access).
-//   CHECK 1  Supplier : invoice.supplier == PO.supplier
-//   CHECK 2  Quantity : invoice.qty <= received qty (GR), and <= PO qty
-//   CHECK 3  Price    : invoice unit price == PO unit price
-//   CHECK 4  Amount   : invoice total == expected amount
-// Result rolls up to MATCHED / WARNING / FAILED.
+// ĐỘNG CƠ ĐỐI CHIẾU Hóa đơn ↔ PO (logic thuần, KHÔNG chạm DB).
+// 4 phép kiểm, mỗi phép trả PASS / WARNING / FAIL:
+//   1) NHÀ CUNG CẤP : NCC hóa đơn == NCC trên PO
+//   2) SỐ LƯỢNG     : SL hóa đơn ≤ SL đã nhận (GR) và ≤ SL đặt trên PO
+//   3) ĐƠN GIÁ      : giá TỪNG DÒNG (map hóa đơn→PO theo mã/tên) == giá PO
+//   4) TỔNG TIỀN    : tổng hóa đơn == tổng kỳ vọng (chia tỷ lệ nếu từng phần)
+// (kèm kiểm VAT khi có dữ liệu VAT).
+// Cuộn kết quả: có FAIL → FAILED; có WARNING → WARNING; sạch → MATCHED.
+// Phần MAP dòng hóa đơn → dòng PO nằm ngay dưới (matchKey/buildPoPriceIndex/
+// findPoPrice) — chuẩn hóa chuỗi nên không còn giòn khi gõ khác kiểu.
 // =====================================================================
 
 export type CheckResult = "PASS" | "WARNING" | "FAIL";
@@ -20,6 +24,55 @@ export interface MatchLine {
   description?: string;
   invoicePrice: number;
   poPrice: number | null; // null = không tìm thấy dòng PO tương ứng
+}
+
+// ---------------------------------------------------------------------
+// MAP dòng HÓA ĐƠN → dòng PO (để lấy đơn giá PO đem so).
+// Quy tắc: khớp theo MÃ HÀNG trước, không có thì khớp theo TÊN HÀNG.
+// Khóa được CHUẨN HÓA (bỏ khoảng trắng thừa, không phân biệt hoa/thường)
+// nên "BOSCH-COOK-01" vẫn khớp " bosch-cook-01 " — tránh lệch do gõ khác kiểu.
+// ---------------------------------------------------------------------
+
+/** Chuẩn hóa 1 khóa so khớp (mã hàng / tên hàng). */
+export function matchKey(s: string | null | undefined): string {
+  return (s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** Một dòng PO tối giản, chỉ giữ thứ cần để tra đơn giá. */
+export interface PoLineRef {
+  itemCode: string | null;
+  description: string | null;
+  unitPrice: number;
+}
+
+/** Bảng tra đơn giá PO: theo MÃ (ưu tiên) và theo TÊN (dự phòng). */
+export interface PoPriceIndex {
+  byCode: Map<string, number>;
+  byDesc: Map<string, number>;
+}
+
+/** Dựng bảng tra đơn giá PO từ danh sách dòng PO. */
+export function buildPoPriceIndex(poLines: PoLineRef[]): PoPriceIndex {
+  const byCode = new Map<string, number>();
+  const byDesc = new Map<string, number>();
+  for (const l of poLines) {
+    if (l.itemCode) byCode.set(matchKey(l.itemCode), l.unitPrice);
+    if (l.description) byDesc.set(matchKey(l.description), l.unitPrice);
+  }
+  return { byCode, byDesc };
+}
+
+/** Tìm đơn giá PO cho 1 dòng hóa đơn: MÃ trước → TÊN sau → null nếu không có
+ *  dòng PO tương ứng (khi đó check Đơn giá sẽ báo "dòng không có trên PO"). */
+export function findPoPrice(
+  index: PoPriceIndex,
+  invLine: { itemCode?: string | null; description?: string | null }
+): number | null {
+  const byCode = invLine.itemCode ? index.byCode.get(matchKey(invLine.itemCode)) : undefined;
+  if (byCode !== undefined) return byCode;
+  const byDesc = invLine.description ? index.byDesc.get(matchKey(invLine.description)) : undefined;
+  if (byDesc !== undefined) return byDesc;
+  return null;
 }
 
 export interface MatchInput {
@@ -56,53 +109,53 @@ export function evaluateMatch(input: MatchInput): {
 } {
   const checks: CheckOutcome[] = [];
 
-  // CHECK 1 — Supplier
+  // CHECK 1 — Nhà cung cấp: NCC hóa đơn phải trùng NCC trên PO.
   if (input.invoiceSupplierId && input.poSupplierId) {
     if (input.invoiceSupplierId === input.poSupplierId) {
       checks.push({
         check_name: "Supplier",
         result: "PASS",
-        reason: `Supplier matches PO (${input.supplierName ?? "OK"}).`,
+        reason: `Nhà cung cấp khớp với PO${input.supplierName ? ` (${input.supplierName})` : ""}.`,
       });
     } else {
       checks.push({
         check_name: "Supplier",
         result: "FAIL",
-        reason: "Invoice supplier differs from PO supplier.",
+        reason: "NCC trên hóa đơn khác NCC trên PO.",
       });
     }
   } else {
     checks.push({
       check_name: "Supplier",
       result: "WARNING",
-      reason: "Supplier could not be verified (missing supplier reference).",
+      reason: "Chưa xác định được NCC (thiếu thông tin nhà cung cấp trên hóa đơn).",
     });
   }
 
-  // CHECK 2 — Quantity: must not exceed received qty (goods actually in)
+  // CHECK 2 — Số lượng: không vượt SL trên PO và không vượt SL đã thực nhận (GR).
   if (input.invoiceQty > input.poQty + 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "FAIL",
-      reason: `Invoice quantity (${input.invoiceQty}) exceeds PO quantity (${input.poQty}).`,
+      reason: `SL hóa đơn (${input.invoiceQty}) vượt SL đặt trên PO (${input.poQty}).`,
     });
   } else if (input.invoiceQty > input.receivedQty + 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "FAIL",
-      reason: `Invoice quantity (${input.invoiceQty}) exceeds received quantity (${input.receivedQty}).`,
+      reason: `SL hóa đơn (${input.invoiceQty}) vượt SL đã nhận (${input.receivedQty}).`,
     });
   } else if (input.invoiceQty < input.receivedQty - 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "WARNING",
-      reason: `Invoice quantity (${input.invoiceQty}) is less than received quantity (${input.receivedQty}) — partial invoice.`,
+      reason: `SL hóa đơn (${input.invoiceQty}) ít hơn SL đã nhận (${input.receivedQty}) — hóa đơn từng phần.`,
     });
   } else {
     checks.push({
       check_name: "Quantity",
       result: "PASS",
-      reason: `Invoice quantity matches received quantity (${input.receivedQty}).`,
+      reason: `SL hóa đơn khớp SL đã nhận (${input.receivedQty}).`,
     });
   }
 
@@ -131,15 +184,13 @@ export function evaluateMatch(input: MatchInput): {
       });
     }
   } else if (approxEqual(input.invoiceUnitPrice, input.poUnitPrice)) {
-    checks.push({ check_name: "Price", result: "PASS", reason: "Invoice unit price matches PO unit price." });
+    checks.push({ check_name: "Price", result: "PASS", reason: "Đơn giá bình quân khớp với PO." });
   } else {
-    const dir = input.invoiceUnitPrice > input.poUnitPrice ? "higher" : "lower";
+    const dir = input.invoiceUnitPrice > input.poUnitPrice ? "cao hơn" : "thấp hơn";
     checks.push({
       check_name: "Price",
       result: "FAIL",
-      reason: `Invoice unit price (${fmt(input.invoiceUnitPrice)}) is ${dir} than PO unit price (${fmt(
-        input.poUnitPrice
-      )}).`,
+      reason: `Đơn giá hóa đơn (${fmt(input.invoiceUnitPrice)}) ${dir} PO (${fmt(input.poUnitPrice)}).`,
     });
   }
 
@@ -156,20 +207,19 @@ export function evaluateMatch(input: MatchInput): {
     }
   }
 
-  // CHECK 4 — Amount
+  // CHECK 4 — Tổng tiền: tổng hóa đơn so với tổng kỳ vọng (đã chia theo tỷ lệ SL
+  // nếu là hóa đơn từng phần).
   if (approxEqual(input.invoiceTotal, input.expectedTotal)) {
     checks.push({
       check_name: "Amount",
       result: "PASS",
-      reason: "Invoice total matches expected amount.",
+      reason: "Tổng tiền khớp với kỳ vọng.",
     });
   } else {
     checks.push({
       check_name: "Amount",
       result: "WARNING",
-      reason: `Invoice total (${fmt(input.invoiceTotal)}) differs from expected amount (${fmt(
-        input.expectedTotal
-      )}).`,
+      reason: `Tổng hóa đơn (${fmt(input.invoiceTotal)}) khác kỳ vọng (${fmt(input.expectedTotal)}).`,
     });
   }
 
