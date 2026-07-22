@@ -17,16 +17,20 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
   const prId = Number(id);
   const user = await getCurrentUser();
 
+  // LEFT JOIN để PR LUÔN tải được kể cả khi thiếu dòng công ty/người yêu cầu
+  // tham chiếu (tránh 404 giả do INNER JOIN rỗng).
   const pr = await queryOne<PurchaseRequest>(
     `SELECT pr.*, u.name AS requester_name, c.company_name
        FROM purchase_requests pr
-       JOIN users u ON u.id = pr.requester_id
-       JOIN companies c ON c.id = pr.company_id
+       LEFT JOIN users u ON u.id = pr.requester_id
+       LEFT JOIN companies c ON c.id = pr.company_id
       WHERE pr.id = $1`,
     [prId]
   );
   if (!pr) notFound();
-  if (user && !canAccessCompany(user, pr.company_id)) notFound();
+  // Cho xem nếu: người TẠO PR (luôn xem được của mình) HOẶC cùng công ty / Admin.
+  const allowed = !user || user.id === pr.requester_id || canAccessCompany(user, pr.company_id);
+  if (!allowed) notFound();
 
   const items = await query<PRItem>(
     `SELECT * FROM purchase_request_items WHERE pr_id = $1 ORDER BY line_no`,
