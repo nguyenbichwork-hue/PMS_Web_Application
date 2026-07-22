@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { createHash } from "node:crypto";
 import { query, queryOne } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
@@ -62,11 +63,20 @@ export async function uploadAttachmentAction(formData: FormData) {
   if (!file || file.size === 0) throw new Error("Vui lòng chọn tệp.");
   if (file.size > MAX_BYTES) throw new Error("Tệp vượt quá 10MB.");
 
+  // Băm SHA-256 nội dung tệp (UAT-17) — chặn đính kèm TRÙNG NỘI DUNG trên cùng
+  // chứng từ (vd tải nhầm cùng file hóa đơn 2 lần).
+  const hash = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
+  const dupFile = await queryOne<{ file_name: string }>(
+    `SELECT file_name FROM attachments WHERE document_type=$1 AND document_id=$2 AND file_hash=$3 LIMIT 1`,
+    [documentType, documentId, hash]
+  );
+  if (dupFile) throw new Error(`Tệp này đã được đính kèm (trùng nội dung với "${dupFile.file_name}").`);
+
   const saved = await saveFile(file);
   await query(
-    `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [documentType, documentId, kind, saved.originalName, saved.storedName, user.id]
+    `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [documentType, documentId, kind, saved.originalName, saved.storedName, user.id, hash]
   );
   await logAudit({ actorId: user.id, actorName: user.name, documentType, documentId, action: "Attach", newValue: saved.originalName });
 

@@ -149,6 +149,7 @@ export default async function GuidePage() {
               <p>Trên hóa đơn <b>đã Khớp/Cảnh báo</b>, khung <b>Thanh toán</b> cho thấy Tổng · Đã trả · Còn lại + lịch sử.</p>
               <Step n={1}>Nhập số tiền, chọn phương thức & số tham chiếu → <b>Ghi nhận</b>. Hoặc <b>Trả hết</b>.</Step>
               <Step n={2}>Trả đủ → hóa đơn <b>“Đã thanh toán”</b> (không cho trả vượt).</Step>
+              <Step n={3}><b>Điều chỉnh giảm (Credit Note):</b> khi trả hàng/giảm giá sau hóa đơn — nhập số tiền giảm ở khung <b>Điều chỉnh giảm</b>, hệ thống trừ vào nghĩa vụ phải trả.</Step>
             </Section>
           </>
         )}

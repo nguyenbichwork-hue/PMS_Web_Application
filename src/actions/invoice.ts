@@ -189,6 +189,15 @@ export async function createInvoiceAction(formData: FormData) {
   redirect(`/invoices/${invId}`);
 }
 
+/** Tổng tiền đã được điều chỉnh giảm (credit note) của 1 hóa đơn. Bọc try/catch
+ *  phòng bảng credit_notes chưa migrate. */
+async function creditedOf(invoiceId: number): Promise<number> {
+  try {
+    const r = await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) s FROM credit_notes WHERE invoice_id=$1`, [invoiceId]);
+    return Number(r?.s ?? 0);
+  } catch { return 0; }
+}
+
 /** Thêm MỘT đợt thanh toán cho hóa đơn (1 hóa đơn trả được nhiều đợt). */
 export async function addPaymentAction(formData: FormData) {
   const user = await requireUser();
@@ -213,7 +222,8 @@ export async function addPaymentAction(formData: FormData) {
   const paid = await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) s FROM payments WHERE invoice_id = $1`, [invoiceId]);
   const total = Number(inv.total_amount);
   const already = Number(paid?.s ?? 0);
-  const remaining = total - already;
+  const credited = await creditedOf(invoiceId); // trừ credit note khỏi nghĩa vụ
+  const remaining = total - already - credited;
   if (amount > remaining + 0.5) throw new Error(`Vượt số còn phải trả (${Math.round(remaining).toLocaleString("vi-VN")} ₫).`);
 
   await withTransaction(async (exec) => {
@@ -222,8 +232,8 @@ export async function addPaymentAction(formData: FormData) {
        VALUES ($1, COALESCE($2::date, current_date), $3, $4, $5, $6)`,
       [invoiceId, payment_date, amount, method, reference, user.id]
     );
-    // Trả đủ → đánh dấu Paid.
-    if (already + amount >= total - 0.5) {
+    // Trả đủ (đã trả + credit note ≥ tổng) → đánh dấu Paid.
+    if (already + credited + amount >= total - 0.5) {
       await exec(`UPDATE invoices SET status='Paid' WHERE id=$1`, [invoiceId]);
     }
     await logAudit(
@@ -244,7 +254,8 @@ export async function markInvoicePaidAction(invoiceId: number) {
   const inv = await queryOne<{ total_amount: string; status: string }>(`SELECT total_amount, status FROM invoices WHERE id=$1`, [invoiceId]);
   if (!inv || inv.status === "Paid") return;
   const paid = await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) s FROM payments WHERE invoice_id=$1`, [invoiceId]);
-  const remaining = Number(inv.total_amount) - Number(paid?.s ?? 0);
+  const credited = await creditedOf(invoiceId);
+  const remaining = Number(inv.total_amount) - Number(paid?.s ?? 0) - credited;
   await withTransaction(async (exec) => {
     if (remaining > 0.5) {
       await exec(
@@ -254,6 +265,41 @@ export async function markInvoicePaidAction(invoiceId: number) {
     }
     await exec(`UPDATE invoices SET status='Paid' WHERE id=$1`, [invoiceId]);
     await logAudit({ actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: invoiceId, action: "Pay", newValue: Math.round(remaining).toLocaleString("vi-VN") }, exec);
+  });
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+}
+
+/** Thêm CREDIT NOTE (§14) — điều chỉnh GIẢM nghĩa vụ của hóa đơn (vd trả hàng/giảm
+ *  giá sau hóa đơn). Không vượt số còn phải trả. Trả đủ bằng credit → 'Credited'. */
+export async function addCreditNoteAction(formData: FormData) {
+  const user = await requireUser();
+  if (!can(user.role, "invoice.manage")) throw new Error("FORBIDDEN");
+  const invoiceId = Number(formData.get("invoice_id"));
+  const amount = Number(formData.get("amount") ?? 0);
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  if (!invoiceId) throw new Error("Thiếu hóa đơn.");
+  if (!(amount > 0)) throw new Error("Số tiền điều chỉnh phải lớn hơn 0.");
+  await assertInvoiceAccess(user, invoiceId);
+
+  const inv = await queryOne<{ total_amount: string; status: string }>(`SELECT total_amount, status FROM invoices WHERE id=$1`, [invoiceId]);
+  if (!inv) throw new Error("Không tìm thấy hóa đơn.");
+  const total = Number(inv.total_amount);
+  const paid = Number((await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) s FROM payments WHERE invoice_id=$1`, [invoiceId]))?.s ?? 0);
+  const credited = await creditedOf(invoiceId);
+  const open = total - paid - credited;
+  if (amount > open + 0.5) throw new Error(`Vượt số còn lại của hóa đơn (${Math.round(open).toLocaleString("vi-VN")} ₫).`);
+
+  await withTransaction(async (exec) => {
+    await exec(`INSERT INTO credit_notes (invoice_id, amount, reason, created_by) VALUES ($1,$2,$3,$4)`, [invoiceId, amount, reason, user.id]);
+    // Nếu nghĩa vụ đã hết (trả + credit ≥ tổng) → Paid nếu có trả, ngược lại Credited.
+    if (paid + credited + amount >= total - 0.5) {
+      await exec(`UPDATE invoices SET status=$2 WHERE id=$1`, [invoiceId, paid > 0 ? "Paid" : "Credited"]);
+    }
+    await logAudit(
+      { actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: invoiceId, action: "CreditNote", newValue: Math.round(amount).toLocaleString("vi-VN") + (reason ? ` · ${reason}` : "") },
+      exec
+    );
   });
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");

@@ -117,6 +117,26 @@ ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS ah_status_check_v2;
 ALTER TABLE approval_history ADD  CONSTRAINT ah_status_check_v2
   CHECK (status IN ('Approved','Rejected','Submitted','Reopened'));
 
+-- ---------- FILE HASH chống trùng tệp đính kèm (UAT-17) ----------
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS file_hash TEXT;
+CREATE INDEX IF NOT EXISTS idx_attachments_hash ON attachments(file_hash);
+
+-- ---------- CREDIT NOTE (§14): giảm nghĩa vụ của hóa đơn ----------
+CREATE TABLE IF NOT EXISTS credit_notes (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  invoice_id  BIGINT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  amount      NUMERIC(18,2) NOT NULL,
+  reason      TEXT,
+  created_by  BIGINT REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_credit_notes_inv ON credit_notes(invoice_id);
+-- Thêm trạng thái 'Credited' cho hóa đơn (đã điều chỉnh giảm).
+ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check;
+ALTER TABLE invoices DROP CONSTRAINT IF EXISTS inv_status_check_v2;
+ALTER TABLE invoices ADD  CONSTRAINT inv_status_check_v2
+  CHECK (status IN ('Pending','Matched','Warning','Failed','Paid','Credited'));
+
 -- ---------- NGƯỠNG ĐỐI CHIẾU (tolerance) hóa đơn ↔ PO — cấu hình được (§12.2) ----------
 -- 1 dòng duy nhất (id=1). % sai lệch được tự động chấp nhận cho đơn giá/tổng tiền/số lượng.
 CREATE TABLE IF NOT EXISTS match_settings (

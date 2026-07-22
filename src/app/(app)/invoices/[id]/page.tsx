@@ -6,6 +6,7 @@ import { canAccessCompany } from "@/lib/access";
 import { Card, PageHeader, StatusBadge, Th, Td } from "@/components/ui";
 import { money, date } from "@/lib/format";
 import { PaymentPanel, type PaymentRow } from "./PaymentPanel";
+import { CreditNotePanel } from "./CreditNotePanel";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
 import type { Invoice, InvoiceItem, MatchCheck } from "@/lib/types";
 
@@ -39,8 +40,22 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
       WHERE a.document_type='Invoice' AND a.document_id=$1 ORDER BY a.id DESC`,
     [invId]
   );
+  // Credit notes (điều chỉnh giảm) — bọc try/catch phòng bảng chưa migrate.
+  let creditNotes: { id: number; amount: number; reason: string | null; created_at: string; author: string | null }[] = [];
+  try {
+    creditNotes = await query(
+      `SELECT c.id, c.amount, c.reason, c.created_at, u.name AS author
+         FROM credit_notes c LEFT JOIN users u ON u.id = c.created_by
+        WHERE c.invoice_id=$1 ORDER BY c.id DESC`,
+      [invId]
+    );
+  } catch { /* bảng credit_notes chưa tồn tại */ }
+  const paidSum = payments.reduce((s, p) => s + Number(p.amount), 0);
+  const creditedSum = creditNotes.reduce((s, c) => s + Number(c.amount), 0);
+  const openAmount = Number(inv.total_amount) - paidSum - creditedSum;
 
   const canPay = !!(user && can(user.role, "invoice.manage") && (inv.status === "Matched" || inv.status === "Warning"));
+  const canCredit = !!(user && can(user.role, "invoice.manage") && inv.status !== "Paid");
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -143,6 +158,8 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
           </Link>
 
           <PaymentPanel invoiceId={invId} total={Number(inv.total_amount)} payments={payments} canPay={canPay} />
+
+          <CreditNotePanel invoiceId={invId} notes={creditNotes} open={openAmount} canManage={canCredit} />
 
           <AttachmentPanel
             documentType="Invoice"
