@@ -85,7 +85,10 @@ export function SearchSelect({
       )}
 
       {open && (
-        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+        // Dropdown RỘNG THEO NỘI DUNG: tối thiểu bằng bề rộng ô, giãn theo tên
+        // dài, nhưng chặn tối đa để không tràn màn hình → tên hàng/NCC dễ đọc kể
+        // cả khi cột hẹp. z cao để nổi trên các dòng khác.
+        <div className="absolute left-0 z-50 mt-1 max-h-64 w-max min-w-full max-w-[min(26rem,85vw)] overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
           {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">{emptyText}</div>}
           {filtered.map((o, idx) => (
             <button
@@ -93,12 +96,12 @@ export function SearchSelect({
               type="button"
               onMouseEnter={() => setHi(idx)}
               onClick={() => pick(o)}
-              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition ${
+              className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition ${
                 idx === hi ? "bg-brand-50" : "hover:bg-slate-50"
               } ${o.value === value ? "font-semibold text-brand-700" : "text-slate-700"}`}
             >
-              <span className="truncate">{o.label}</span>
-              {o.hint && <span className="shrink-0 text-xs text-slate-400">{o.hint}</span>}
+              <span className="whitespace-nowrap">{o.label}</span>
+              {o.hint && <span className="shrink-0 font-mono text-xs text-slate-400">{o.hint}</span>}
             </button>
           ))}
           {options.length > filtered.length && (

@@ -144,10 +144,11 @@ export function PRForm({
           {lines.map((l, i) => {
             const sugg = suggFor(l.item_code);
             return (
-            <div key={i} className="rounded-lg border border-slate-200 p-3">
+            <div key={i} className="rounded-xl border border-slate-200 p-4">
+              {/* Hàng 1: sản phẩm + tên rộng rãi, các ô số gọn bên phải */}
               <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-3">
-                  <label className="text-xs text-slate-500">Sản phẩm (gõ mã/tên để tìm)</label>
+                <div className="md:col-span-4">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Sản phẩm (gõ mã/tên để tìm)</label>
                   <SearchSelect
                     options={productOpts}
                     value={l.item_code}
@@ -155,8 +156,8 @@ export function PRForm({
                     placeholder="Tìm sản phẩm…"
                   />
                 </div>
-                <div className="md:col-span-3">
-                  <label className="text-xs text-slate-500">Tên hàng</label>
+                <div className="md:col-span-4">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng</label>
                   <input
                     value={l.item_name}
                     onChange={(e) => setLine(i, { item_name: e.target.value })}
@@ -165,7 +166,7 @@ export function PRForm({
                   />
                 </div>
                 <div className="md:col-span-1">
-                  <label className="text-xs text-slate-500">SL</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">SL</label>
                   <input
                     type="number"
                     min={0}
@@ -175,7 +176,7 @@ export function PRForm({
                   />
                 </div>
                 <div className="md:col-span-1">
-                  <label className="text-xs text-slate-500">ĐVT</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">ĐVT</label>
                   <input
                     value={l.unit}
                     onChange={(e) => setLine(i, { unit: e.target.value })}
@@ -183,7 +184,7 @@ export function PRForm({
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-xs text-slate-500">Đơn giá dự kiến</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Đơn giá dự kiến</label>
                   <input
                     type="number"
                     min={0}
@@ -192,8 +193,12 @@ export function PRForm({
                     className={inputCls}
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="text-xs text-slate-500">NCC đề xuất</label>
+              </div>
+
+              {/* Hàng 2: Nhà cung cấp — ô tìm RIÊNG cho rộng + chip gợi ý bên cạnh */}
+              <div className="mt-3 grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-4">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Nhà cung cấp đề xuất</label>
                   <SearchSelect
                     options={supplierOpts}
                     value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
@@ -201,43 +206,43 @@ export function PRForm({
                     placeholder="Tìm NCC…"
                   />
                 </div>
-              </div>
-
-              {/* Gợi ý NCC theo sản phẩm đã chọn — bấm chip để chọn nhanh */}
-              {l.item_code && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-medium text-slate-500">NCC đề xuất:</span>
-                  {sugg.length === 0 ? (
-                    <span className="text-xs text-slate-400">Chưa có gợi ý cho hàng này — chọn ở ô “NCC đề xuất”.</span>
+                <div className="flex flex-wrap items-center gap-1.5 md:col-span-8 md:pt-6">
+                  {!l.item_code ? (
+                    <span className="text-xs text-slate-400">Chọn sản phẩm để xem gợi ý NCC.</span>
+                  ) : sugg.length === 0 ? (
+                    <span className="text-xs text-slate-400">Chưa có gợi ý cho hàng này — tìm ở ô bên trái.</span>
                   ) : (
-                    sugg.map((s) => (
-                      <button
-                        type="button"
-                        key={s.id}
-                        onClick={() => setLine(i, { supplier_suggestion: s.id })}
-                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
-                          l.supplier_suggestion === s.id
-                            ? "border-brand-500 bg-brand-500 text-white"
-                            : "border-slate-300 bg-white text-slate-600 hover:bg-brand-50"
-                        }`}
-                        title="Chọn nhà cung cấp này"
-                      >
-                        {s.name}
-                      </button>
-                    ))
+                    <>
+                      <span className="text-xs font-medium text-slate-500">Gợi ý:</span>
+                      {sugg.map((s) => (
+                        <button
+                          type="button"
+                          key={s.id}
+                          onClick={() => setLine(i, { supplier_suggestion: s.id })}
+                          className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                            l.supplier_suggestion === s.id
+                              ? "border-brand-500 bg-brand-500 text-white"
+                              : "border-slate-300 bg-white text-slate-600 hover:bg-brand-50"
+                          }`}
+                          title="Chọn nhà cung cấp này"
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </>
                   )}
                 </div>
-              )}
+              </div>
 
-              <div className="mt-2 flex items-center justify-between">
+              <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
                 <span className="text-xs text-slate-500">
-                  Thành tiền: <b>{money(l.quantity * l.estimated_price)}</b>
+                  Thành tiền: <b className="text-sm text-slate-800">{money(l.quantity * l.estimated_price)}</b>
                 </span>
                 {lines.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}
-                    className="text-xs text-rose-500 hover:underline"
+                    className="text-xs font-medium text-rose-500 hover:underline"
                   >
                     Xóa dòng
                   </button>
