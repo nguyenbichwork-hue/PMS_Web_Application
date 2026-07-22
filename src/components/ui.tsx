@@ -60,6 +60,7 @@ const STATUS_VI: Record<string, string> = {
   Active: "Đang dùng",
   Inactive: "Ngưng",
   Submitted: "Đã gửi",
+  Reopened: "Mở lại",
 };
 
 // Bộ màu 2 tông (sáng + tối) — chip trong suốt, nổi tinh tế trên nền tối.
@@ -82,7 +83,7 @@ const STATUS_TONE: Record<string, keyof typeof TONE> = {
   "Partially Received": "sky", Closed: "slate", Cancelled: "rose", Pending: "amber",
   Matched: "emerald", Warning: "amber", Failed: "rose", Paid: "violet",
   MATCHED: "emerald", WARNING: "amber", FAILED: "rose", PASS: "emerald", FAIL: "rose",
-  Active: "emerald", Inactive: "slate",
+  Active: "emerald", Inactive: "slate", Submitted: "indigo", Reopened: "sky",
 };
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {

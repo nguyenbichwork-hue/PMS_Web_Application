@@ -168,3 +168,35 @@ export async function rejectPRAction(prId: number, comment: string) {
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PR", documentId: prId, action: "Reject", newValue: comment || "Rejected" });
   revalidatePath(`/purchase-requests/${prId}`);
 }
+
+/** Mở lại PR đã BỊ TỪ CHỐI → đưa về 'Pending Approval', duyệt lại từ đầu
+ *  (current_level = 0). Chỉ vai trò có quyền duyệt (Manager/Finance/Admin) và
+ *  cùng công ty. Ghi 1 dòng lịch sử 'Reopened' + audit; KHÔNG đụng bình luận. */
+export async function reopenPRAction(prId: number, comment: string) {
+  const user = await requireUser();
+  if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
+  const pr = await queryOne<{ status: string; company_id: number | null }>(
+    `SELECT status, company_id FROM purchase_requests WHERE id = $1`,
+    [prId]
+  );
+  if (!pr || pr.status !== "Rejected") throw new Error("Chỉ mở lại được PR đang ở trạng thái Từ chối.");
+  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
+
+  await withTransaction(async (exec) => {
+    await exec(
+      `UPDATE purchase_requests SET status = 'Pending Approval', current_level = 0, updated_at = now()
+        WHERE id = $1 AND status = 'Rejected'`,
+      [prId]
+    );
+    await exec(
+      `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
+       VALUES ('PR',$1,$2,0,'Reopened',$3)`,
+      [prId, user.id, comment || null]
+    );
+    await logAudit(
+      { actorId: user.id, actorName: user.name, documentType: "PR", documentId: prId, action: "Reopen", newValue: comment || "Mở lại để duyệt lại" },
+      exec
+    );
+  });
+  revalidatePath(`/purchase-requests/${prId}`);
+}

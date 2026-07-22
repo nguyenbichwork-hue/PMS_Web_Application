@@ -6,9 +6,10 @@ import { canAccessCompany } from "@/lib/access";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { Card, PageHeader, StatusBadge, PriorityBadge, Th, Td } from "@/components/ui";
 import { money, date } from "@/lib/format";
-import { ApprovalPanel } from "./ApprovalPanel";
+import { ApprovalPanel, ReopenButton } from "./ApprovalPanel";
 import { SubmitButton } from "./SubmitButton";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { CommentPanel, type CommentItem } from "@/components/CommentPanel";
 import type { PurchaseRequest, PRItem, ApprovalRecord } from "@/lib/types";
 
 export default async function PRDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -47,6 +48,11 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
       WHERE a.document_type='PR' AND a.document_id=$1 ORDER BY a.id DESC`,
     [prId]
   );
+  const comments = await query<CommentItem>(
+    `SELECT id, author_id, author_name, body, created_at
+       FROM comments WHERE document_type='PR' AND document_id=$1 ORDER BY id`,
+    [prId]
+  );
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   const canApprove =
@@ -55,6 +61,8 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
     pr.status === "Pending Approval" &&
     isNextApprover(chain, pr.current_level, user.role);
   const canSubmit = user && pr.status === "Draft" && pr.requester_id === user.id;
+  // Mở lại PR bị từ chối — chỉ vai trò có quyền duyệt, cùng công ty.
+  const canReopen = !!user && can(user.role, "pr.approve") && pr.status === "Rejected" && canAccessCompany(user, pr.company_id);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -158,7 +166,18 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
           </Card>
 
           {canApprove && <ApprovalPanel prId={prId} />}
+          {canReopen && <ReopenButton prId={prId} />}
           {canSubmit && <SubmitButton prId={prId} />}
+
+          {/* Bình luận độc lập — hiển thị XUYÊN SUỐT (mọi trạng thái). Nhân viên
+              vẫn bình luận được kể cả khi PR đã duyệt (chỉ không sửa nội dung). */}
+          <CommentPanel
+            documentType="PR"
+            documentId={prId}
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            isAdmin={user?.role === "Admin"}
+          />
 
           <AttachmentPanel documentType="PR" documentId={prId} attachments={attachments} />
 

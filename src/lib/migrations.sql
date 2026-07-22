@@ -95,3 +95,24 @@ ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_status_che
 ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS po_status_check_v2;
 ALTER TABLE purchase_orders ADD  CONSTRAINT po_status_check_v2
   CHECK (status IN ('Draft','Approved','Sent','Confirmed','Received','Partially Received','Closed','Cancelled'));
+
+-- ---------- BÌNH LUẬN ĐỘC LẬP (tách khỏi approval_history) ----------
+-- Bình luận tự do trên chứng từ (PR/PO/Invoice…) — KHÔNG gắn cấp duyệt,
+-- KHÔNG đổi trạng thái. Trao đổi thảo luận xuyên suốt vòng đời chứng từ.
+CREATE TABLE IF NOT EXISTS comments (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  document_type TEXT   NOT NULL,                 -- 'PR' | 'PO' | 'Invoice' | ...
+  document_id   BIGINT NOT NULL,
+  author_id     BIGINT REFERENCES users(id),
+  author_name   TEXT,
+  body          TEXT   NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comments_doc ON comments(document_type, document_id);
+
+-- ---------- MỞ LẠI PR bị từ chối: thêm trạng thái lịch sử 'Reopened' ----------
+-- Cho phép ghi 1 dòng approval_history khi Manager mở lại PR (Rejected → Pending).
+ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS approval_history_status_check;
+ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS ah_status_check_v2;
+ALTER TABLE approval_history ADD  CONSTRAINT ah_status_check_v2
+  CHECK (status IN ('Approved','Rejected','Submitted','Reopened'));

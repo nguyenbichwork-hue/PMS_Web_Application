@@ -71,9 +71,12 @@ export async function updatePOAction(formData: FormData) {
     delivery_date: string | null;
     payment_term: string | null;
     company_id: number | null;
-  }>(`SELECT supplier_id, delivery_date, payment_term, company_id FROM purchase_orders WHERE id = $1`, [poId]);
+    status: string;
+  }>(`SELECT supplier_id, delivery_date, payment_term, company_id, status FROM purchase_orders WHERE id = $1`, [poId]);
   if (!current) throw new Error("PO not found");
   if (!canAccessCompany(user, current.company_id)) throw new Error("FORBIDDEN");
+  // Chỉ được sửa nội dung khi PO còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ bình luận).
+  if (current.status !== "Draft") throw new Error("PO đã được duyệt — không thể chỉnh sửa nội dung nữa.");
 
   const supplier_id = formData.get("supplier_id") ? Number(formData.get("supplier_id")) : null;
   const delivery_date = String(formData.get("delivery_date") ?? "") || null;

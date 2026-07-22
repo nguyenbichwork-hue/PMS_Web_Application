@@ -8,6 +8,7 @@ import { money, date } from "@/lib/format";
 import { POActions } from "./POActions";
 import { POEditor } from "./POEditor";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { CommentPanel, type CommentItem } from "@/components/CommentPanel";
 import type { PurchaseOrder, POItem, Supplier, Company } from "@/lib/types";
 
 interface ChangeRow {
@@ -50,8 +51,14 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
       WHERE a.document_type='PO' AND a.document_id=$1 ORDER BY a.id DESC`,
     [poId]
   );
+  const comments = await query<CommentItem>(
+    `SELECT id, author_id, author_name, body, created_at
+       FROM comments WHERE document_type='PO' AND document_id=$1 ORDER BY id`,
+    [poId]
+  );
 
-  const editable = user && can(user.role, "po.manage") && ["Draft", "Approved"].includes(po.status);
+  // Chỉ sửa nội dung PO khi còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ được bình luận).
+  const editable = user && can(user.role, "po.manage") && po.status === "Draft";
   const canManage = !!(user && can(user.role, "po.manage"));
 
   return (
@@ -139,6 +146,17 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
           <POActions poId={poId} status={po.status} canManage={canManage} />
 
           <AttachmentPanel documentType="PO" documentId={poId} attachments={attachments} canManage={canManage} />
+
+          {/* Bình luận độc lập — hiển thị xuyên suốt; đơn đã duyệt thì nhân viên
+              vẫn bình luận được (chỉ không sửa nội dung). */}
+          <CommentPanel
+            documentType="PO"
+            documentId={poId}
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            isAdmin={user?.role === "Admin"}
+          />
+
 
           {["Received", "Partially Received"].includes(po.status) && (
             <Card className="p-5">
