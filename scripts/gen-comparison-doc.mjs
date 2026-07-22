@@ -25,11 +25,12 @@ const children = [
   new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Đối chiếu tính năng đã đáp ứng và phần CHƯA làm được (đang chờ bank API / master data / hạng mục lớn)", italics: true, size: 21, color: "475569" })] }),
   new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: BRAND } }, children: [] }),
   new Paragraph({ spacing: { before: 120, after: 40 }, children: [new TextRun({ text: "Nguồn đặc tả: Dac_ta_logic_he_thong_PR_PO_GRN_INV_Payment.docx (v1.0, 22/07/2026)", size: 20, color: "64748B" })] }),
-  new Paragraph({ spacing: { after: 220 }, children: [new TextRun({ text: "Ngày lập: 22/07/2026 · Tài liệu chỉ để đọc", size: 20, color: "64748B" })] }),
+  new Paragraph({ spacing: { after: 220 }, children: [new TextRun({ text: "Ngày lập: 22/07/2026 (bản cập nhật sau đợt 1: file hash + Credit Note) · Tài liệu chỉ để đọc", size: 20, color: "64748B" })] }),
 
   H1("0. Kết luận nhanh"),
-  P([{ b: true, text: "Đầy đủ như đặc tả chưa? — CHƯA. " }, "Hệ thống hiện ≈ ", { b: true, text: "55–60% của MVP bắt buộc (§20.1)" }, ". Đã chạy tốt phần xương sống PR → PO → Nhận hàng → Hóa đơn → Thanh toán + duyệt nhiều cấp + 3-way match + audit + phân quyền theo công ty; nhưng đặc tả là hệ P2P cấp doanh nghiệp nên còn nhiều phần chưa làm."]),
+  P([{ b: true, text: "Đầy đủ như đặc tả chưa? — CHƯA. " }, "Hệ thống hiện ≈ ", { b: true, text: "58–62% của MVP bắt buộc (§20.1)" }, ". Đã chạy tốt phần xương sống PR → PO → Nhận hàng → Hóa đơn → Thanh toán + duyệt nhiều cấp + 3-way match + audit + phân quyền theo công ty; nhưng đặc tả là hệ P2P cấp doanh nghiệp nên còn nhiều phần chưa làm."]),
   P([{ b: true, text: "Phần chưa làm là CHỦ Ý (đang chờ), không phải bỏ sót: " }, "chờ API ngân hàng, chờ master data đang gom, và một số hạng mục lớn để làm sau."]),
+  P([{ b: true, color: "15803D", text: "Cập nhật gần nhất (đợt 1): " }, "đã bổ sung ", { b: true, text: "file hash SHA-256 chống trùng tệp" }, " và ", { b: true, text: "Credit Note" }, " (điều chỉnh giảm nghĩa vụ hóa đơn + trạng thái Credited)."]),
   P([{ b: true, text: "Chú thích trạng thái: " }, { b: true, color: "15803D", text: "✅ Đã có" }, "  ·  ", { b: true, color: "B45309", text: "🟡 Một phần" }, "  ·  ", { b: true, color: "B91C1C", text: "❌ Chưa có" }]),
 
   H1("1. Đối chiếu 12 mục MVP bắt buộc (§20.1)"),
@@ -38,7 +39,7 @@ const children = [
     ["2", "PR + phê duyệt", "Có: tạo/gửi/duyệt nhiều cấp theo ngưỡng tiền, từ chối, mở lại. Thiếu: kiểm ngân sách, duyệt theo dòng", "🟡"],
     ["3", "PO từ PR + allocation N:N + duyệt", "PO tự sinh 1:1 từ PR, có duyệt. Thiếu: allocation N:N cấp dòng (1 PR tách nhiều PO / gộp)", "🟡"],
     ["4", "GRN/SES nhận nhiều lần + return/reversal", "GRN nhận nhiều lần (từng phần). Thiếu: SES dịch vụ, return, reversal, tách accepted/rejected", "🟡"],
-    ["5", "Invoice nhập file + chống trùng + 3-way match", "3-way match + chống trùng (NCC+số HĐ) + hóa đơn từng phần. Thiếu: đọc XML/PDF, file hash", "🟡"],
+    ["5", "Invoice nhập file + chống trùng + 3-way match", "3-way match + chống trùng (NCC+số HĐ) + file hash SHA-256 + hóa đơn từng phần + Credit Note. Thiếu: đọc XML/PDF e-invoice", "🟡"],
     ["6", "Payment Request (invoice/advance) + duyệt", "Chưa có thực thể Payment Request; chưa có tạm ứng", "❌"],
     ["7", "Payment status + allocation + chống trả trùng", "Thanh toán từng đợt cơ bản. Thiếu: vòng đời ngân hàng, allocation, idempotency", "🟡"],
     ["8", "Document chain cấp dòng", "Có màn truy vết cấp header (PR→PO→GRN→INV→PAY). Thiếu: cấp dòng + số dư allocation", "🟡"],
@@ -74,7 +75,8 @@ const children = [
     ["GRN nhận nhiều lần, tách accepted/rejected/returned", "Nhận nhiều lần (received_qty). Thiếu tách accepted/rejected, return", "🟡"],
     ["SES nghiệm thu dịch vụ theo milestone", "Chưa có", "❌"],
     ["Invoice 3-way match (Supplier/Qty/Price/Tax/Amount) + tolerance", "Có đủ 5 check + tolerance cấu hình", "✅"],
-    ["Chống trùng hóa đơn (unique key + file hash)", "Chặn cùng NCC + số HĐ. Thiếu file hash (SHA-256)", "🟡"],
+    ["Chống trùng hóa đơn (unique key + file hash)", "Chặn cùng NCC + số HĐ + file hash SHA-256 (trùng nội dung tệp)", "✅"],
+    ["Credit note — điều chỉnh giảm nghĩa vụ sau hóa đơn (§14)", "Có: Điều chỉnh giảm + trạng thái Credited, trừ khỏi số phải trả. Return note (trả hàng vật lý) chưa có", "🟡"],
     ["Đọc XML/PDF e-invoice, xác minh MST/số tiền", "Chưa có (chờ dịch vụ e-invoice)", "❌"],
     ["Payment Request (gom nhiều HĐ) + duyệt", "Chưa có; đang thanh toán trực tiếp trên hóa đơn", "❌"],
     ["Payment vòng đời ngân hàng + allocation + map số tiền thực chi", "Thanh toán từng đợt cơ bản. Map tiền thực chi CHỜ API ngân hàng", "❌"],
@@ -103,10 +105,10 @@ const children = [
   H2("3.3 🧱 HẠNG MỤC LỚN — làm được ngay, để sau (không chờ bên ngoài)"),
   BULLET("Versioning / Amendment có phiên bản + document_status_history + re-approval khi đổi thông tin quan trọng."),
   BULLET("Allocation N:N cấp dòng (po_pr_line_allocation, invoice_receipt_allocation, payment_allocation) → nền cho document chain cấp dòng + chống over-allocation."),
-  BULLET("SES (nghiệm thu dịch vụ theo milestone); Return / Credit-Debit note."),
+  BULLET("SES (nghiệm thu dịch vụ theo milestone); Return note (trả hàng vật lý) + Debit note. (Credit note đã có.)"),
   BULLET("Payment Request + tạm ứng (khung tạo/duyệt/cấn trừ; khâu CHI tiền thật chờ bank)."),
   BULLET("PR duyệt/từ chối theo từng dòng; Non-PO invoice whitelist."),
-  BULLET("Idempotency key + SELECT FOR UPDATE cho allocation; unique invoice cấp DB; file hash SHA-256."),
+  BULLET("Idempotency key + SELECT FOR UPDATE cho allocation; unique invoice cấp DB. (file hash SHA-256 đã có.)"),
   BULLET("Notifications/Task; Delegation approval; mở rộng bộ UAT (45 case)."),
 
   H1("4. Tiêu chí Go-live còn thiếu (§20.3)"),
@@ -136,5 +138,13 @@ const doc = new Document({
 });
 const buf = await Packer.toBuffer(doc);
 const out = `${OUT}/So_Sanh_Web_vs_DacTa.docx`;
-fs.writeFileSync(out, buf);
-console.log("✓ Đã tạo:", out, `(${(buf.length / 1024).toFixed(1)} KB)`);
+try {
+  fs.writeFileSync(out, buf);
+  console.log("✓ Đã tạo:", out, `(${(buf.length / 1024).toFixed(1)} KB)`);
+} catch (e) {
+  if (e.code === "EBUSY" || e.code === "EPERM") {
+    const alt = `${OUT}/So_Sanh_Web_vs_DacTa_moi.docx`;
+    fs.writeFileSync(alt, buf);
+    console.log("⚠ File gốc đang mở (khóa) — đã ghi BẢN MỚI:", alt, `(${(buf.length / 1024).toFixed(1)} KB)`);
+  } else throw e;
+}
