@@ -80,11 +80,16 @@ export async function pullUsersIntoLocal(runLocal: Run): Promise<number> {
   );
   for (const u of rows) {
     await runLocal(
+      // Gán company_id = pháp nhân baseline (công ty đầu tiên) thay vì NULL —
+      // nếu để NULL thì scope-theo-công-ty (access.ts) lọc `company_id = NULL`
+      // không bao giờ khớp → user non-Admin thấy TRỐNG mọi danh sách. COALESCE
+      // trong nhánh UPDATE để backfill user cũ đang NULL mà không đè công ty đã gán.
       `INSERT INTO users (name, email, password, department, role, company_id, status)
-       VALUES ($1,$2,$3,$4,$5,NULL,$6)
+       VALUES ($1,$2,$3,$4,$5,(SELECT id FROM companies ORDER BY id LIMIT 1),$6)
        ON CONFLICT (email) DO UPDATE SET
          name=EXCLUDED.name, password=EXCLUDED.password, department=EXCLUDED.department,
-         role=EXCLUDED.role, status=EXCLUDED.status`,
+         role=EXCLUDED.role, status=EXCLUDED.status,
+         company_id=COALESCE(users.company_id, EXCLUDED.company_id)`,
       [u.name, u.email, u.password, u.department, u.role, u.status]
     );
   }
@@ -103,11 +108,13 @@ export async function syncOneUserToLocal(email: string, runLocal: Run): Promise<
   const u = rows[0];
   if (!u) return;
   await runLocal(
+    // Xem ghi chú ở pullUsersIntoLocal: gán baseline company + backfill NULL.
     `INSERT INTO users (name, email, password, department, role, company_id, status)
-     VALUES ($1,$2,$3,$4,$5,NULL,$6)
+     VALUES ($1,$2,$3,$4,$5,(SELECT id FROM companies ORDER BY id LIMIT 1),$6)
      ON CONFLICT (email) DO UPDATE SET
        name=EXCLUDED.name, password=EXCLUDED.password, department=EXCLUDED.department,
-       role=EXCLUDED.role, status=EXCLUDED.status`,
+       role=EXCLUDED.role, status=EXCLUDED.status,
+       company_id=COALESCE(users.company_id, EXCLUDED.company_id)`,
     [u.name, u.email, u.password, u.department, u.role, u.status]
   );
 }

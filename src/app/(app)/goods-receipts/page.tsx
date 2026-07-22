@@ -56,7 +56,7 @@ export default async function GRList({ searchParams }: { searchParams: Promise<R
         }
       />
       <Filters searchPlaceholder="Tìm theo số phiếu / số đơn…" filters={[]} />
-      <Card>
+      <Card className="overflow-hidden">
         <table className="w-full">
           <thead>
             <tr>

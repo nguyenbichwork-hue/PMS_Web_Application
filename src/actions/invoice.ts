@@ -3,8 +3,23 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
+import { canAccessCompany } from "@/lib/access";
 import { evaluateMatch, type MatchLine } from "@/lib/matching";
 import { logAudit } from "@/lib/audit";
+
+/** Chặn IDOR trên hóa đơn theo công ty của PO gốc. Hóa đơn KHÔNG gắn PO thì
+ *  không có công ty để scope → chỉ dựa trên quyền theo vai trò (đã kiểm trước). */
+async function assertInvoiceAccess(
+  user: { role: string; company_id: number | null },
+  invoiceId: number
+): Promise<void> {
+  const row = await queryOne<{ company_id: number | null }>(
+    `SELECT po.company_id FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id WHERE i.id = $1`,
+    [invoiceId]
+  );
+  if (row && row.company_id != null && !canAccessCompany(user as never, row.company_id))
+    throw new Error("FORBIDDEN");
+}
 
 interface InvLine {
   item_code?: string;
@@ -44,13 +59,15 @@ export async function createInvoiceAction(formData: FormData) {
   let checks: { check_name: string; result: string; reason: string }[] = [];
 
   if (po_id) {
-    const po = await queryOne<{ supplier_id: number | null; grand_total: string; vat_total: string; po_qty: string; po_sub: string }>(
-      `SELECT po.supplier_id, po.grand_total, po.vat_total,
+    const po = await queryOne<{ supplier_id: number | null; company_id: number | null; grand_total: string; vat_total: string; po_qty: string; po_sub: string }>(
+      `SELECT po.supplier_id, po.company_id, po.grand_total, po.vat_total,
               COALESCE((SELECT sum(quantity) FROM purchase_order_items WHERE po_id = po.id),0) AS po_qty,
               COALESCE((SELECT sum(quantity*unit_price - discount) FROM purchase_order_items WHERE po_id = po.id),0) AS po_sub
          FROM purchase_orders po WHERE po.id = $1`,
       [po_id]
     );
+    if (!po) throw new Error("PO not found");
+    if (!canAccessCompany(user, po.company_id)) throw new Error("FORBIDDEN"); // chặn IDOR: PO khác công ty
     poSupplierId = po?.supplier_id ?? null;
 
     // Đơn giá PO theo từng mã hàng (để so khớp theo dòng).
@@ -97,7 +114,9 @@ export async function createInvoiceAction(formData: FormData) {
     const proratedVat = poQty > 0 ? (invQty / poQty) * Number(po?.vat_total ?? 0) : Number(po?.vat_total ?? 0);
 
     const result = evaluateMatch({
-      invoiceSupplierId: supplierInput ?? poSupplierId, // supplier thật của hóa đơn
+      // Supplier THẬT của hóa đơn — KHÔNG fallback về poSupplierId (nếu để fallback
+      // thì thiếu supplier sẽ tự PASS check Supplier). Null → matching trả WARNING.
+      invoiceSupplierId: supplierInput,
       poSupplierId,
       invoiceQty: invQty,
       poQty: remainingPoQty,
@@ -163,6 +182,7 @@ export async function addPaymentAction(formData: FormData) {
   const reference = String(formData.get("reference") ?? "") || null;
   if (!invoiceId) throw new Error("Thiếu hóa đơn.");
   if (!(amount > 0)) throw new Error("Số tiền thanh toán phải lớn hơn 0.");
+  await assertInvoiceAccess(user, invoiceId);
 
   const inv = await queryOne<{ total_amount: string; status: string }>(
     `SELECT total_amount, status FROM invoices WHERE id = $1`,
@@ -201,6 +221,7 @@ export async function addPaymentAction(formData: FormData) {
 export async function markInvoicePaidAction(invoiceId: number) {
   const user = await requireUser();
   if (!can(user.role, "invoice.manage")) throw new Error("FORBIDDEN");
+  await assertInvoiceAccess(user, invoiceId);
   const inv = await queryOne<{ total_amount: string; status: string }>(`SELECT total_amount, status FROM invoices WHERE id=$1`, [invoiceId]);
   if (!inv || inv.status === "Paid") return;
   const paid = await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) s FROM payments WHERE invoice_id=$1`, [invoiceId]);

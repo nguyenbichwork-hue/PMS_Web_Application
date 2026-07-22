@@ -132,7 +132,7 @@ export default async function PRListPage({
         ]}
       />
 
-      <Card>
+      <Card className="overflow-hidden">
         <table className="w-full">
           <thead>
             <tr>

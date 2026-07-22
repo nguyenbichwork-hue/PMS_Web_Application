@@ -7,13 +7,20 @@ import type { Role, User } from "./types";
 
 const COOKIE = "pms_session";
 
-// Bí mật ký phiên. Ở local dùng giá trị mặc định; production đặt qua env
-// PMS_SESSION_SECRET (bắt buộc khi deploy). Cookie được KÝ HMAC nên không
-// thể giả mạo bằng cách đổi user id thủ công.
-const SECRET = process.env.PMS_SESSION_SECRET ?? "pms-local-dev-secret-change-me";
+// Bí mật ký phiên. Ở local dùng giá trị mặc định; production PHẢI đặt qua env
+// PMS_SESSION_SECRET — nếu thiếu ở production thì throw (không cho dùng secret
+// mặc định hard-code, vì ai đọc source cũng ký được cookie cho user id bất kỳ).
+// Đọc lúc runtime (không phải module-load) để không vỡ build.
+function getSecret(): string {
+  const s = process.env.PMS_SESSION_SECRET;
+  if (s) return s;
+  if (process.env.NODE_ENV === "production")
+    throw new Error("PMS_SESSION_SECRET là bắt buộc ở production (không dùng secret mặc định).");
+  return "pms-local-dev-secret-change-me";
+}
 
 function sign(value: string): string {
-  return createHmac("sha256", SECRET).update(value).digest("base64url");
+  return createHmac("sha256", getSecret()).update(value).digest("base64url");
 }
 
 /** Tạo giá trị cookie đã ký: "<id>.<hmac>". */

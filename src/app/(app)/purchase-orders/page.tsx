@@ -97,7 +97,7 @@ export default async function POListPage({
           },
         ]}
       />
-      <Card>
+      <Card className="overflow-hidden">
         <table className="w-full">
           <thead>
             <tr>

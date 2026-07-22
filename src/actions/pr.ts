@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
+import { canAccessCompany } from "@/lib/access";
 import { docNumber } from "@/lib/numbering";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { generatePOFromPR } from "@/lib/po-generate";
@@ -83,11 +84,12 @@ export async function createPRAction(formData: FormData) {
 
 export async function submitPRAction(prId: number) {
   const user = await requireUser();
-  const pr = await queryOne<{ requester_id: number; status: string }>(
-    `SELECT requester_id, status FROM purchase_requests WHERE id = $1`,
+  const pr = await queryOne<{ requester_id: number; status: string; company_id: number | null }>(
+    `SELECT requester_id, status, company_id FROM purchase_requests WHERE id = $1`,
     [prId]
   );
   if (!pr || pr.status !== "Draft") throw new Error("Chỉ PR nháp mới được gửi duyệt.");
+  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
   await query(`UPDATE purchase_requests SET status = 'Pending Approval', updated_at = now() WHERE id = $1`, [prId]);
   await query(
     `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
@@ -102,11 +104,12 @@ export async function approvePRAction(prId: number, comment: string) {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
 
-  const pr = await queryOne<{ total_amount: string; current_level: number; status: string }>(
-    `SELECT total_amount, current_level, status FROM purchase_requests WHERE id = $1`,
+  const pr = await queryOne<{ total_amount: string; current_level: number; status: string; company_id: number | null }>(
+    `SELECT total_amount, current_level, status, company_id FROM purchase_requests WHERE id = $1`,
     [prId]
   );
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
+  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   if (!isNextApprover(chain, pr.current_level, user.role)) {
@@ -150,11 +153,12 @@ export async function approvePRAction(prId: number, comment: string) {
 export async function rejectPRAction(prId: number, comment: string) {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
-  const pr = await queryOne<{ current_level: number; status: string }>(
-    `SELECT current_level, status FROM purchase_requests WHERE id = $1`,
+  const pr = await queryOne<{ current_level: number; status: string; company_id: number | null }>(
+    `SELECT current_level, status, company_id FROM purchase_requests WHERE id = $1`,
     [prId]
   );
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
+  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
   await query(`UPDATE purchase_requests SET status = 'Rejected', updated_at = now() WHERE id = $1`, [prId]);
   await query(
     `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)

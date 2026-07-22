@@ -107,7 +107,7 @@ export default async function InvoiceList({ searchParams }: { searchParams: Prom
           },
         ]}
       />
-      <Card>
+      <Card className="overflow-hidden">
         <table className="w-full">
           <thead>
             <tr>

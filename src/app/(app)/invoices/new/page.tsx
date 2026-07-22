@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
+import { pushCompanyScope } from "@/lib/access";
 import { PageHeader } from "@/components/ui";
 import { InvoiceForm } from "./InvoiceForm";
 
@@ -10,6 +11,10 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   if (!user) redirect("/login");
   if (!can(user.role, "invoice.manage")) redirect("/invoices");
 
+  // Chỉ liệt kê PO thuộc công ty của user (Admin thấy tất cả).
+  const poWhere = [`po.status IN ('Sent','Confirmed','Received','Approved','Partially Received')`];
+  const poParams: unknown[] = [];
+  pushCompanyScope(user, "po.company_id", poWhere, poParams);
   const pos = await query<{
     id: number;
     po_number: string;
@@ -20,14 +25,18 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   }>(
     `SELECT po.id, po.po_number, po.supplier_id, s.supplier_name, po.grand_total, po.vat_total
        FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-      WHERE po.status IN ('Sent','Confirmed','Received','Approved','Partially Received')
-      ORDER BY po.id DESC`
+      WHERE ${poWhere.join(" AND ")}
+      ORDER BY po.id DESC`,
+    poParams
   );
 
   const suppliers = await query<{ id: number; supplier_name: string }>(
     `SELECT id, supplier_name FROM suppliers WHERE status='Active' ORDER BY supplier_name`
   );
 
+  const itWhere = [`po.status IN ('Sent','Confirmed','Received','Approved','Partially Received')`];
+  const itParams: unknown[] = [];
+  pushCompanyScope(user, "po.company_id", itWhere, itParams);
   const items = await query<{
     po_id: number;
     item_code: string | null;
@@ -38,7 +47,8 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
     `SELECT poi.po_id, poi.item_code, poi.description, poi.quantity, poi.unit_price
        FROM purchase_order_items poi
        JOIN purchase_orders po ON po.id = poi.po_id
-      WHERE po.status IN ('Sent','Confirmed','Received','Approved','Partially Received')`
+      WHERE ${itWhere.join(" AND ")}`,
+    itParams
   );
 
   return (

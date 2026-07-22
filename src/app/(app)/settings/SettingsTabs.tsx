@@ -85,10 +85,13 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
       </div>
       <div className="overflow-hidden rounded-lg border border-slate-200">
         <table className="w-full">
-          <thead><tr><Th>Từ</Th><Th>Đến</Th><Th>Chuỗi duyệt</Th><Th /></tr></thead>
+          <thead><tr><Th>Từ</Th><Th>Đến</Th><Th>Chuỗi duyệt</Th><Th className="text-right">Thao tác</Th></tr></thead>
           <tbody>
+            {rules.length === 0 && (
+              <tr><Td colSpan={4} className="text-slate-400">Chưa có ngưỡng duyệt nào — bấm “+ Thêm ngưỡng”.</Td></tr>
+            )}
             {rules.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="hover:bg-slate-50">
                 <Td>{money(r.amount_min)}</Td>
                 <Td>{r.amount_max === null ? "∞" : money(r.amount_max)}</Td>
                 <Td>
@@ -102,7 +105,7 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
                   </div>
                 </Td>
                 <Td>
-                  <div className="flex gap-3">
+                  <div className="flex justify-end gap-3">
                     <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(r)}>Sửa</button>
                     <button
                       className="text-sm text-rose-500 hover:underline"
@@ -181,8 +184,11 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
       </div>
       <div className="overflow-hidden rounded-lg border border-slate-200">
         <table className="w-full">
-          <thead><tr><Th>Tên</Th><Th>Email</Th><Th>Phòng ban</Th><Th>Vai trò</Th><Th>Công ty</Th><Th>Trạng thái</Th><Th /></tr></thead>
+          <thead><tr><Th>Tên</Th><Th>Email</Th><Th>Phòng ban</Th><Th>Vai trò</Th><Th>Công ty</Th><Th>Trạng thái</Th><Th className="text-right">Thao tác</Th></tr></thead>
           <tbody>
+            {users.length === 0 && (
+              <tr><Td colSpan={7} className="text-slate-400">Chưa có người dùng nào — bấm “+ Thêm người dùng”.</Td></tr>
+            )}
             {users.map((u) => (
               <tr key={u.id} className="hover:bg-slate-50">
                 <Td className="font-medium">{u.name}</Td>
@@ -192,7 +198,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
                 <Td>{u.company_name ?? "—"}</Td>
                 <Td><StatusBadge status={u.status} /></Td>
                 <Td>
-                  <div className="flex gap-3">
+                  <div className="flex justify-end gap-3">
                     <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(u)}>Sửa</button>
                     <button className="text-sm text-rose-500 hover:underline disabled:opacity-40" onClick={() => remove(u)} disabled={pending}>Xóa</button>
                   </div>

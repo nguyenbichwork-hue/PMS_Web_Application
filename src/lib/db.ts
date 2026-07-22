@@ -99,6 +99,29 @@ async function initialize(
     } catch (e) {
       console.warn("[db] baseline company bỏ qua:", e instanceof Error ? e.message : e);
     }
+
+    // Luồng duyệt mặc định theo NGƯỠNG TIỀN — nếu không có, resolveApprovalChain
+    // luôn fallback ["Manager"] (mất phân ngưỡng). Chỉ chèn khi bảng rỗng.
+    try {
+      const { rows } = await db.query<{ c: number }>(`SELECT count(*)::int AS c FROM approval_rules`);
+      if ((rows[0]?.c ?? 0) === 0) {
+        const defaults: [number, number | null, string][] = [
+          [0, 20_000_000, JSON.stringify(["Manager"])],
+          [20_000_000, 100_000_000, JSON.stringify(["Manager", "Finance"])],
+          [100_000_000, null, JSON.stringify(["Manager", "Finance", "Admin"])],
+        ];
+        for (const [min, max, levels] of defaults) {
+          await db.query(
+            `INSERT INTO approval_rules (document_type, amount_min, amount_max, levels)
+             VALUES ('PR',$1,$2,$3::jsonb)`,
+            [min, max, levels]
+          );
+        }
+        console.log("[db] baseline: nạp 3 ngưỡng duyệt PR mặc định.");
+      }
+    } catch (e) {
+      console.warn("[db] baseline approval_rules bỏ qua:", e instanceof Error ? e.message : e);
+    }
   }
 
   // Chế độ ACCOUNTS_ONLY: kéo tài khoản từ Supabase (master) vào local để

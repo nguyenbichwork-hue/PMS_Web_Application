@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveSupplierAction, deleteSupplierAction } from "@/actions/master";
 import { Field, inputCls, Button } from "@/components/ui";
+import { Modal } from "@/components/Modal";
 import type { Supplier } from "@/lib/types";
 
 export function SupplierManager({ supplier }: { supplier?: Supplier }) {
@@ -33,10 +34,7 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
         <Button onClick={() => setOpen(true)}>+ Thêm NCC</Button>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOpen(false)}>
-          <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{editing ? "Sửa nhà cung cấp" : "Thêm nhà cung cấp"}</h3>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Sửa nhà cung cấp" : "Thêm nhà cung cấp"}>
             <form action={async (fd) => { await saveSupplierAction(fd); setOpen(false); }} className="space-y-3">
               {editing && <input type="hidden" name="id" value={supplier.id} />}
               <div className="grid grid-cols-2 gap-3">
@@ -99,9 +97,7 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
                 <Button type="submit">Lưu</Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 }

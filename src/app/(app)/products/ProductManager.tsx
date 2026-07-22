@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveProductAction, deleteProductAction } from "@/actions/master";
 import { Field, inputCls, Button } from "@/components/ui";
+import { Modal } from "@/components/Modal";
 import type { Product, Supplier } from "@/lib/types";
 
 export function ProductManager({ product, suppliers }: { product?: Product; suppliers: Supplier[] }) {
@@ -31,10 +32,7 @@ export function ProductManager({ product, suppliers }: { product?: Product; supp
         <Button onClick={() => setOpen(true)}>+ Thêm sản phẩm</Button>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{editing ? "Sửa sản phẩm" : "Thêm sản phẩm"}</h3>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Sửa sản phẩm" : "Thêm sản phẩm"}>
             <form action={async (fd) => { await saveProductAction(fd); setOpen(false); }} className="space-y-3">
               {editing && <input type="hidden" name="id" value={product.id} />}
               <div className="grid grid-cols-2 gap-3">
@@ -82,9 +80,7 @@ export function ProductManager({ product, suppliers }: { product?: Product; supp
                 <Button type="submit">Lưu</Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 }
