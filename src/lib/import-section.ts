@@ -21,6 +21,7 @@ export interface ParsedSectionSupplier {
 export interface ParsedSectionProduct {
   item_code: string; item_name: string; category: string | null; unit: string;
   vat_rate: number; accounting_code: string | null; status: string;
+  default_supplier_code: string | null; // NCC mặc định (mã hoặc tên) — action tự khớp về id
 }
 export interface ParsedSectionUser {
   name: string; email: string; department: string | null; role: string;
@@ -67,6 +68,8 @@ const CONFIG: Record<Section, SectionConfig> = {
       { key: "unit", aliases: ["donvitinh", "dvt", "donvi", "unit"] },
       { key: "vat_rate", aliases: ["thuesuatgtgt", "thuesuat", "vatrate", "vat", "gtgt"] },
       { key: "accounting_code", aliases: ["taikhoankho", "matkketoan", "maketoan", "accountingcode"] },
+      // NCC mặc định: chấp nhận mã (SUP-xxx) hoặc tên NCC — action khớp về id.
+      { key: "default_supplier_code", aliases: ["nccmacdinh", "nhacungcapmacdinh", "manhacungcapmacdinh", "mancc", "manhacungcap", "nhacungcap", "ncc", "defaultsupplier", "suppliercode", "supplier"] },
       { key: "status", aliases: ["trangthai", "status"] },
     ],
   },
@@ -188,6 +191,7 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
         category: g("category") || null, unit: g("unit") || "Cái",
         vat_rate: toNum(g("vat_rate")) ?? 10,
         accounting_code: g("accounting_code") || null, status: okStatus(g("status")),
+        default_supplier_code: g("default_supplier_code").trim() || null,
       });
     } else {
       // users

@@ -17,7 +17,7 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
     title: "Nhập hàng hóa / dịch vụ từ Excel",
     entity: "hàng hóa",
     btn: "⬆ Nhập Excel",
-    hint: "File .xlsx có cột Mã và Tên (tùy chọn thêm ĐVT, Nhóm, Thuế suất). Hệ thống tự dò dòng tiêu đề. Trùng mã sẽ được cập nhật.",
+    hint: "File .xlsx có cột Mã và Tên (tùy chọn thêm ĐVT, Nhóm, Thuế suất, và cột NCC mặc định — điền mã 'SUP-xxx' hoặc tên nhà cung cấp để gắn NCC cho hàng). Hệ thống tự dò dòng tiêu đề. Trùng mã sẽ được cập nhật.",
   },
   users: {
     title: "Nhập người dùng từ Excel",

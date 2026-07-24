@@ -84,15 +84,30 @@ export async function importSectionAction(section: Section, formData: FormData):
           if (row?.inserted) added++; else updated++;
         }
       } else if (section === "products") {
+        // Bản đồ khớp NCC: theo MÃ trước, rồi TÊN (không phân biệt hoa/thường).
+        const byCode = new Map<string, number>();
+        const byName = new Map<string, number>();
+        for (const sup of await exec<{ id: number; supplier_code: string; supplier_name: string }>(`SELECT id, supplier_code, supplier_name FROM suppliers`)) {
+          byCode.set(sup.supplier_code.trim().toLowerCase(), sup.id);
+          byName.set(sup.supplier_name.trim().toLowerCase(), sup.id);
+        }
         for (const p of parsed.products!) {
+          // Khớp NCC mặc định; nếu cột trống → null (không ghi đè binding cũ nhờ COALESCE).
+          let supId: number | null = null;
+          if (p.default_supplier_code) {
+            const k = p.default_supplier_code.trim().toLowerCase();
+            supId = byCode.get(k) ?? byName.get(k) ?? null;
+            if (!supId) warnings.push(`Hàng "${p.item_code}": không thấy NCC "${p.default_supplier_code}" → bỏ qua gán NCC mặc định.`);
+          }
           const row = await firstRow<{ inserted: boolean }>(exec,
-            `INSERT INTO products (item_code, item_name, category, unit, vat_rate, accounting_code, status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)
+            `INSERT INTO products (item_code, item_name, category, unit, vat_rate, accounting_code, status, default_supplier)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
              ON CONFLICT (item_code) DO UPDATE SET
                item_name=EXCLUDED.item_name, category=EXCLUDED.category, unit=EXCLUDED.unit,
-               vat_rate=EXCLUDED.vat_rate, accounting_code=EXCLUDED.accounting_code, status=EXCLUDED.status
+               vat_rate=EXCLUDED.vat_rate, accounting_code=EXCLUDED.accounting_code, status=EXCLUDED.status,
+               default_supplier=COALESCE(EXCLUDED.default_supplier, products.default_supplier)
              RETURNING (xmax = 0) AS inserted`,
-            [p.item_code, p.item_name, p.category, p.unit, p.vat_rate, p.accounting_code, p.status]);
+            [p.item_code, p.item_name, p.category, p.unit, p.vat_rate, p.accounting_code, p.status, supId]);
           if (row?.inserted) added++; else updated++;
         }
       } else {

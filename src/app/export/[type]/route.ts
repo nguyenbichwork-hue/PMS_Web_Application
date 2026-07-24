@@ -120,15 +120,16 @@ function build(type: string, user: User, status: string, q: string, category: st
       const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
       return {
         sheet: "Danh sách hàng hóa", file: "hang-hoa",
-        sql: `SELECT item_code, item_name, category, unit, vat_rate, accounting_code, status
-                FROM products ${clause} ORDER BY item_name`,
+        sql: `SELECT p.item_code, p.item_name, p.category, p.unit, p.vat_rate, p.accounting_code, p.status,
+                     sup.supplier_code AS default_supplier_code, sup.supplier_name AS default_supplier_name
+                FROM products p LEFT JOIN suppliers sup ON sup.id = p.default_supplier ${clause} ORDER BY p.item_name`,
         params,
         columns: [
           { h: "Mã", k: "a", w: 18 }, { h: "Tên", k: "b", w: 42 }, { h: "Nhóm", k: "c", w: 18 },
           { h: "ĐVT", k: "d", w: 10 }, { h: "Thuế suất", k: "e", w: 12 }, { h: "Mã kế toán", k: "f", w: 16 },
-          { h: "Trạng thái", k: "g", w: 12 },
+          { h: "Mã NCC", k: "h", w: 18 }, { h: "Tên NCC", k: "i", w: 28 }, { h: "Trạng thái", k: "g", w: 12 },
         ],
-        map: (r) => ({ a: s(r.item_code), b: s(r.item_name), c: s(r.category), d: s(r.unit), e: n(r.vat_rate), f: s(r.accounting_code), g: s(r.status) }),
+        map: (r) => ({ a: s(r.item_code), b: s(r.item_name), c: s(r.category), d: s(r.unit), e: n(r.vat_rate), f: s(r.accounting_code), h: s(r.default_supplier_code), i: s(r.default_supplier_name), g: s(r.status) }),
       };
     }
     case "users": {
