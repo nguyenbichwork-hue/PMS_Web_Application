@@ -111,7 +111,10 @@ export async function createInvoiceAction(formData: FormData) {
   const invoice_date = String(formData.get("invoice_date") ?? "") || null;
   const po_id = formData.get("po_id") ? Number(formData.get("po_id")) : null;
   const file_attachment = String(formData.get("file_attachment") ?? "") || null;
-  const vatInput = Number(formData.get("vat_amount") ?? 0);
+  // VAT lấy ĐÚNG giá trị người nhập gửi lên (kể cả 0 — hàng không chịu thuế);
+  // chỉ tự tính 10% khi thực sự KHÔNG có dữ liệu VAT.
+  const vatRaw = formData.get("vat_amount");
+  const hasVatInput = vatRaw !== null && String(vatRaw).trim() !== "";
   // Supplier THẬT của hóa đơn (do người nhập chọn) — KHÔNG suy ra từ PO nữa,
   // để CHECK Supplier trong đối chiếu có hiệu lực thực sự.
   const supplierInput = formData.get("supplier_id") ? Number(formData.get("supplier_id")) : null;
@@ -125,7 +128,7 @@ export async function createInvoiceAction(formData: FormData) {
   }
 
   const invSub = lines.reduce((s, l) => s + Number(l.quantity) * Number(l.unit_price), 0);
-  const invVat = vatInput || Math.round(invSub * 0.1);
+  const invVat = hasVatInput ? Number(vatRaw) : Math.round(invSub * 0.1);
   const invTotal = invSub + invVat;
 
   let matchStatus = "Pending";

@@ -49,14 +49,26 @@ export function InvoiceForm({
   // Nguồn dòng hàng: "xml" (từ hóa đơn điện tử) hay "po" (điền từ PO).
   const [source, setSource] = useState<"xml" | "po" | "">(preselect ? "po" : "");
   const [xmlVat, setXmlVat] = useState<number | null>(null); // VAT lấy đúng theo XML (nếu import)
+  const [vatOverride, setVatOverride] = useState<number | "">(""); // "" = tự tính; số = người nhập sửa tay
   const [notice, setNotice] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const po = pos.find((p) => p.id === poId);
   const sub = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
-  const vat = xmlVat != null ? xmlVat : Math.round(sub * 0.1);
+
+  // Thuế suất suy ra từ PO (vat_total / tiền chưa thuế của PO) — để VAT mặc định
+  // của hóa đơn KHỚP thuế suất PO thay vì cứng 10% (PO có thể 8% / 0% / mix).
+  const poNet = po ? Math.max(0, po.grand_total - po.vat_total) : 0;
+  const poVatRate = po && poNet > 0 ? po.vat_total / poNet : 0.1;
+  const autoVat = xmlVat != null ? xmlVat : Math.round(sub * (po ? poVatRate : 0.1));
+  const vat = vatOverride === "" ? autoVat : Number(vatOverride);
   const total = sub + vat;
+
+  // VAT kỳ vọng theo PO cho phần SL của hóa đơn này (chia tỷ lệ — khớp server).
+  const invQty = lines.reduce((s, l) => s + l.quantity, 0);
+  const poQty = items.filter((i) => i.po_id === poId).reduce((s, i) => s + i.quantity, 0);
+  const expectedPoVat = po ? (poQty > 0 ? Math.round((invQty / poQty) * po.vat_total) : po.vat_total) : 0;
 
   const setLine = (i: number, patch: Partial<Line>) =>
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -271,16 +283,37 @@ export function InvoiceForm({
                   Chưa chọn PO — hóa đơn sẽ lưu ở trạng thái <b>Chờ</b> (không đối chiếu).
                 </div>
               )}
-              <div className="w-56 space-y-1 text-sm">
+              <div className="w-64 space-y-1.5 text-sm">
                 <div className="flex justify-between text-slate-600"><span>Tạm tính</span><span>{money(sub)}</span></div>
-                <div className="flex justify-between text-slate-600">
-                  <span>VAT{xmlVat != null ? " (theo HĐ)" : " (10%)"}</span><span>{money(vat)}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600">
+                    VAT
+                    <span className="ml-1 text-xs text-slate-400">
+                      {vatOverride !== "" ? "(nhập tay)" : xmlVat != null ? "(theo HĐ)" : po ? `(~${Math.round(poVatRate * 100)}% theo PO)` : "(10%)"}
+                    </span>
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={vat}
+                    onChange={(e) => setVatOverride(e.target.value === "" ? "" : Number(e.target.value))}
+                    className={`${inputCls} w-28 text-right`}
+                  />
                 </div>
+                {vatOverride !== "" && (
+                  <button type="button" onClick={() => setVatOverride("")} className="text-xs font-medium text-brand-600 hover:underline">
+                    ↺ Tự tính lại theo PO
+                  </button>
+                )}
                 <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-900">
                   <span>Tổng</span><span>{money(total)}</span>
                 </div>
                 {po && (
-                  <div className="text-xs text-slate-400">PO grand total: {money(po.grand_total)}</div>
+                  <div className={`text-xs ${Math.abs(vat - expectedPoVat) > 1 ? "text-amber-600" : "text-slate-400"}`}>
+                    VAT kỳ vọng theo PO: {money(expectedPoVat)}
+                    {Math.abs(vat - expectedPoVat) > 1 && " ⚠️ lệch"}
+                    <span className="block text-slate-400">PO tổng: {money(po.grand_total)}</span>
+                  </div>
                 )}
               </div>
             </div>

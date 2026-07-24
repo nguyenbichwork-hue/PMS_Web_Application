@@ -67,5 +67,14 @@ check(r.checks.find((c) => c.check_name === "Price")?.result === "FAIL", "giá l
 r = evaluateMatch({ ...base, priceTolerancePct: 2, lines: [{ itemCode: "A", invoicePrice: 101.5, poPrice: 100 }] });
 check(r.checks.find((c) => c.check_name === "Price")?.result === "PASS", "giá lệch 1.5% · ngưỡng 2% → Price PASS");
 
+// 13) VAT 8% (PO không phải 10%): hóa đơn khai đúng 8% → VAT PASS
+//     Tình huống thực tế: PO 8% mà form cứng 10% sẽ báo lệch VAT — nay VAT nhập
+//     theo PO nên khớp. Net 500 × 8% = 40.
+r = evaluateMatch({ ...base, invoiceVat: 40, expectedVat: 40, invoiceTotal: 540, expectedTotal: 540, lines: [{ itemCode: "A", invoicePrice: 100, poPrice: 100 }] });
+check(r.checks.find((c) => c.check_name === "VAT")?.result === "PASS", "VAT 8% khai đúng theo PO → VAT PASS");
+// 14) Vẫn PO 8% nhưng hóa đơn cứng 10% (50) → VAT WARNING (đúng cái user gặp)
+r = evaluateMatch({ ...base, invoiceVat: 50, expectedVat: 40, invoiceTotal: 550, expectedTotal: 540, lines: [{ itemCode: "A", invoicePrice: 100, poPrice: 100 }] });
+check(r.checks.find((c) => c.check_name === "VAT")?.result === "WARNING", "VAT cứng 10% khi PO 8% → VAT WARNING");
+
 console.log(`\n${fail === 0 ? "✅ ALL PASSED" : "❌ FAILURES"}  (${pass} passed, ${fail} failed)`);
 process.exit(fail === 0 ? 0 : 1);
