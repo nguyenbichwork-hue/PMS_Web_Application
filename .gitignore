@@ -15,3 +15,4 @@ cookies.txt
 # Personal doc generators (Note folder) — keep local, not on GitHub
 scripts/gen-comparison-doc.mjs
 scripts/gen-update-doc.mjs
+scripts/gen-import-doc.mjs

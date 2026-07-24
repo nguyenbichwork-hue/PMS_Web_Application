@@ -1,11 +1,86 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { queryOne, withTransaction, firstRow } from "@/lib/db";
+import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { docNumber } from "@/lib/numbering";
+import { parseGRNWorkbook } from "@/lib/import-grn-excel";
 import { logAudit } from "@/lib/audit";
+
+export interface GRNExcelResult {
+  ok: boolean;
+  error?: string;
+  po_id?: number;
+  po_number?: string;
+  lines?: { po_item_id: number; item_code: string; description: string; received_qty: number }[];
+  warnings?: string[];
+}
+
+/** Đọc file Excel phiếu nhận hàng → khớp về các dòng của MỘT PO đích, trả về
+ *  số lượng nhận theo từng dòng PO để form điền sẵn. KHÔNG ghi DB. */
+export async function parseGRNExcelAction(formData: FormData): Promise<GRNExcelResult> {
+  const user = await requireUser();
+  if (!can(user.role, "gr.manage")) throw new Error("FORBIDDEN");
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "Chưa chọn file Excel." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "File quá lớn (>10MB)." };
+
+  let parsed: Awaited<ReturnType<typeof parseGRNWorkbook>>;
+  try {
+    parsed = await parseGRNWorkbook(await file.arrayBuffer());
+  } catch {
+    return { ok: false, error: "Không đọc được file Excel (.xlsx)." };
+  }
+  if (parsed.rows.length === 0)
+    return { ok: false, error: parsed.warnings[0] ?? "Không có dòng hợp lệ trong file." };
+
+  // PO đích: ưu tiên PO đang chọn trên form; nếu không, file phải chỉ chứa 1 số PO.
+  const selected = formData.get("po_id") ? Number(formData.get("po_id")) : null;
+  let po: { id: number; po_number: string; company_id: number | null } | null = null;
+  const warnings = [...parsed.warnings];
+
+  if (selected) {
+    po = await queryOne(`SELECT id, po_number, company_id FROM purchase_orders WHERE id = $1`, [selected]);
+    if (!po) return { ok: false, error: "PO đang chọn không tồn tại." };
+  } else {
+    if (parsed.poNumbers.length !== 1)
+      return { ok: false, error: `File chứa ${parsed.poNumbers.length} số PO khác nhau — hãy chọn 1 PO trên form trước khi import (mỗi file/lần 1 PO).` };
+    po = await queryOne(`SELECT id, po_number, company_id FROM purchase_orders WHERE po_number = $1`, [parsed.poNumbers[0]]);
+    if (!po) return { ok: false, error: `Không tìm thấy PO "${parsed.poNumbers[0]}" trong hệ thống.` };
+  }
+  if (!canAccessCompany(user, po.company_id)) throw new Error("FORBIDDEN");
+
+  // Khớp mã hàng file → dòng PO (theo MÃ trước, rồi TÊN; không phân biệt hoa/thường).
+  const poItems = await query<{ id: number; item_code: string | null; description: string }>(
+    `SELECT id, item_code, description FROM purchase_order_items WHERE po_id = $1`,
+    [po.id]
+  );
+  const key = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
+  const byCode = new Map<string, { id: number; item_code: string | null; description: string }>();
+  const byName = new Map<string, { id: number; item_code: string | null; description: string }>();
+  for (const it of poItems) {
+    if (it.item_code) byCode.set(key(it.item_code), it);
+    byName.set(key(it.description), it);
+  }
+
+  const agg = new Map<number, { po_item_id: number; item_code: string; description: string; received_qty: number }>();
+  for (const row of parsed.rows) {
+    if (key(row.po_number) !== key(po.po_number)) continue; // dòng của PO khác (khi đã chọn PO cụ thể)
+    const hit = byCode.get(key(row.item_code)) ?? byName.get(key(row.description));
+    if (!hit) { warnings.push(`Dòng ${row.row}: mã "${row.item_code}" không có trên PO ${po.po_number} → bỏ qua.`); continue; }
+    const cur = agg.get(hit.id);
+    if (cur) cur.received_qty += row.received_qty;
+    else agg.set(hit.id, { po_item_id: hit.id, item_code: hit.item_code ?? row.item_code, description: hit.description, received_qty: row.received_qty });
+  }
+
+  const lines = [...agg.values()];
+  if (lines.length === 0)
+    return { ok: false, error: `Không khớp được dòng nào với PO ${po.po_number} — kiểm tra lại Mã hàng.`, warnings };
+
+  return { ok: true, po_id: po.id, po_number: po.po_number, lines, warnings };
+}
 
 export async function createGRAction(formData: FormData) {
   const user = await requireUser();

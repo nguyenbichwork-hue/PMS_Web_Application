@@ -5,6 +5,7 @@ import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
+import { parseInvoiceXml } from "@/lib/import-invoice-xml";
 import { logAudit } from "@/lib/audit";
 
 /** Chặn IDOR trên hóa đơn theo công ty của PO gốc. Hóa đơn KHÔNG gắn PO thì
@@ -26,6 +27,80 @@ interface InvLine {
   description?: string;
   quantity: number;
   unit_price: number;
+}
+
+export interface XmlPrefill {
+  ok: boolean;
+  error?: string;
+  invoice_number?: string;
+  invoice_series?: string | null;
+  invoice_date?: string | null;
+  seller_name?: string | null;
+  seller_tax_id?: string | null;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
+  vat_amount?: number;
+  total_amount?: number;
+  lines?: { item_code: string | null; description: string; quantity: number; unit_price: number }[];
+  warnings?: string[];
+}
+
+/** Đọc XML hóa đơn điện tử (TT78 — MISA/Viettel/VNPT) → dữ liệu điền sẵn form.
+ *  Tự khớp nhà cung cấp theo MST (tax_code). KHÔNG ghi DB — chỉ trả về để form
+ *  hiển thị; người dùng chọn PO rồi bấm Lưu & Đối chiếu như bình thường. */
+export async function parseInvoiceXmlAction(formData: FormData): Promise<XmlPrefill> {
+  const user = await requireUser();
+  if (!can(user.role, "invoice.manage")) throw new Error("FORBIDDEN");
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "Chưa chọn file XML." };
+  if (file.size > 5 * 1024 * 1024) return { ok: false, error: "File quá lớn (>5MB) — không giống XML hóa đơn." };
+
+  let parsed: ReturnType<typeof parseInvoiceXml>;
+  try {
+    parsed = parseInvoiceXml(await file.text());
+  } catch {
+    return { ok: false, error: "Không đọc được file — đây có phải XML hóa đơn điện tử không?" };
+  }
+  if (!parsed.invoice_number && parsed.items.length === 0)
+    return { ok: false, error: "Không nhận diện được nội dung hóa đơn trong XML." };
+
+  // Khớp NCC theo MST (bỏ khoảng trắng để chịu định dạng "0301 234 567").
+  let supplier_id: number | null = null;
+  let supplier_name: string | null = null;
+  if (parsed.seller_tax_id) {
+    const s = await queryOne<{ id: number; supplier_name: string }>(
+      `SELECT id, supplier_name FROM suppliers
+        WHERE replace(coalesce(tax_code,''),' ','') = replace($1,' ','') AND status = 'Active'
+        ORDER BY id LIMIT 1`,
+      [parsed.seller_tax_id]
+    );
+    if (s) { supplier_id = s.id; supplier_name = s.supplier_name; }
+  }
+
+  const warnings = [...parsed.warnings];
+  if (parsed.seller_tax_id && !supplier_id)
+    warnings.push(`Chưa có nhà cung cấp MST ${parsed.seller_tax_id} trong danh mục — hãy chọn tay hoặc thêm NCC.`);
+
+  return {
+    ok: true,
+    invoice_number: parsed.invoice_number,
+    invoice_series: parsed.invoice_series,
+    invoice_date: parsed.invoice_date,
+    seller_name: parsed.seller_name,
+    seller_tax_id: parsed.seller_tax_id,
+    supplier_id,
+    supplier_name,
+    vat_amount: parsed.vat_amount,
+    total_amount: parsed.total_amount,
+    lines: parsed.items.map((it) => ({
+      item_code: it.item_code,
+      description: it.description,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+    })),
+    warnings,
+  };
 }
 
 export async function createInvoiceAction(formData: FormData) {
