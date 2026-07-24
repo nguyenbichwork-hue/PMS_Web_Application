@@ -5,15 +5,17 @@ import { login, logout, getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { bruteforceStatus, recordFail, recordSuccess } from "@/lib/ratelimit";
 
-async function clientIp(): Promise<string> {
+async function clientMeta(): Promise<{ ip: string; ua: string }> {
   const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "local";
+  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "local";
+  const ua = (h.get("user-agent") || "").slice(0, 300);
+  return { ip, ua };
 }
 
 export async function loginAction(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const ip = await clientIp();
+  const { ip, ua } = await clientMeta();
   const key = `login:${ip}`;
 
   // Chống brute-force: khóa tạm sau 5 lần sai / 15 phút.
@@ -30,14 +32,15 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   }
 
   recordSuccess(key);
-  await logAudit({ actorId: user.id, actorName: user.name, documentType: "Auth", action: "Login", field: ip });
+  await logAudit({ actorId: user.id, actorName: user.name, documentType: "Auth", action: "Login", field: ip, newValue: ua });
   redirect("/dashboard");
 }
 
 export async function logoutAction() {
   const user = await getCurrentUser();
   if (user) {
-    await logAudit({ actorId: user.id, actorName: user.name, documentType: "Auth", action: "Logout", field: await clientIp() });
+    const { ip } = await clientMeta();
+    await logAudit({ actorId: user.id, actorName: user.name, documentType: "Auth", action: "Logout", field: ip });
   }
   await logout();
   redirect("/login");

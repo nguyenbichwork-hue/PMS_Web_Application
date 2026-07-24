@@ -1,10 +1,138 @@
 "use server";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { query, withTransaction, type Executor } from "@/lib/db";
 import { pushLocalRealUsers, deleteRemoteUser } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import type { Role } from "@/lib/types";
+
+// ==================== NHẬT KÝ TRUY CẬP / IP (Admin) ====================
+export interface AccessEntry {
+  id: number;
+  actor: string | null;
+  action: string;       // Login | LoginFailed | Logout
+  ip: string | null;
+  ua: string | null;    // user-agent (chỉ có ở Login)
+  at: string;           // ISO
+}
+
+/** Admin xem các lần truy cập (đăng nhập/đăng xuất/sai mật khẩu) kèm IP + trình duyệt.
+ *  Nguồn: audit_log (document_type='Auth') — IP đã ghi sẵn ở cột field. */
+export async function getAccessLogAction(): Promise<AccessEntry[]> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");
+  const rows = await query<{ id: number; actor_name: string | null; action: string; field: string | null; new_value: string | null; created_at: unknown }>(
+    `SELECT id, actor_name, action, field, new_value, created_at
+       FROM audit_log WHERE document_type='Auth' ORDER BY id DESC LIMIT 300`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    actor: r.actor_name,
+    action: r.action,
+    ip: r.field,
+    ua: r.action === "Login" ? r.new_value : null,
+    at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
+// ==================== THEO DÕI DUNG LƯỢNG LƯU TRỮ (Admin) ====================
+export interface StorageTable { table: string; label: string; rows: number; bytes: number | null }
+export interface StorageStats {
+  mode: string;              // engine đang đo (PGlite local / Supabase…)
+  isSupabase: boolean;
+  dbBytes: number | null;    // tổng dung lượng DB (null nếu engine không đo được)
+  tables: StorageTable[];
+  files: { count: number; bytes: number };   // thư mục ./storage
+  limits: { freeDb: number; proDb: number; freeFile: number; proFile: number };
+  note: string;
+  generatedAt: string;
+}
+
+const STAT_TABLES: [string, string][] = [
+  ["purchase_requests", "Yêu cầu mua (PR)"],
+  ["purchase_orders", "Đơn đặt hàng (PO)"],
+  ["goods_receipts", "Phiếu nhận (GR)"],
+  ["invoices", "Hóa đơn"],
+  ["invoice_items", "Dòng hóa đơn"],
+  ["suppliers", "Nhà cung cấp"],
+  ["products", "Hàng hóa / dịch vụ"],
+  ["attachments", "Chứng từ đính kèm"],
+  ["comments", "Bình luận"],
+  ["audit_log", "Nhật ký hệ thống"],
+  ["users", "Người dùng"],
+];
+
+const MB = 1024 * 1024, GB = 1024 * 1024 * 1024;
+
+/** Admin xem dung lượng: DB (đang dùng) + file đính kèm cục bộ, so với ngưỡng Supabase. */
+export async function getStorageStatsAction(): Promise<StorageStats> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");
+
+  const url = process.env.DATABASE_URL;
+  const accountsOnly = process.env.ACCOUNTS_ONLY === "true";
+  const isSupabase = !!url && !accountsOnly;
+  const mode = !url
+    ? "PGlite — máy cục bộ (.pglite)"
+    : accountsOnly
+    ? "Supabase — chỉ tài khoản (nghiệp vụ vẫn PGlite cục bộ)"
+    : "Supabase — toàn bộ dữ liệu";
+
+  // Đếm bản ghi + kích thước từng bảng (bọc try/catch: bảng chưa migrate / engine
+  // không hỗ trợ pg_total_relation_size vẫn không vỡ).
+  const tables: StorageTable[] = [];
+  for (const [table, label] of STAT_TABLES) {
+    let rows = 0;
+    try {
+      const r = await query<{ c: number }>(`SELECT count(*)::int AS c FROM ${table}`);
+      rows = r[0]?.c ?? 0;
+    } catch { continue; } // bảng không tồn tại → bỏ qua khỏi danh sách
+    let bytes: number | null = null;
+    try {
+      const r = await query<{ b: string }>(`SELECT pg_total_relation_size($1::regclass) AS b`, [table]);
+      bytes = r[0]?.b != null ? Number(r[0].b) : null;
+    } catch { bytes = null; }
+    tables.push({ table, label, rows, bytes });
+  }
+
+  let dbBytes: number | null = null;
+  try {
+    const r = await query<{ b: string }>(`SELECT pg_database_size(current_database()) AS b`);
+    dbBytes = r[0]?.b != null ? Number(r[0].b) : null;
+  } catch { dbBytes = null; }
+
+  // Dung lượng file đính kèm (thư mục ./storage — nơi lưu chứng từ cục bộ).
+  let files = { count: 0, bytes: 0 };
+  try {
+    const dir = path.join(process.cwd(), "storage");
+    const names = await fs.readdir(dir);
+    for (const name of names) {
+      try {
+        const st = await fs.stat(path.join(dir, name));
+        if (st.isFile()) { files.count++; files.bytes += st.size; }
+      } catch { /* bỏ qua file lỗi */ }
+    }
+  } catch { /* chưa có thư mục storage */ }
+
+  const note = isSupabase
+    ? "Đang đo trực tiếp trên Supabase."
+    : accountsOnly
+    ? "Nghiệp vụ đang đo trên PGlite cục bộ; Supabase chỉ giữ tài khoản (rất nhỏ). Số liệu dưới ước lượng dung lượng NẾU chuyển hết lên Supabase."
+    : "Đang đo trên PGlite cục bộ. Số liệu ước lượng dung lượng nếu chuyển lên Supabase.";
+
+  return {
+    mode,
+    isSupabase,
+    dbBytes,
+    tables,
+    files,
+    limits: { freeDb: 500 * MB, proDb: 8 * GB, freeFile: 1 * GB, proFile: 100 * GB },
+    note,
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 // ---------------- Người dùng ----------------
 export async function saveUserAction(formData: FormData) {
@@ -21,6 +149,9 @@ export async function saveUserAction(formData: FormData) {
   const password = String(formData.get("password") ?? "").trim();
 
   if (!name || !email) throw new Error("Vui lòng nhập tên và email.");
+  // Chặn mật khẩu lẫn dấu tiếng Việt (Unikey) — chỉ cho ASCII in được.
+  if (password && /[^\x20-\x7E]/.test(password))
+    throw new Error("Mật khẩu không được chứa ký tự có dấu — hãy tắt Unikey/bộ gõ tiếng Việt.");
 
   if (id) {
     await query(

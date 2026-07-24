@@ -1,6 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import { loginAction } from "@/actions/auth";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const field =
   "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30";
@@ -16,7 +17,7 @@ export function LoginForm() {
       </div>
       <div>
         <label className="mb-1.5 block text-sm font-medium text-white/70">Mật khẩu</label>
-        <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••" className={field} />
+        <PasswordInput name="password" required autoComplete="current-password" className={field} hintClass="text-white/40" />
       </div>
       {state?.error && <p className="text-sm text-rose-400">{state.error}</p>}
       <button
