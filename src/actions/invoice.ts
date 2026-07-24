@@ -6,6 +6,7 @@ import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
 import { parseInvoiceXml } from "@/lib/import-invoice-xml";
+import { docNumber } from "@/lib/numbering";
 import { logAudit } from "@/lib/audit";
 
 /** Chặn IDOR trên hóa đơn theo công ty của PO gốc. Hóa đơn KHÔNG gắn PO thì
@@ -119,8 +120,10 @@ export async function createInvoiceAction(formData: FormData) {
   // để CHECK Supplier trong đối chiếu có hiệu lực thực sự.
   const supplierInput = formData.get("supplier_id") ? Number(formData.get("supplier_id")) : null;
   const lines: InvLine[] = JSON.parse(String(formData.get("lines") ?? "[]"));
+  // Số hóa đơn của NCC (tùy chọn). Để trống → tự sinh mã nội bộ INV-YYYY-NNNN
+  // (theo id, luôn duy nhất) → tránh nhập trùng khi không có/không nhớ số HĐ NCC.
+  const supplierNo = invoice_number.trim();
 
-  if (!invoice_number.trim()) throw new Error("Vui lòng nhập số hóa đơn.");
   if (lines.length === 0) throw new Error("Hóa đơn cần ít nhất một dòng.");
   for (const l of lines) {
     if (Number(l.quantity) <= 0) throw new Error("Số lượng trên dòng hóa đơn phải lớn hơn 0.");
@@ -224,13 +227,14 @@ export async function createInvoiceAction(formData: FormData) {
   const storedSupplier = supplierInput ?? poSupplierId;
 
   // Chống TRÙNG hóa đơn (UAT-16): cùng nhà cung cấp + cùng số hóa đơn (không phân
-  // biệt hoa/thường) → chặn. Mỗi NCC không được có 2 hóa đơn trùng số.
-  if (storedSupplier && invoice_number.trim()) {
+  // biệt hoa/thường) → chặn. Chỉ áp khi CÓ nhập số HĐ của NCC; để trống thì mã
+  // nội bộ tự sinh nên không cần kiểm trùng.
+  if (storedSupplier && supplierNo) {
     const dup = await queryOne<{ id: number; status: string }>(
       `SELECT id, status FROM invoices WHERE supplier_id = $1 AND lower(invoice_number) = lower($2) LIMIT 1`,
-      [storedSupplier, invoice_number.trim()]
+      [storedSupplier, supplierNo]
     );
-    if (dup) throw new Error(`Hóa đơn số "${invoice_number}" của nhà cung cấp này đã tồn tại (không nhập trùng).`);
+    if (dup) throw new Error(`Hóa đơn số "${supplierNo}" của nhà cung cấp này đã tồn tại (không nhập trùng).`);
   }
 
   // Ghi hóa đơn + dòng + kết quả đối chiếu trong MỘT transaction (nguyên tử).
@@ -241,8 +245,13 @@ export async function createInvoiceAction(formData: FormData) {
          (invoice_number, invoice_date, supplier_id, po_id, total_amount, vat_amount, file_attachment, status, match_result, created_by)
        VALUES ($1, COALESCE($2::date, current_date), $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
-      [invoice_number, invoice_date, storedSupplier, po_id, invTotal, invVat, file_attachment, matchStatus, overall, user.id]
+      [supplierNo, invoice_date, storedSupplier, po_id, invTotal, invVat, file_attachment, matchStatus, overall, user.id]
     );
+    // Để trống → gán mã nội bộ INV-YYYY-<id> (duy nhất theo id, không thể trùng).
+    const finalNumber = supplierNo || docNumber("INV", inv!.id);
+    if (!supplierNo) {
+      await exec(`UPDATE invoices SET invoice_number = $1 WHERE id = $2`, [finalNumber, inv!.id]);
+    }
     for (const line of lines) {
       await exec(
         `INSERT INTO invoice_items (invoice_id, item_code, description, quantity, unit_price, amount)
@@ -257,7 +266,7 @@ export async function createInvoiceAction(formData: FormData) {
       );
     }
     await logAudit(
-      { actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: inv!.id, action: "Create", newValue: `${invoice_number} · ${overall ?? "Pending"}` },
+      { actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: inv!.id, action: "Create", newValue: `${finalNumber} · ${overall ?? "Pending"}` },
       exec
     );
     return inv!.id;

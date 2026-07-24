@@ -139,7 +139,8 @@ export function InvoiceForm({
     createInvoiceAction(fd);
   };
 
-  const canSubmit = lines.length > 0 && invoiceNumber.trim() !== "" && supplierId !== "";
+  // Số hóa đơn KHÔNG bắt buộc — để trống thì hệ thống tự sinh mã INV-… duy nhất.
+  const canSubmit = lines.length > 0 && supplierId !== "";
 
   return (
     <form>
@@ -191,14 +192,13 @@ export function InvoiceForm({
               ))}
             </select>
           </Field>
-          <Field label="Số hóa đơn" required>
+          <Field label="Số hóa đơn (NCC)">
             <input
               name="invoice_number"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
               className={inputCls}
-              required
-              placeholder="VD: INV-2026-001"
+              placeholder="Để trống → hệ thống tự sinh mã INV-…"
             />
           </Field>
           <Field label="Ngày hóa đơn">
