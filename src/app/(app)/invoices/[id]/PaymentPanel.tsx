@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addPaymentAction, markInvoicePaidAction } from "@/actions/invoice";
 import { Card, Button, inputCls } from "@/components/ui";
+import { date } from "@/lib/format";
 
 export interface PaymentRow {
   id: number;
@@ -83,7 +84,7 @@ export function PaymentPanel({
                 <span className="font-medium text-slate-700">{fmt(p.amount)}</span>
                 <span className="ml-2 text-xs text-slate-400">{p.method}{p.reference ? ` · ${p.reference}` : ""}</span>
               </span>
-              <span className="text-xs text-slate-400">{p.payment_date}</span>
+              <span className="text-xs text-slate-400">{date(p.payment_date)}</span>
             </li>
           ))}
         </ul>
