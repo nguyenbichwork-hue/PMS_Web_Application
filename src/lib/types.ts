@@ -65,7 +65,8 @@ export interface PurchaseRequest {
   priority: "Low" | "Normal" | "High" | "Urgent";
   required_date: string | null;
   status: PRStatus;
-  total_amount: number;
+  total_amount: number;   // tiền chưa thuế (net)
+  vat_total: number;      // tổng thuế VAT
   current_level: number;
   // joined
   requester_name?: string;
@@ -81,6 +82,7 @@ export interface PRItem {
   quantity: number;
   unit: string | null;
   estimated_price: number;
+  vat_rate: number;
   supplier_suggestion: number | null;
   note: string | null;
   line_no: number;

@@ -147,3 +147,9 @@ CREATE TABLE IF NOT EXISTS match_settings (
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 INSERT INTO match_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- ---------- VAT trên PR (G-PR-01): thuế suất từng dòng + tổng VAT ----------
+-- total_amount GIỮ nguyên là tiền chưa thuế (net) để không đổi ngưỡng duyệt hiện có;
+-- vat_total là phần thuế cộng thêm → tổng gồm thuế = total_amount + vat_total.
+ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2) NOT NULL DEFAULT 10;
+ALTER TABLE purchase_requests      ADD COLUMN IF NOT EXISTS vat_total NUMERIC(18,2) NOT NULL DEFAULT 0;

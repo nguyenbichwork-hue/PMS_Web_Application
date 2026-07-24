@@ -100,6 +100,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
                   <Th className="text-right">SL</Th>
                   <Th>ĐVT</Th>
                   <Th className="text-right">Đơn giá</Th>
+                  <Th className="text-right">VAT%</Th>
                   <Th className="text-right">Thành tiền</Th>
                 </tr>
               </thead>
@@ -111,6 +112,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
                     <Td className="text-right">{Number(it.quantity)}</Td>
                     <Td>{it.unit}</Td>
                     <Td className="text-right">{money(it.estimated_price)}</Td>
+                    <Td className="text-right">{Number(it.vat_rate ?? 10)}%</Td>
                     <Td className="text-right font-medium">
                       {money(Number(it.quantity) * Number(it.estimated_price))}
                     </Td>
@@ -118,10 +120,20 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
                 ))}
               </tbody>
               <tfoot>
+                <tr>
+                  <Td /><Td /><Td /><Td />
+                  <Td className="text-right text-slate-500" colSpan={2}>Tiền hàng (chưa thuế)</Td>
+                  <Td className="text-right font-medium">{money(pr.total_amount)}</Td>
+                </tr>
+                <tr>
+                  <Td /><Td /><Td /><Td />
+                  <Td className="text-right text-slate-500" colSpan={2}>Tổng VAT</Td>
+                  <Td className="text-right font-medium">{money(pr.vat_total ?? 0)}</Td>
+                </tr>
                 <tr className="bg-slate-50">
-                  <Td className="font-semibold" />
-                  <Td /><Td /><Td /><Td className="text-right font-semibold">Tổng</Td>
-                  <Td className="text-right font-bold text-brand-700">{money(pr.total_amount)}</Td>
+                  <Td /><Td /><Td /><Td />
+                  <Td className="text-right font-semibold" colSpan={2}>Tổng gồm thuế</Td>
+                  <Td className="text-right font-bold text-brand-700">{money(Number(pr.total_amount) + Number(pr.vat_total ?? 0))}</Td>
                 </tr>
               </tfoot>
             </table>

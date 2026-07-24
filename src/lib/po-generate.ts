@@ -49,7 +49,8 @@ export async function generatePOFromPR(prId: number, exec: Executor = dbExec): P
     const qty = Number(it.quantity);
     const price = Number(it.estimated_price);
     const lineNet = qty * price;
-    const vatRate = 10; // default; adjustable later
+    // Kế thừa thuế suất khai ở PR (mặc định 10% nếu dòng PR chưa có).
+    const vatRate = Number.isFinite(Number(it.vat_rate)) ? Number(it.vat_rate) : 10;
     const lineVat = (lineNet * vatRate) / 100;
     subtotal += lineNet;
     vatTotal += lineVat;

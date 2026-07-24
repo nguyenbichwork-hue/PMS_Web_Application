@@ -13,6 +13,7 @@ interface Line {
   quantity: number;
   unit: string;
   estimated_price: number;
+  vat_rate: number;
   supplier_suggestion: number | "";
   note: string;
 }
@@ -24,6 +25,7 @@ const emptyLine: Line = {
   quantity: 1,
   unit: "PCS",
   estimated_price: 0,
+  vat_rate: 10,
   supplier_suggestion: "",
   note: "",
 };
@@ -83,11 +85,14 @@ export function PRForm({
       item_code: p.item_code,
       item_name: p.item_name,
       unit: p.unit,
+      vat_rate: Number.isFinite(Number(p.vat_rate)) ? Number(p.vat_rate) : 10,
       supplier_suggestion: sugg[0]?.id ?? p.default_supplier ?? "",
     });
   };
 
-  const total = lines.reduce((s, l) => s + Number(l.quantity) * Number(l.estimated_price), 0);
+  const subtotal = lines.reduce((s, l) => s + Number(l.quantity) * Number(l.estimated_price), 0);
+  const vatTotal = lines.reduce((s, l) => s + (Number(l.quantity) * Number(l.estimated_price) * Number(l.vat_rate)) / 100, 0);
+  const grand = subtotal + vatTotal;
 
   const submit = (mode: "draft" | "submit") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -156,7 +161,7 @@ export function PRForm({
                     placeholder="Tìm sản phẩm…"
                   />
                 </div>
-                <div className="md:col-span-4">
+                <div className="md:col-span-3">
                   <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng</label>
                   <input
                     value={l.item_name}
@@ -180,6 +185,18 @@ export function PRForm({
                   <input
                     value={l.unit}
                     onChange={(e) => setLine(i, { unit: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="md:col-span-1">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">VAT %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={l.vat_rate}
+                    onChange={(e) => setLine(i, { vat_rate: Number(e.target.value) })}
                     className={inputCls}
                   />
                 </div>
@@ -237,6 +254,7 @@ export function PRForm({
               <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
                 <span className="text-xs text-slate-500">
                   Thành tiền: <b className="text-sm text-slate-800">{money(l.quantity * l.estimated_price)}</b>
+                  <span className="ml-2 text-slate-400">+ VAT {l.vat_rate}% = {money((l.quantity * l.estimated_price * l.vat_rate) / 100)}</span>
                 </span>
                 {lines.length > 1 && (
                   <button
@@ -253,10 +271,11 @@ export function PRForm({
           })}
         </div>
 
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
-          <span className="mr-auto text-sm text-slate-500">
-            Tổng dự kiến: <b className="text-lg text-slate-900">{money(total)}</b>
-          </span>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-4">
+          <div className="mr-auto text-sm text-slate-500">
+            <div>Tiền hàng: <b className="text-slate-800">{money(subtotal)}</b> · VAT: <b className="text-slate-800">{money(vatTotal)}</b></div>
+            <div>Tổng gồm thuế: <b className="text-lg text-slate-900">{money(grand)}</b></div>
+          </div>
           <Button variant="secondary" onClick={submit("draft")}>
             Lưu nháp
           </Button>

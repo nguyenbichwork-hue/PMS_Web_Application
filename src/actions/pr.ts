@@ -16,6 +16,7 @@ interface ItemInput {
   quantity: number;
   unit?: string;
   estimated_price: number;
+  vat_rate?: number;
   supplier_suggestion?: number | null;
   note?: string;
 }
@@ -36,12 +37,19 @@ export async function createPRAction(formData: FormData) {
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
   const validItems = items.filter((it) => it.item_name?.trim());
   if (validItems.length === 0) throw new Error("Cần ít nhất một dòng hàng hợp lệ.");
+  const vatOf = (it: ItemInput) => {
+    const r = Number(it.vat_rate);
+    return Number.isFinite(r) && r >= 0 ? r : 10; // mặc định 10% nếu để trống
+  };
   for (const it of validItems) {
     if (Number(it.quantity) <= 0) throw new Error(`Số lượng của "${it.item_name}" phải lớn hơn 0.`);
     if (Number(it.estimated_price) < 0) throw new Error(`Đơn giá của "${it.item_name}" không được âm.`);
+    if (vatOf(it) > 100) throw new Error(`Thuế suất của "${it.item_name}" không hợp lệ.`);
   }
 
+  // total_amount = tiền chưa thuế (net); vat_total = tổng thuế cộng thêm.
   const total = validItems.reduce((s, i) => s + Number(i.quantity) * Number(i.estimated_price), 0);
+  const vatTotal = validItems.reduce((s, i) => s + (Number(i.quantity) * Number(i.estimated_price) * vatOf(i)) / 100, 0);
   const status = submit ? "Pending Approval" : "Draft";
 
   // Toàn bộ ghi trong MỘT transaction — nếu lỗi giữa chừng sẽ rollback sạch.
@@ -49,9 +57,9 @@ export async function createPRAction(formData: FormData) {
     const pr = await firstRow<{ id: number }>(
       exec,
       `INSERT INTO purchase_requests
-         (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, current_level, created_by)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,0,$1) RETURNING id`,
-      [user.id, department, company_id, purpose, priority, required_date, status, total]
+         (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by)
+       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1) RETURNING id`,
+      [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal]
     );
     await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 
@@ -59,9 +67,9 @@ export async function createPRAction(formData: FormData) {
     for (const it of validItems) {
       await exec(
         `INSERT INTO purchase_request_items
-           (pr_id, item_code, item_name, description, quantity, unit, estimated_price, supplier_suggestion, note, line_no)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, it.supplier_suggestion || null, it.note || null, line++]
+           (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, note, line_no)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, it.note || null, line++]
       );
     }
     if (submit) {
