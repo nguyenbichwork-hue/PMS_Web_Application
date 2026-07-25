@@ -33,6 +33,12 @@ const nextConfig = {
   // exceljs (đọc file import) cũng chạy phía server, không bundle.
   // pg (node-postgres) cũng phải external — có native binding, bundle sẽ vỡ.
   serverExternalPackages: ["@electric-sql/pglite", "exceljs", "pg"],
+  // Đóng gói file .sql (schema + migrations) vào serverless function của Vercel.
+  // db.ts đọc chúng lúc chạy bằng fs.readFileSync(process.cwd()/src/lib/*.sql);
+  // Vercel KHÔNG tự trace file đọc động → phải khai báo để tránh lỗi ENOENT (500).
+  outputFileTracingIncludes: {
+    "/**": ["./src/lib/schema.sql", "./src/lib/migrations.sql"],
+  },
   experimental: {
     // Cho phép upload file Excel qua Server Action (mặc định chỉ 1MB).
     serverActions: { bodySizeLimit: "15mb" },
