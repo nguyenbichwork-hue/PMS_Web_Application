@@ -33,8 +33,9 @@ if (!process.argv.includes("--yes")) {
   console.error("✗ Đây là thao tác XÓA dữ liệu. Chạy lại với cờ --yes để xác nhận.");
   process.exit(1);
 }
-const url = process.env.DATABASE_URL;
-if (!url) { console.error("✗ Thiếu DATABASE_URL trong .env.local"); process.exit(1); }
+// Ưu tiên DB NGHIỆP VỤ (Neon) — reset business, KHÔNG đụng Supabase accounts.
+const url = process.env.BUSINESS_DATABASE_URL || process.env.DATABASE_URL;
+if (!url) { console.error("✗ Thiếu BUSINESS_DATABASE_URL/DATABASE_URL trong .env.local"); process.exit(1); }
 
 const adminName = process.env.ADMIN_NAME || "Administrator";
 const adminEmail = process.env.ADMIN_EMAIL || "admin@demo.com";

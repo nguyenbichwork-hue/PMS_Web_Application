@@ -32,6 +32,7 @@ export function GRForm({
   const [qty, setQty] = useState<Record<number, number>>({});
   const [notice, setNotice] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const setQ = (id: number, v: number) => setQty((p) => ({ ...p, [id]: v }));
@@ -65,18 +66,34 @@ export function GRForm({
     }
   };
 
-  const submit = (e: React.MouseEvent) => {
+  const submit = async (e: React.MouseEvent) => {
     e.preventDefault();
     const form = (e.currentTarget as HTMLElement).closest("form") as HTMLFormElement;
     const fd = new FormData(form);
-    const payload = lines.map((l) => ({
-      po_item_id: l.id,
-      item_code: l.item_code,
-      description: l.description,
-      received_qty: qty[l.id] ?? remaining(l),
-    }));
+    const payload = lines
+      .map((l) => ({
+        po_item_id: l.id,
+        item_code: l.item_code,
+        description: l.description,
+        received_qty: qty[l.id] ?? remaining(l),
+      }))
+      .filter((p) => p.received_qty > 0); // bỏ dòng nhận 0 để không lưu dòng rỗng
+    if (payload.length === 0) {
+      setNotice(["Chưa nhập số lượng nhận cho dòng nào (> 0)."]);
+      return;
+    }
     fd.set("lines", JSON.stringify(payload));
-    createGRAction(fd);
+    setNotice([]);
+    setSaving(true);
+    try {
+      await createGRAction(fd); // thành công → action tự điều hướng sang trang GR
+    } catch (err) {
+      // redirect() ném lỗi đặc biệt NEXT_REDIRECT (không phải lỗi thật) → bỏ qua.
+      const digest = String((err as { digest?: string })?.digest ?? "");
+      if (digest.startsWith("NEXT_REDIRECT")) return;
+      setNotice([`Không lưu được: ${err instanceof Error ? err.message : String(err)}`]);
+      setSaving(false);
+    }
   };
 
   return (
@@ -164,8 +181,8 @@ export function GRForm({
         )}
 
         <div className="mt-5 flex justify-end">
-          <Button onClick={submit} disabled={!poId || lines.length === 0}>
-            Lưu phiếu nhận
+          <Button onClick={submit} disabled={!poId || lines.length === 0 || saving}>
+            {saving ? "Đang lưu…" : "Lưu phiếu nhận"}
           </Button>
         </div>
       </Card>

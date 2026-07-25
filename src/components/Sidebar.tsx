@@ -39,6 +39,7 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
       { href: "/purchase-orders", label: "Đơn đặt hàng", icon: "po" },
       { href: "/goods-receipts", label: "Nhận hàng", icon: "gr" },
       { href: "/invoices", label: "Hóa đơn", icon: "invoice" },
+      { href: "/invoices/sync", label: "Đồng bộ hóa đơn", icon: "invoice" },
     ],
   },
   {

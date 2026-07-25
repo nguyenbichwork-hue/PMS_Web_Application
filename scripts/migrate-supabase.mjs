@@ -29,9 +29,10 @@ function loadEnvLocal() {
 
 loadEnvLocal();
 
-const url = process.env.DATABASE_URL;
+// Ưu tiên DB NGHIỆP VỤ (Neon) nếu có — tránh nạp schema nhầm vào Supabase accounts.
+const url = process.env.BUSINESS_DATABASE_URL || process.env.DATABASE_URL;
 if (!url) {
-  console.error("✗ Thiếu DATABASE_URL trong .env.local. Xem .env.example để biết cách điền.");
+  console.error("✗ Thiếu BUSINESS_DATABASE_URL/DATABASE_URL trong .env.local. Xem .env.example.");
   process.exit(1);
 }
 

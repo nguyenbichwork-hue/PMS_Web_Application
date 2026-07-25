@@ -17,7 +17,7 @@ export function LoginForm() {
       </div>
       <div>
         <label className="mb-1.5 block text-sm font-medium text-white/70">Mật khẩu</label>
-        <PasswordInput name="password" required autoComplete="current-password" className={field} hintClass="text-white/40" />
+        <PasswordInput name="password" required autoComplete="current-password" className={field} hint={false} />
       </div>
       {state?.error && <p className="text-sm text-rose-400">{state.error}</p>}
       <button

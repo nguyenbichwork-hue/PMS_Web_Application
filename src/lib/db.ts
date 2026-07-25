@@ -30,16 +30,23 @@ export type Executor = <T = Row>(sql: string, params?: unknown[]) => Promise<T[]
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const USE_PG = !!DATABASE_URL;
-// ACCOUNTS_ONLY=true: Supabase chỉ giữ tài khoản (users); toàn bộ nghiệp vụ
-// (PR/PO…) vẫn chạy PGlite local. Xem src/lib/accounts.ts.
+// ACCOUNTS_ONLY=true: Supabase (DATABASE_URL) CHỈ giữ tài khoản (users) làm
+// master. Xem src/lib/accounts.ts.
 const ACCOUNTS_ONLY = process.env.ACCOUNTS_ONLY === "true";
-const FULL_PG = USE_PG && !ACCOUNTS_ONLY; // toàn bộ DB chạy trên Postgres/Supabase
+// DB NGHIỆP VỤ (PR/PO/hóa đơn…):
+//   • ACCOUNTS_ONLY=true  → chạy BUSINESS_DATABASE_URL (VD Neon); accounts vẫn
+//     lấy từ DATABASE_URL (Supabase). Nếu KHÔNG đặt BUSINESS_DATABASE_URL →
+//     nghiệp vụ chạy PGlite local (hành vi cũ).
+//   • ACCOUNTS_ONLY=false → nghiệp vụ + accounts CÙNG chạy DATABASE_URL (full PG).
+const BUSINESS_DATABASE_URL = process.env.BUSINESS_DATABASE_URL;
+const BUSINESS_PG_URL = ACCOUNTS_ONLY ? BUSINESS_DATABASE_URL : DATABASE_URL;
+const USE_BUSINESS_PG = !!BUSINESS_PG_URL; // nghiệp vụ chạy Postgres thật (Neon/Supabase)?
+const FULL_PG = USE_PG && !ACCOUNTS_ONLY;  // toàn bộ (kể cả accounts) trên 1 Postgres
 // Seed dữ liệu DEMO:
-//   • Full-Postgres → chỉ khi DB_SEED=true (Supabase thật không bị bẩn demo).
-//   • Local/PGlite  → mặc định BẬT (trải nghiệm demo cho máy mới)…
-//   • …NHƯNG DB_SEED=false TẮT demo ở MỌI chế độ — dùng khi đã chuyển sang
-//     nhập dữ liệu THẬT (không tự sinh lại demo mỗi lần khởi động).
-const SHOULD_SEED = FULL_PG
+//   • Nghiệp vụ trên Postgres thật → chỉ khi DB_SEED=true (không bẩn DB thật).
+//   • Local/PGlite  → mặc định BẬT (demo cho máy mới)…
+//   • …NHƯNG DB_SEED=false TẮT demo ở MỌI chế độ (đã chuyển sang dữ liệu THẬT).
+const SHOULD_SEED = USE_BUSINESS_PG
   ? process.env.DB_SEED === "true"
   : process.env.DB_SEED !== "false";
 
@@ -158,15 +165,15 @@ async function initialize(
 // ---------------------------------------------------------------------
 // PostgreSQL (Supabase) driver — node-postgres connection pool.
 // ---------------------------------------------------------------------
-function bootstrapPg(): Driver {
+function bootstrapPg(connectionString: string): Driver {
   // Return int8 (BIGINT) and numeric as JS numbers so row shapes match the
   // PGlite path the app was written against (ids/money are used as numbers).
   types.setTypeParser(20, (v) => (v === null ? null : Number(v))); // int8
   types.setTypeParser(1700, (v) => (v === null ? null : Number(v))); // numeric
 
   const pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // Supabase requires TLS
+    connectionString,
+    ssl: { rejectUnauthorized: false }, // Supabase/Neon requires TLS
     max: Number(process.env.DB_POOL_MAX ?? 5),
   });
 
@@ -224,7 +231,7 @@ function bootstrapPglite(): Driver {
 
 function driver(): Driver {
   if (!g.__pms_driver) {
-    const d = FULL_PG ? bootstrapPg() : bootstrapPglite();
+    const d = USE_BUSINESS_PG ? bootstrapPg(BUSINESS_PG_URL!) : bootstrapPglite();
     // Nếu KHỞI TẠO thất bại (vd PGlite WASM "Aborted()" do dữ liệu .pglite hỏng
     // hoặc bị khóa sau lần tắt không sạch), XÓA cache để lần gọi kế tiếp bootstrap
     // lại từ đầu — tránh kẹt driver lỗi vĩnh viễn khiến MỌI request (kể cả đăng

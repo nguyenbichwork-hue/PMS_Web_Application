@@ -153,3 +153,16 @@ INSERT INTO match_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 -- vat_total là phần thuế cộng thêm → tổng gồm thuế = total_amount + vat_total.
 ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2) NOT NULL DEFAULT 10;
 ALTER TABLE purchase_requests      ADD COLUMN IF NOT EXISTS vat_total NUMERIC(18,2) NOT NULL DEFAULT 0;
+
+-- ---------- ĐỒNG BỘ HÓA ĐƠN từ Google Sheet/Drive + AUTO-MATCH PO (§11.4) ----------
+-- Không dựa vào cột "Số PO": tự tìm PO bằng khóa tổng hợp NCC(MST)+mã/giá+tiền.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source         TEXT;    -- vd 'google-sheet'
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source_ref     TEXT;    -- Invoice_ID/fileId nguồn (chống nhập lại)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_series TEXT;    -- ký hiệu (KHHDon)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS seller_tax_id  TEXT;    -- MST người bán (đọc từ XML)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS match_key      TEXT;    -- khóa tổng hợp auto-match (audit)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS match_score    NUMERIC(6,4); -- điểm tin cậy 0..1
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS match_level    TEXT;    -- AUTO | REVIEW | NONE | MANUAL
+-- Chống nhập lại cùng một bản ghi nguồn (mỗi source_ref chỉ vào 1 lần).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_source_ref
+  ON invoices(source_ref) WHERE source_ref IS NOT NULL;
