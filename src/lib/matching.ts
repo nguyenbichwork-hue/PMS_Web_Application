@@ -14,7 +14,7 @@
 export type CheckResult = "PASS" | "WARNING" | "FAIL";
 
 export interface CheckOutcome {
-  check_name: "Supplier" | "Quantity" | "Price" | "VAT" | "Amount";
+  check_name: "Supplier" | "Quantity" | "Price" | "VAT" | "Amount" | "Currency" | "Date";
   result: CheckResult;
   reason: string;
 }
@@ -88,13 +88,14 @@ export interface ReconLine {
   quantity: number;
   unitPrice: number;
   vatRate: number | null;
+  receivedQty?: number | null;   // SL đã NHẬN (GRN) của dòng PO này — để đối chiếu §11.4
 }
 
 export interface ReconRow {
   inv: ReconLine;
   po: ReconLine | null;          // dòng PO khớp (null = dòng không có trên PO)
   priceStatus: CheckResult;      // PASS trong ngưỡng · FAIL lệch · FAIL nếu không có PO
-  qtyStatus: CheckResult;        // PASS = SL HĐ ≤ SL PO · WARNING ít hơn · FAIL vượt
+  qtyStatus: CheckResult;        // theo SL đã NHẬN (GRN) nếu biết, không thì theo SL ĐẶT
   vatStatus: CheckResult;        // PASS trùng thuế suất · WARNING lệch · PASS nếu thiếu dữ liệu
 }
 
@@ -133,10 +134,15 @@ export function reconcileLines(
     if (po) { matchedLines++; usedPo.add(po); }
 
     const priceStatus: CheckResult = po ? cmp(inv.unitPrice, po.unitPrice, priceTol) : "FAIL";
+    // SL: đúng đặc tả §11.4 — so với SL ĐÃ NHẬN (GRN) chưa xuất HĐ nếu biết, đồng
+    // thời không vượt SL ĐẶT trên PO. Chưa có dữ liệu GRN → tạm so với SL đặt.
     let qtyStatus: CheckResult = "PASS";
     if (po) {
-      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "FAIL";
-      else if (inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING";
+      const recv = po.receivedQty;
+      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "FAIL";              // vượt SL đặt
+      else if (recv != null && inv.quantity > recv + 1e-9) qtyStatus = "FAIL"; // vượt SL đã nhận
+      else if (recv != null && inv.quantity < recv - 1e-9) qtyStatus = "WARNING"; // nhận nhiều hơn HĐ (từng phần)
+      else if (recv == null && inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING";
     }
     let vatStatus: CheckResult = "PASS";
     if (po && inv.vatRate != null && po.vatRate != null) {
@@ -178,6 +184,12 @@ export interface MatchInput {
   priceTolerancePct?: number;
   amountTolerancePct?: number;
   qtyTolerancePct?: number;
+  // Tùy chọn: TIỀN TỆ (§11.4) — khác tiền tệ mà không có ngoại lệ → chặn.
+  invoiceCurrency?: string | null;
+  poCurrency?: string | null;
+  // Tùy chọn: NGÀY (§11.4) — cảnh báo hóa đơn lập TRƯỚC ngày nhận hàng.
+  invoiceDate?: string | null;
+  earliestReceiptDate?: string | null;
 }
 
 const TOLERANCE = 0.01; // 1% tolerance for rounding on money comparisons
@@ -314,6 +326,33 @@ export function evaluateMatch(input: MatchInput): {
     });
   }
 
+  // CHECK 5 — Tiền tệ (§11.4): hóa đơn phải cùng tiền tệ PO (trừ ngoại lệ FX).
+  // Chỉ nêu khi biết cả hai và KHÁC nhau (mặc định VND → thường bỏ qua, không nhiễu).
+  if (input.invoiceCurrency && input.poCurrency) {
+    const ic = input.invoiceCurrency.trim().toUpperCase();
+    const pc = input.poCurrency.trim().toUpperCase();
+    if (ic !== pc) {
+      checks.push({
+        check_name: "Currency",
+        result: "FAIL",
+        reason: `Tiền tệ hóa đơn (${ic}) khác PO (${pc}) — cần loại nghiệp vụ ngoại tệ được duyệt.`,
+      });
+    }
+  }
+
+  // CHECK 6 — Ngày (§11.4): cảnh báo hóa đơn lập TRƯỚC ngày nhận hàng đầu tiên.
+  if (input.invoiceDate && input.earliestReceiptDate) {
+    const inv = new Date(input.invoiceDate);
+    const rcv = new Date(input.earliestReceiptDate);
+    if (!isNaN(inv.getTime()) && !isNaN(rcv.getTime()) && inv.getTime() < rcv.getTime() - 86400000) {
+      checks.push({
+        check_name: "Date",
+        result: "WARNING",
+        reason: `Ngày hóa đơn (${input.invoiceDate}) trước ngày nhận hàng (${input.earliestReceiptDate}).`,
+      });
+    }
+  }
+
   // Roll-up
   const hasFail = checks.some((c) => c.result === "FAIL");
   const hasWarn = checks.some((c) => c.result === "WARNING");
@@ -335,6 +374,7 @@ export type MatchCode =
   | "MATCHED"
   | "MATCHED_WITHIN_TOLERANCE"
   | "WRONG_ENTITY_VENDOR"
+  | "CURRENCY_MISMATCH"
   | "OVER_INVOICED"
   | "QTY_MISMATCH"
   | "PRICE_MISMATCH"
@@ -346,6 +386,7 @@ export const MATCH_CODE_LABEL: Record<MatchCode, string> = {
   MATCHED: "Khớp",
   MATCHED_WITHIN_TOLERANCE: "Khớp trong ngưỡng",
   WRONG_ENTITY_VENDOR: "Sai nhà cung cấp",
+  CURRENCY_MISMATCH: "Khác tiền tệ",
   OVER_INVOICED: "Vượt đơn hàng",
   QTY_MISMATCH: "Lệch số lượng",
   PRICE_MISMATCH: "Lệch đơn giá",
@@ -371,11 +412,13 @@ export function deriveMatchCode(
   if (!ctx.hasPo) return "MISSING_PO";
   const find = (n: string) => checks.find((c) => c.check_name === n);
   const supplier = find("Supplier");
+  const currency = find("Currency");
   const qty = find("Quantity");
   const price = find("Price");
   const vat = find("VAT");
 
   if (supplier?.result === "FAIL") return "WRONG_ENTITY_VENDOR";
+  if (currency?.result === "FAIL") return "CURRENCY_MISMATCH";
   if (qty?.result === "FAIL") {
     // "vượt SL đặt trên PO" → xuất hóa đơn vượt đơn hàng; còn lại → lệch số lượng.
     return (qty.reason ?? "").includes("PO") ? "OVER_INVOICED" : "QTY_MISMATCH";

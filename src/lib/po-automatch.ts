@@ -46,8 +46,10 @@ export interface AutoMatchPoLine {
   itemCode: string | null;
   description: string | null;
   unitPrice: number;
-  quantity?: number;      // để đối chiếu SL theo dòng (tùy chọn, không ảnh hưởng chấm điểm)
-  vatRate?: number | null; // để đối chiếu VAT theo dòng
+  quantity?: number;         // để đối chiếu SL theo dòng (tùy chọn, không ảnh hưởng chấm điểm)
+  vatRate?: number | null;   // để đối chiếu VAT theo dòng
+  poItemId?: number;         // id dòng PO (để ghi phân bổ)
+  receivedQty?: number | null; // SL đã nhận (GRN) của dòng PO
 }
 
 export interface AutoMatchPo {

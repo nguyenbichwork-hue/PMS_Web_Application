@@ -5,6 +5,7 @@ import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
 import { scoreCandidate } from "@/lib/po-automatch";
+import { writeInvoiceAllocations, type AllocInvItem, type AllocPoItem } from "@/lib/allocation";
 import { logAudit } from "@/lib/audit";
 
 // =====================================================================
@@ -18,10 +19,10 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
   if (!can(user.role, "invoice.manage")) return { ok: false, error: "Không có quyền." };
 
   const inv = await queryOne<{
-    id: number; invoice_number: string; supplier_id: number | null; seller_tax_id: string | null;
+    id: number; invoice_number: string; invoice_date: string | null; supplier_id: number | null; seller_tax_id: string | null;
     total_amount: string; vat_amount: string; company_id: number | null;
   }>(
-    `SELECT i.id, i.invoice_number, i.supplier_id, i.seller_tax_id, i.total_amount, i.vat_amount, po.company_id
+    `SELECT i.id, i.invoice_number, i.invoice_date::text AS invoice_date, i.supplier_id, i.seller_tax_id, i.total_amount, i.vat_amount, po.company_id
        FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id WHERE i.id = $1`,
     [invoiceId]
   );
@@ -31,6 +32,7 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
   if (poId == null) {
     await withTransaction(async (exec) => {
       await exec(`DELETE FROM invoice_matching WHERE invoice_id = $1`, [invoiceId]);
+      await exec(`DELETE FROM invoice_line_allocation WHERE invoice_id = $1`, [invoiceId]);
       await exec(
         `UPDATE invoices SET po_id = NULL, match_result = NULL, status = 'Pending',
                 match_key = NULL, match_score = NULL, match_level = 'UNMAPPED' WHERE id = $1`,
@@ -49,9 +51,9 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
   // ----- ĐỔI MAP SANG PO khác --------------------------------------------
   const po = await queryOne<{
     po_number: string; supplier_id: number | null; supplier_tax: string | null; company_id: number | null;
-    grand_total: string; vat_total: string; po_qty: string; po_sub: string;
+    currency: string | null; grand_total: string; vat_total: string; po_qty: string; po_sub: string;
   }>(
-    `SELECT po.po_number, po.supplier_id, s.tax_code AS supplier_tax, po.company_id, po.grand_total, po.vat_total,
+    `SELECT po.po_number, po.supplier_id, s.tax_code AS supplier_tax, po.company_id, po.currency, po.grand_total, po.vat_total,
             COALESCE((SELECT sum(quantity) FROM purchase_order_items WHERE po_id = po.id),0) AS po_qty,
             COALESCE((SELECT sum(quantity*unit_price - discount) FROM purchase_order_items WHERE po_id = po.id),0) AS po_sub
        FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1`,
@@ -60,11 +62,16 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
   if (!po) return { ok: false, error: "Không tìm thấy PO đã chọn." };
   if (!canAccessCompany(user, po.company_id)) return { ok: false, error: "Không có quyền với PO này." };
 
-  const invItems = await query<{ item_code: string | null; description: string | null; quantity: string; unit_price: string; vat_rate: string | null }>(
-    `SELECT item_code, description, quantity, unit_price, vat_rate FROM invoice_items WHERE invoice_id = $1`, [invoiceId]
+  const invItems = await query<{ id: number; item_code: string | null; description: string | null; quantity: string; unit_price: string; vat_rate: string | null }>(
+    `SELECT id, item_code, description, quantity, unit_price, vat_rate FROM invoice_items WHERE invoice_id = $1`, [invoiceId]
   );
-  const poItems = await query<{ item_code: string | null; description: string; unit_price: string }>(
-    `SELECT item_code, description, unit_price FROM purchase_order_items WHERE po_id = $1`, [poId]
+  const poItems = await query<{ id: number; item_code: string | null; description: string; unit_price: string; quantity: string; vat_rate: string | null; received: string }>(
+    `SELECT poi.id, poi.item_code, poi.description, poi.unit_price, poi.quantity, poi.vat_rate,
+            COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+       FROM purchase_order_items poi WHERE poi.po_id = $1`, [poId]
+  );
+  const earliestRcv = await queryOne<{ d: string | null }>(
+    `SELECT min(receive_date)::text AS d FROM goods_receipts WHERE po_id = $1`, [poId]
   );
 
   // NCC hóa đơn theo MST (kiểm NCC thật, không suy từ PO).
@@ -114,6 +121,8 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
     invoiceUnitPrice: invQty ? invSub / invQty : 0, poUnitPrice: poQty ? Number(po.po_sub) / poQty : 0,
     invoiceTotal: invTotal, expectedTotal: proratedTotal, lines: matchLines,
     invoiceVat: invVat, expectedVat: proratedVat,
+    invoiceCurrency: "VND", poCurrency: po.currency ?? "VND",
+    invoiceDate: inv.invoice_date, earliestReceiptDate: earliestRcv?.d ?? null,
   });
   const matchStatus = { MATCHED: "Matched", WARNING: "Warning", FAILED: "Failed" }[result.overall]!;
 
@@ -136,6 +145,10 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
     for (const c of result.checks) {
       await exec(`INSERT INTO invoice_matching (invoice_id, check_name, result, reason) VALUES ($1,$2,$3,$4)`, [invoiceId, c.check_name, c.result, c.reason]);
     }
+    // Ghi lại PHÂN BỔ TỪNG DÒNG cho PO mới (§11.2/§15.2).
+    const allocInv: AllocInvItem[] = invItems.map((l) => ({ id: l.id, itemCode: l.item_code, description: l.description, quantity: Number(l.quantity), unitPrice: Number(l.unit_price), vatRate: l.vat_rate == null ? null : Number(l.vat_rate) }));
+    const allocPo: AllocPoItem[] = poItems.map((it) => ({ id: it.id, itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate), receivedQty: Number(it.received) }));
+    await writeInvoiceAllocations(exec, invoiceId, poId, allocInv, allocPo, ms ? Number(ms.price_tolerance_pct) : 1);
     await logAudit(
       { actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: invoiceId, action: "Remap", newValue: `${inv.invoice_number} → ${po.po_number} · ${result.overall}` },
       exec

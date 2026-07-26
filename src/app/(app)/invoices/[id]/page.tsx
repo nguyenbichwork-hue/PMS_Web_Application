@@ -42,13 +42,15 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
 
   // ---- Đối chiếu TỪNG DÒNG với PO (§11.1: kiểm soát dựa trên line, không chỉ po_number) ----
   const poItems = inv.po_id
-    ? await query<{ item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null }>(
-        `SELECT item_code, description, quantity, unit_price, vat_rate FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`,
+    ? await query<{ item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null; received: string }>(
+        `SELECT poi.item_code, poi.description, poi.quantity, poi.unit_price, poi.vat_rate,
+                COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+           FROM purchase_order_items poi WHERE poi.po_id=$1 ORDER BY poi.line_no`,
         [inv.po_id]
       )
     : [];
   const invRecon: ReconLine[] = items.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate) }));
-  const poRecon: ReconLine[] = poItems.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate) }));
+  const poRecon: ReconLine[] = poItems.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate), receivedQty: Number(it.received) }));
   const recon = inv.po_id ? reconcileLines(invRecon, poRecon) : null;
   const matchCode = deriveMatchCode(checks.map((c) => ({ check_name: c.check_name, result: c.result, reason: c.reason })), { hasPo: !!inv.po_id });
 
@@ -164,7 +166,8 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
                     <tr>
                       <Th>Mã / Tên hàng</Th>
                       <Th className="text-right">SL HĐ</Th>
-                      <Th className="text-right">SL PO</Th>
+                      <Th className="text-right">SL đặt</Th>
+                      <Th className="text-right">SL nhận</Th>
                       <Th className="text-right">Giá HĐ</Th>
                       <Th className="text-right">Giá PO</Th>
                       <Th className="text-center">VAT HĐ</Th>
@@ -180,6 +183,7 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
                         </Td>
                         <Td className={`text-right tabular-nums ${CELL_TONE[r.qtyStatus]}`}>{r.inv.quantity}</Td>
                         <Td className="text-right tabular-nums text-slate-500">{r.po ? r.po.quantity : "—"}</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{r.po?.receivedQty != null ? r.po.receivedQty : "—"}</Td>
                         <Td className={`text-right tabular-nums ${CELL_TONE[r.priceStatus]}`}>{money(r.inv.unitPrice)}</Td>
                         <Td className="text-right tabular-nums text-slate-500">{r.po ? money(r.po.unitPrice) : "—"}</Td>
                         <Td className={`text-center tabular-nums ${CELL_TONE[r.vatStatus]}`}>{r.inv.vatRate != null ? `${r.inv.vatRate}%` : "—"}</Td>
@@ -194,6 +198,7 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
                         </Td>
                         <Td className="text-right text-slate-300">—</Td>
                         <Td className="text-right tabular-nums text-slate-500">{p.quantity}</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{p.receivedQty != null ? p.receivedQty : "—"}</Td>
                         <Td className="text-right text-slate-300">—</Td>
                         <Td className="text-right tabular-nums text-slate-500">{money(p.unitPrice)}</Td>
                         <Td className="text-center text-slate-300">—</Td>

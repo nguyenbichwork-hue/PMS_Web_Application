@@ -7,6 +7,7 @@ import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@
 import { autoMatchInvoiceToPo, scoreCandidate, type AutoMatchPo, type CandidateScore } from "@/lib/po-automatch";
 import { fetchPurchaseInvoices, googleSyncConfigured } from "@/lib/google-invoices";
 import type { SheetInvoice } from "@/lib/google-sheet-parse";
+import { writeInvoiceAllocations, invoiceDupKey, type AllocInvItem, type AllocPoItem } from "@/lib/allocation";
 import { logAudit } from "@/lib/audit";
 
 // =====================================================================
@@ -23,6 +24,7 @@ export interface SyncLine {
   quantity: number;
   unitPrice: number;
   vatRate: number | null;
+  receivedQty?: number | null; // SL đã nhận (GRN) — chỉ có ở dòng PO
 }
 
 export interface SyncPreviewItem {
@@ -78,15 +80,17 @@ async function loadCandidatePos(user: Awaited<ReturnType<typeof requireUser>>): 
   );
   if (pos.length === 0) return [];
 
-  const lines = await query<{ po_id: number; item_code: string | null; description: string; unit_price: string; quantity: string; vat_rate: string | null }>(
-    `SELECT po_id, item_code, description, unit_price, quantity, vat_rate FROM purchase_order_items
-      WHERE po_id = ANY($1::bigint[])`,
+  const lines = await query<{ id: number; po_id: number; item_code: string | null; description: string; unit_price: string; quantity: string; vat_rate: string | null; received: string }>(
+    `SELECT poi.id, poi.po_id, poi.item_code, poi.description, poi.unit_price, poi.quantity, poi.vat_rate,
+            COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+       FROM purchase_order_items poi
+      WHERE poi.po_id = ANY($1::bigint[])`,
     [pos.map((p) => p.id)]
   );
   const linesByPo = new Map<number, AutoMatchPo["lines"]>();
   for (const l of lines) {
     const arr = linesByPo.get(l.po_id) ?? [];
-    arr.push({ itemCode: l.item_code, description: l.description, unitPrice: Number(l.unit_price), quantity: Number(l.quantity), vatRate: l.vat_rate == null ? null : Number(l.vat_rate) });
+    arr.push({ itemCode: l.item_code, description: l.description, unitPrice: Number(l.unit_price), quantity: Number(l.quantity), vatRate: l.vat_rate == null ? null : Number(l.vat_rate), poItemId: l.id, receivedQty: Number(l.received) });
     linesByPo.set(l.po_id, arr);
   }
 
@@ -129,7 +133,7 @@ export async function previewInvoiceSyncAction(): Promise<SyncPreview> {
   const candidatePos = await loadCandidatePos(user);
   const poById = new Map(candidatePos.map((p) => [p.poId, p]));
   const toSyncLines = (ls: AutoMatchPo["lines"]): SyncLine[] =>
-    ls.map((l) => ({ itemCode: l.itemCode, description: l.description, quantity: l.quantity ?? 0, unitPrice: l.unitPrice, vatRate: l.vatRate ?? null }));
+    ls.map((l) => ({ itemCode: l.itemCode, description: l.description, quantity: l.quantity ?? 0, unitPrice: l.unitPrice, vatRate: l.vatRate ?? null, receivedQty: l.receivedQty ?? null }));
 
   const items: SyncPreviewItem[] = [];
   for (const inv of fresh) {
@@ -214,11 +218,20 @@ async function importOneInvoice(
   const existed = await queryOne<{ id: number }>(`SELECT id FROM invoices WHERE source_ref = $1`, [inv.invoiceId]);
   if (existed) return false;
 
+  // CHỐNG TRÙNG §9.2: khác source_ref nhưng CÙNG khóa (MST+ký hiệu+số HĐ) → chặn.
+  const dupKey = invoiceDupKey(inv.sellerTaxId, inv.invoiceSeries, inv.invoiceNumber);
+  if (inv.invoiceNumber) {
+    const dup = await queryOne<{ id: number; invoice_number: string }>(
+      `SELECT id, invoice_number FROM invoices WHERE dup_key = $1 LIMIT 1`, [dupKey]
+    );
+    if (dup) throw new Error(`Trùng hóa đơn (đã có #${dup.invoice_number}).`);
+  }
+
   const po = await queryOne<{
     po_number: string; supplier_id: number | null; supplier_tax: string | null; company_id: number | null;
-    grand_total: string; vat_total: string; po_qty: string; po_sub: string;
+    currency: string | null; grand_total: string; vat_total: string; po_qty: string; po_sub: string;
   }>(
-    `SELECT po.po_number, po.supplier_id, s.tax_code AS supplier_tax, po.company_id, po.grand_total, po.vat_total,
+    `SELECT po.po_number, po.supplier_id, s.tax_code AS supplier_tax, po.company_id, po.currency, po.grand_total, po.vat_total,
             COALESCE((SELECT sum(quantity) FROM purchase_order_items WHERE po_id = po.id),0) AS po_qty,
             COALESCE((SELECT sum(quantity*unit_price - discount) FROM purchase_order_items WHERE po_id = po.id),0) AS po_sub
        FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1`,
@@ -241,9 +254,11 @@ async function importOneInvoice(
   const invVat = inv.vat || Math.round(invSub * 0.1);
   const invTotal = inv.total || invSub + invVat;
 
-  // MAP dòng hóa đơn → dòng PO để so đơn giá.
-  const poItems = await query<{ item_code: string | null; description: string; unit_price: string }>(
-    `SELECT item_code, description, unit_price FROM purchase_order_items WHERE po_id = $1`, [poId]
+  // MAP dòng hóa đơn → dòng PO để so đơn giá (kèm id/SL/VAT + SL đã nhận GRN theo dòng).
+  const poItems = await query<{ id: number; item_code: string | null; description: string; unit_price: string; quantity: string; vat_rate: string | null; received: string }>(
+    `SELECT poi.id, poi.item_code, poi.description, poi.unit_price, poi.quantity, poi.vat_rate,
+            COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+       FROM purchase_order_items poi WHERE poi.po_id = $1`, [poId]
   );
   const poIndex = buildPoPriceIndex(poItems.map((it) => ({ itemCode: it.item_code, description: it.description, unitPrice: Number(it.unit_price) })));
   const matchLines: MatchLine[] = inv.lines.map((l) => ({
@@ -253,6 +268,9 @@ async function importOneInvoice(
 
   const received = await queryOne<{ q: string }>(
     `SELECT COALESCE(sum(gri.received_qty),0) AS q FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE gr.po_id = $1`, [poId]
+  );
+  const earliestRcv = await queryOne<{ d: string | null }>(
+    `SELECT min(receive_date)::text AS d FROM goods_receipts WHERE po_id = $1`, [poId]
   );
   const invoicedBefore = await queryOne<{ q: string }>(
     `SELECT COALESCE(sum(ii.quantity),0) AS q FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id WHERE i.po_id = $1 AND i.status <> 'Failed'`, [poId]
@@ -277,6 +295,8 @@ async function importOneInvoice(
     invoiceUnitPrice: invQty ? invSub / invQty : 0, poUnitPrice: poQty ? Number(po.po_sub) / poQty : 0,
     invoiceTotal: invTotal, expectedTotal: proratedTotal, lines: matchLines,
     invoiceVat: invVat, expectedVat: proratedVat,
+    invoiceCurrency: "VND", poCurrency: po.currency ?? "VND",
+    invoiceDate: inv.invoiceDate, earliestReceiptDate: earliestRcv?.d ?? null,
   });
   const matchStatus = { MATCHED: "Matched", WARNING: "Warning", FAILED: "Failed" }[result.overall]!;
   const storedSupplier = invoiceSupplierId ?? po.supplier_id;
@@ -296,26 +316,32 @@ async function importOneInvoice(
       exec,
       `INSERT INTO invoices
          (invoice_number, invoice_date, supplier_id, po_id, total_amount, vat_amount, status, match_result,
-          source, source_ref, invoice_series, seller_tax_id, match_key, match_score, match_level, created_by)
+          source, source_ref, invoice_series, seller_tax_id, currency, dup_key, match_key, match_score, match_level, created_by)
        VALUES ($1, COALESCE($2::date, current_date), $3, $4, $5, $6, $7, $8,
-               'google-sheet', $9, $10, $11, $12, $13, $14, $15)
+               'google-sheet', $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING id`,
       [
         inv.invoiceNumber || `HD-${inv.invoiceId.slice(0, 12)}`, inv.invoiceDate, storedSupplier, poId, invTotal, invVat,
-        matchStatus, result.overall, inv.invoiceId, inv.invoiceSeries, inv.sellerTaxId,
+        matchStatus, result.overall, inv.invoiceId, inv.invoiceSeries, inv.sellerTaxId, "VND", dupKey,
         scored.key, scored.score, "MANUAL", user.id,
       ]
     );
+    const allocInv: AllocInvItem[] = [];
     for (const l of inv.lines) {
-      await exec(
+      const row = await firstRow<{ id: number }>(
+        exec,
         `INSERT INTO invoice_items (invoice_id, item_code, description, quantity, unit_price, amount, vat_rate)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
         [created!.id, l.itemCode || null, l.description || null, l.quantity, l.unitPrice, Number(l.quantity) * Number(l.unitPrice), l.taxRate ?? null]
       );
+      allocInv.push({ id: row?.id ?? null, itemCode: l.itemCode || null, description: l.description || null, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), vatRate: l.taxRate ?? null });
     }
     for (const c of result.checks) {
       await exec(`INSERT INTO invoice_matching (invoice_id, check_name, result, reason) VALUES ($1,$2,$3,$4)`, [created!.id, c.check_name, c.result, c.reason]);
     }
+    // Ghi vết PHÂN BỔ TỪNG DÒNG (§11.2/§15.2).
+    const allocPo: AllocPoItem[] = poItems.map((it) => ({ id: it.id, itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate), receivedQty: Number(it.received) }));
+    await writeInvoiceAllocations(exec, created!.id, poId, allocInv, allocPo, ms ? Number(ms.price_tolerance_pct) : 1);
     await logAudit(
       { actorId: user.id, actorName: user.name, documentType: "Invoice", documentId: created!.id, action: "SyncImport", newValue: `${inv.invoiceNumber ?? inv.invoiceId} · ${result.overall}` },
       exec

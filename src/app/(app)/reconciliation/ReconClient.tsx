@@ -41,7 +41,8 @@ function DetailTable({ row }: { row: ReconRowData }) {
           <tr>
             <Th>Mã / Tên hàng</Th>
             <Th className="text-right">SL HĐ</Th>
-            <Th className="text-right">SL PO</Th>
+            <Th className="text-right">SL đặt</Th>
+            <Th className="text-right">SL nhận</Th>
             <Th className="text-right">Giá HĐ</Th>
             <Th className="text-right">Giá PO</Th>
             <Th className="text-center">VAT HĐ</Th>
@@ -57,6 +58,7 @@ function DetailTable({ row }: { row: ReconRowData }) {
               </Td>
               <Td className={`text-right tabular-nums ${CELL_TONE[r.qtyStatus]}`}>{r.inv.quantity}</Td>
               <Td className="text-right tabular-nums text-slate-500">{r.po ? r.po.quantity : "—"}</Td>
+              <Td className="text-right tabular-nums text-slate-500">{r.po?.receivedQty != null ? r.po.receivedQty : "—"}</Td>
               <Td className={`text-right tabular-nums ${CELL_TONE[r.priceStatus]}`}>{money(r.inv.unitPrice)}</Td>
               <Td className="text-right tabular-nums text-slate-500">{r.po ? money(r.po.unitPrice) : "—"}</Td>
               <Td className={`text-center tabular-nums ${CELL_TONE[r.vatStatus]}`}>{r.inv.vatRate != null ? `${r.inv.vatRate}%` : "—"}</Td>
@@ -71,6 +73,7 @@ function DetailTable({ row }: { row: ReconRowData }) {
               </Td>
               <Td className="text-right text-slate-300">—</Td>
               <Td className="text-right tabular-nums text-slate-500">{p.quantity}</Td>
+              <Td className="text-right tabular-nums text-slate-500">{p.receivedQty != null ? p.receivedQty : "—"}</Td>
               <Td className="text-right text-slate-300">—</Td>
               <Td className="text-right tabular-nums text-slate-500">{money(p.unitPrice)}</Td>
               <Td className="text-center text-slate-300">—</Td>

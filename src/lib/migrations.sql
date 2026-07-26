@@ -169,3 +169,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_source_ref
 
 -- Thuế suất TỪNG DÒNG hóa đơn (đọc từ XML/Sheet) để đối chiếu VAT theo dòng với PO.
 ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2);
+
+-- ---------- ĐỐI CHIẾU ĐẦY ĐỦ theo đặc tả §9/§11/§12 ----------
+-- Tiền tệ hóa đơn (§11.4 Currency) — mặc định VND; khác PO → chặn (trừ ngoại lệ FX).
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'VND';
+-- Khóa CHỐNG TRÙNG hóa đơn (§9.2): MST người bán + ký hiệu + số hóa đơn (chuẩn hóa).
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dup_key TEXT;
+CREATE INDEX IF NOT EXISTS idx_invoices_dup_key ON invoices(dup_key);
+
+-- PHÂN BỔ TỪNG DÒNG hóa đơn ↔ dòng PO — "bảng hạng nhất" (§11.2/§15.2
+-- invoice_po_allocation): kiểm soát số lượng/giá trị dựa trên LINE, không chỉ
+-- lưu po_id trên header. Mỗi dòng hóa đơn ghép với đúng dòng PO + lưu vết đối chiếu.
+CREATE TABLE IF NOT EXISTS invoice_line_allocation (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  invoice_id      BIGINT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  invoice_item_id BIGINT REFERENCES invoice_items(id) ON DELETE CASCADE,
+  po_id           BIGINT REFERENCES purchase_orders(id),
+  po_item_id      BIGINT REFERENCES purchase_order_items(id),
+  item_code       TEXT,
+  description     TEXT,
+  alloc_qty       NUMERIC(18,3) NOT NULL DEFAULT 0,   -- SL dòng hóa đơn phân bổ vào dòng PO
+  alloc_amount    NUMERIC(18,2) NOT NULL DEFAULT 0,   -- tiền (chưa thuế) dòng hóa đơn
+  inv_unit_price  NUMERIC(18,2),
+  po_unit_price   NUMERIC(18,2),
+  received_qty    NUMERIC(18,3),                      -- SL đã nhận (GRN) của dòng PO khi ghép
+  inv_vat_rate    NUMERIC(5,2),
+  po_vat_rate     NUMERIC(5,2),
+  price_status    TEXT,                               -- PASS/WARNING/FAIL từng tiêu chí
+  qty_status      TEXT,
+  vat_status      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_inv_alloc_invoice ON invoice_line_allocation(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_inv_alloc_po_item ON invoice_line_allocation(po_item_id);

@@ -48,8 +48,10 @@ export default async function ReconciliationPage() {
         `SELECT invoice_id, item_code, description, quantity, unit_price, vat_rate FROM invoice_items WHERE invoice_id = ANY($1::bigint[])`, [invIds])
     : [];
   const poItemRows = poIds.length
-    ? await query<{ po_id: number; item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null }>(
-        `SELECT po_id, item_code, description, quantity, unit_price, vat_rate FROM purchase_order_items WHERE po_id = ANY($1::bigint[])`, [poIds])
+    ? await query<{ po_id: number; item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null; received: string }>(
+        `SELECT poi.po_id, poi.item_code, poi.description, poi.quantity, poi.unit_price, poi.vat_rate,
+                COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+           FROM purchase_order_items poi WHERE poi.po_id = ANY($1::bigint[])`, [poIds])
     : [];
   const checkRows = invIds.length
     ? await query<{ invoice_id: number; check_name: string; result: string; reason: string | null }>(
@@ -65,7 +67,7 @@ export default async function ReconciliationPage() {
   const poLinesById = new Map<number, ReconLine[]>();
   for (const l of poItemRows) {
     const arr = poLinesById.get(l.po_id) ?? [];
-    arr.push({ itemCode: l.item_code, description: l.description, quantity: Number(l.quantity), unitPrice: Number(l.unit_price), vatRate: l.vat_rate == null ? null : Number(l.vat_rate) });
+    arr.push({ itemCode: l.item_code, description: l.description, quantity: Number(l.quantity), unitPrice: Number(l.unit_price), vatRate: l.vat_rate == null ? null : Number(l.vat_rate), receivedQty: Number(l.received) });
     poLinesById.set(l.po_id, arr);
   }
   const checksById = new Map<number, { check_name: string; result: string; reason: string | null }[]>();

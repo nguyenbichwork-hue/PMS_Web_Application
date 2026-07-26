@@ -35,7 +35,8 @@ function LineReconcile({ item, poId }: { item: SyncPreviewItem; poId: number }) 
           <tr className="border-b border-slate-200 bg-slate-100/70 text-slate-500">
             <Th>Mã / Tên hàng</Th>
             <Th className="text-right">SL HĐ</Th>
-            <Th className="text-right">SL PO</Th>
+            <Th className="text-right">SL đặt</Th>
+            <Th className="text-right">SL nhận</Th>
             <Th className="text-right">Giá HĐ</Th>
             <Th className="text-right">Giá PO</Th>
             <Th className="text-center">VAT HĐ</Th>
@@ -53,6 +54,7 @@ function LineReconcile({ item, poId }: { item: SyncPreviewItem; poId: number }) 
               </Td>
               <Td className={`text-right tabular-nums ${CELL_TONE[r.qtyStatus]}`}>{vn(r.inv.quantity)}</Td>
               <Td className="text-right tabular-nums text-slate-500">{r.po ? vn(r.po.quantity) : "—"}</Td>
+              <Td className="text-right tabular-nums text-slate-500">{r.po?.receivedQty != null ? vn(r.po.receivedQty) : "—"}</Td>
               <Td className={`text-right tabular-nums ${CELL_TONE[r.priceStatus]}`}>{vn(r.inv.unitPrice)}</Td>
               <Td className="text-right tabular-nums text-slate-500">{r.po ? vn(r.po.unitPrice) : "—"}</Td>
               <Td className={`text-center tabular-nums ${CELL_TONE[r.vatStatus]}`}>{r.inv.vatRate != null ? `${r.inv.vatRate}%` : "—"}</Td>
@@ -70,6 +72,7 @@ function LineReconcile({ item, poId }: { item: SyncPreviewItem; poId: number }) 
               </Td>
               <Td className="text-right text-slate-300">—</Td>
               <Td className="text-right tabular-nums text-slate-500">{vn(p.quantity)}</Td>
+              <Td className="text-right tabular-nums text-slate-500">{p.receivedQty != null ? vn(p.receivedQty) : "—"}</Td>
               <Td className="text-right text-slate-300">—</Td>
               <Td className="text-right tabular-nums text-slate-500">{vn(p.unitPrice)}</Td>
               <Td className="text-center text-slate-300">—</Td>
