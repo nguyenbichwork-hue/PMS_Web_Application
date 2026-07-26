@@ -56,6 +56,11 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
        FROM comments WHERE document_type='PO' AND document_id=$1 ORDER BY id`,
     [poId]
   );
+  // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+  const mentionUsers = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+    [po.company_id]
+  );
 
   // Chỉ sửa nội dung PO khi còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ được bình luận).
   const editable = user && can(user.role, "po.manage") && po.status === "Draft";
@@ -164,6 +169,7 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
             comments={comments}
             currentUserId={user?.id ?? null}
             isAdmin={user?.role === "Admin"}
+            mentionUsers={mentionUsers}
           />
 
 

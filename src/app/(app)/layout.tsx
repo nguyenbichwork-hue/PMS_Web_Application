@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getMyTasks } from "@/lib/tasks";
+import { getMyNotifications, type NotificationFeed } from "@/actions/notification";
 import { Sidebar } from "@/components/Sidebar";
+import { NotificationBell } from "@/components/NotificationBell";
 import { MobileMenu } from "@/components/MobileMenu";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Icon } from "@/components/icons";
@@ -16,6 +18,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const { total: taskCount } = await getMyTasks(user);
+  // Thông báo @nhắc (best-effort: bảng chưa migrate thì để trống, không vỡ layout).
+  let notifFeed: NotificationFeed = { unread: 0, items: [] };
+  try { notifFeed = await getMyNotifications(); } catch { /* bảng notifications chưa tồn tại */ }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -36,13 +41,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               aria-label="Việc của tôi"
               className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50"
             >
-              <Icon name="bell" size={18} />
+              <Icon name="tasks" size={18} />
               {taskCount > 0 && (
                 <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
                   {taskCount > 99 ? "99+" : taskCount}
                 </span>
               )}
             </Link>
+            <NotificationBell initial={notifFeed} />
             <ThemeToggle />
             <form action={logoutAction}>
               <button className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 md:px-3" aria-label="Đăng xuất">

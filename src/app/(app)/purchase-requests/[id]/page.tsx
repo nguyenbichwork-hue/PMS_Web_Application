@@ -57,6 +57,11 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
        FROM comments WHERE document_type='PR' AND document_id=$1 ORDER BY id`,
     [prId]
   );
+  // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+  const mentionUsers = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+    [pr.company_id]
+  );
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   const canApprove =
@@ -196,6 +201,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
             comments={comments}
             currentUserId={user?.id ?? null}
             isAdmin={user?.role === "Admin"}
+            mentionUsers={mentionUsers}
           />
 
           <AttachmentPanel documentType="PR" documentId={prId} attachments={attachments} />

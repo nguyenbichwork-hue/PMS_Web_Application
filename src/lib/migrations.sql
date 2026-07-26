@@ -110,6 +110,23 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 CREATE INDEX IF NOT EXISTS idx_comments_doc ON comments(document_type, document_id);
 
+-- ---------- THÔNG BÁO (@nhắc tên trong bình luận) ----------
+-- Nhẹ: mỗi lần ai đó @nhắc bạn trong bình luận PR/PO → 1 dòng thông báo. Chuông
+-- ở header hiện số CHƯA ĐỌC (read_at IS NULL); bấm vào mở đúng chứng từ.
+CREATE TABLE IF NOT EXISTS notifications (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type          TEXT NOT NULL DEFAULT 'mention',   -- 'mention' | 'comment'
+  document_type TEXT,                              -- 'PR' | 'PO' | 'Invoice'
+  document_id   BIGINT,
+  actor_name    TEXT,                              -- người gây ra thông báo
+  body          TEXT,                              -- trích nội dung bình luận
+  comment_id    BIGINT,
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
+
 -- ---------- MỞ LẠI PR bị từ chối: thêm trạng thái lịch sử 'Reopened' ----------
 -- Cho phép ghi 1 dòng approval_history khi Manager mở lại PR (Rejected → Pending).
 ALTER TABLE approval_history DROP CONSTRAINT IF EXISTS approval_history_status_check;

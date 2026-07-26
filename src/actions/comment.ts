@@ -1,8 +1,9 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canAccessCompany, isAdmin } from "@/lib/access";
+import { createMentionNotifications } from "@/actions/notification";
 
 // Bình luận ĐỘC LẬP: không gắn cấp duyệt, KHÔNG đổi trạng thái chứng từ.
 // Ai truy cập được chứng từ (cùng công ty, hoặc Admin) thì bình luận được.
@@ -10,12 +11,12 @@ import { canAccessCompany, isAdmin } from "@/lib/access";
 const PATHS: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices" };
 const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices" };
 
-/** Kiểm scope công ty của chứng từ mà bình luận trỏ tới (chống bình luận xuyên công ty). */
+/** Kiểm scope công ty của chứng từ; trả về companyId (để lọc @nhắc cùng công ty). */
 async function assertDocAccess(
   user: { role: string; company_id: number | null },
   documentType: string,
   documentId: number
-): Promise<void> {
+): Promise<number | null> {
   const table = DOC_TABLE[documentType];
   if (!table || !documentId) throw new Error("Chứng từ không hợp lệ.");
   let companyId: number | null;
@@ -32,6 +33,7 @@ async function assertDocAccess(
     companyId = row.company_id;
   }
   if (companyId != null && !canAccessCompany(user as never, companyId)) throw new Error("FORBIDDEN");
+  return companyId;
 }
 
 export async function addCommentAction(formData: FormData) {
@@ -41,13 +43,42 @@ export async function addCommentAction(formData: FormData) {
   const body = String(formData.get("body") ?? "").trim();
   if (!documentType || !documentId) throw new Error("Thiếu tham chiếu chứng từ.");
   if (!body) throw new Error("Nội dung bình luận trống.");
-  await assertDocAccess(user, documentType, documentId);
+  const companyId = await assertDocAccess(user, documentType, documentId);
 
-  await query(
-    `INSERT INTO comments (document_type, document_id, author_id, author_name, body)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [documentType, documentId, user.id, user.name, body]
-  );
+  // @nhắc tên: client gửi danh sách id đã chọn; server CHỈ giữ user hợp lệ, đang
+  // hoạt động, và cùng công ty với chứng từ (hoặc Admin) — chống nhắc bừa.
+  let mentionIds: number[] = [];
+  try {
+    const raw = JSON.parse(String(formData.get("mentions") ?? "[]"));
+    if (Array.isArray(raw)) mentionIds = raw.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  } catch { /* bỏ qua mentions hỏng */ }
+
+  let validMentions: number[] = [];
+  if (mentionIds.length > 0) {
+    const rows = await query<{ id: number }>(
+      `SELECT id FROM users
+        WHERE id = ANY($1::bigint[]) AND status = 'Active'
+          AND ($2::bigint IS NULL OR role = 'Admin' OR company_id = $2)`,
+      [mentionIds, companyId]
+    );
+    validMentions = rows.map((r) => r.id);
+  }
+
+  await withTransaction(async (exec) => {
+    const c = await firstRow<{ id: number }>(
+      exec,
+      `INSERT INTO comments (document_type, document_id, author_id, author_name, body)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [documentType, documentId, user.id, user.name, body]
+    );
+    if (validMentions.length > 0) {
+      await createMentionNotifications(exec, {
+        userIds: validMentions, actorId: user.id, actorName: user.name,
+        documentType, documentId, body, commentId: c?.id ?? null,
+      });
+    }
+  });
+
   const base = PATHS[documentType];
   if (base) revalidatePath(`${base}/${documentId}`);
 }
