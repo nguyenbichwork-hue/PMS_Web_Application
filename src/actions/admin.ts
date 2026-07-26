@@ -40,10 +40,13 @@ export async function getAccessLogAction(): Promise<AccessEntry[]> {
 // ==================== THEO DÕI DUNG LƯỢNG LƯU TRỮ (Admin) ====================
 export interface StorageTable { table: string; label: string; rows: number; bytes: number | null }
 export interface StorageStats {
-  mode: string;              // engine đang đo (PGlite local / Supabase…)
+  mode: string;              // engine đo dữ liệu NGHIỆP VỤ (Neon / Supabase / PGlite)
+  businessEngine: string;    // nhãn ngắn: "Neon" | "Supabase" | "PGlite"
   isSupabase: boolean;
-  dbBytes: number | null;    // tổng dung lượng DB (null nếu engine không đo được)
+  dbBytes: number | null;    // dung lượng DB nghiệp vụ (null nếu engine không đo được)
   tables: StorageTable[];
+  // DB tài khoản riêng (Supabase) khi chạy ACCOUNTS_ONLY — đo tách khỏi Neon.
+  accounts: { engine: string; users: number; dbBytes: number | null } | null;
   files: { count: number; bytes: number };   // thư mục ./storage
   limits: { freeDb: number; proDb: number; freeFile: number; proFile: number };
   note: string;
@@ -72,13 +75,28 @@ export async function getStorageStatsAction(): Promise<StorageStats> {
   if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");
 
   const url = process.env.DATABASE_URL;
+  const businessUrl = process.env.BUSINESS_DATABASE_URL;
   const accountsOnly = process.env.ACCOUNTS_ONLY === "true";
   const isSupabase = !!url && !accountsOnly;
-  const mode = !url
+
+  // Engine đang đo dữ liệu NGHIỆP VỤ qua query() (theo db.ts):
+  //   • ACCOUNTS_ONLY + BUSINESS_DATABASE_URL → Neon (hoặc Postgres nghiệp vụ khác).
+  //   • ACCOUNTS_ONLY, KHÔNG có BUSINESS_DATABASE_URL → PGlite cục bộ.
+  //   • Không ACCOUNTS_ONLY, có DATABASE_URL → Supabase (toàn bộ).
+  //   • Không cấu hình gì → PGlite cục bộ.
+  const businessPgUrl = accountsOnly ? businessUrl : url;
+  const businessEngine = !businessPgUrl
+    ? "PGlite"
+    : /neon\./i.test(businessPgUrl)
+    ? "Neon"
+    : /supabase/i.test(businessPgUrl)
+    ? "Supabase"
+    : "PostgreSQL";
+  const mode = !businessPgUrl
     ? "PGlite — máy cục bộ (.pglite)"
     : accountsOnly
-    ? "Supabase — chỉ tài khoản (nghiệp vụ vẫn PGlite cục bộ)"
-    : "Supabase — toàn bộ dữ liệu";
+    ? `${businessEngine} — dữ liệu nghiệp vụ; tài khoản trên Supabase (đo riêng bên dưới)`
+    : `${businessEngine} — toàn bộ dữ liệu`;
 
   // Đếm bản ghi + kích thước từng bảng (bọc try/catch: bảng chưa migrate / engine
   // không hỗ trợ pg_total_relation_size vẫn không vỡ).
@@ -116,17 +134,29 @@ export async function getStorageStatsAction(): Promise<StorageStats> {
     }
   } catch { /* chưa có thư mục storage */ }
 
-  const note = isSupabase
-    ? "Đang đo trực tiếp trên Supabase."
-    : accountsOnly
-    ? "Nghiệp vụ đang đo trên PGlite cục bộ; Supabase chỉ giữ tài khoản (rất nhỏ). Số liệu dưới ước lượng dung lượng NẾU chuyển hết lên Supabase."
-    : "Đang đo trên PGlite cục bộ. Số liệu ước lượng dung lượng nếu chuyển lên Supabase.";
+  // Dung lượng DB TÀI KHOẢN (Supabase) — đo tách, chỉ khi ACCOUNTS_ONLY bật.
+  let accounts: StorageStats["accounts"] = null;
+  if (accountsOnly) {
+    try {
+      const { remoteAccountsStats } = await import("@/lib/accounts");
+      const s = await remoteAccountsStats();
+      if (s) accounts = { engine: "Supabase", users: s.users, dbBytes: s.dbBytes };
+    } catch { accounts = null; }
+  }
+
+  const note = accountsOnly
+    ? `Dữ liệu nghiệp vụ (PR/PO/hóa đơn…) đo trên ${businessEngine}; tài khoản đăng nhập đo riêng trên Supabase.`
+    : businessPgUrl
+    ? `Đang đo trực tiếp trên ${businessEngine}.`
+    : "Đang đo trên PGlite cục bộ. Số liệu ước lượng dung lượng nếu chuyển lên Postgres.";
 
   return {
     mode,
+    businessEngine,
     isSupabase,
     dbBytes,
     tables,
+    accounts,
     files,
     limits: { freeDb: 500 * MB, proDb: 8 * GB, freeFile: 1 * GB, proFile: 100 * GB },
     note,

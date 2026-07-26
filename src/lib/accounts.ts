@@ -119,6 +119,23 @@ export async function syncOneUserToLocal(email: string, runLocal: Run): Promise<
   );
 }
 
+/** Dung lượng DB tài khoản (Supabase) + số user — cho trang theo dõi dung lượng.
+ *  Trả null nếu không bật ACCOUNTS_ONLY hoặc không đo được. */
+export async function remoteAccountsStats(): Promise<{ users: number; dbBytes: number | null } | null> {
+  if (!accountsOnSupabase) return null;
+  try {
+    const u = await remoteQuery<{ c: number }>(`SELECT count(*)::int AS c FROM users`);
+    let dbBytes: number | null = null;
+    try {
+      const r = await remoteQuery<{ b: string }>(`SELECT pg_database_size(current_database()) AS b`);
+      dbBytes = r.rows[0]?.b != null ? Number(r.rows[0].b) : null;
+    } catch { dbBytes = null; }
+    return { users: Number(u.rows[0]?.c ?? 0), dbBytes };
+  } catch {
+    return null;
+  }
+}
+
 /** Xóa MỘT tài khoản (theo email) trên Supabase — dùng khi xóa user ở app.
  *  Best-effort: chỉ chạy khi bật ACCOUNTS_ONLY. */
 export async function deleteRemoteUser(email: string): Promise<void> {

@@ -7,10 +7,19 @@ import { Card, PageHeader, StatusBadge, Th, Td } from "@/components/ui";
 import { money, date } from "@/lib/format";
 import { PaymentPanel, type PaymentRow } from "./PaymentPanel";
 import { CreditNotePanel } from "./CreditNotePanel";
+import { RemapPanel, type RemapPoOption } from "./RemapPanel";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { reconcileLines, deriveMatchCode, MATCH_CODE_LABEL, matchCodeTone, type ReconLine, type CheckResult } from "@/lib/matching";
 import type { Invoice, InvoiceItem, MatchCheck } from "@/lib/types";
 
 const CHECK_ICON: Record<string, string> = { PASS: "✅", WARNING: "⚠️", FAIL: "❌" };
+const CELL_TONE: Record<CheckResult, string> = { PASS: "text-emerald-700", WARNING: "text-amber-600", FAIL: "text-rose-600 font-semibold" };
+const CODE_TONE: Record<ReturnType<typeof matchCodeTone>, string> = {
+  ok: "bg-emerald-100 text-emerald-700",
+  tolerance: "bg-teal-100 text-teal-700",
+  warn: "bg-amber-100 text-amber-700",
+  fail: "bg-rose-100 text-rose-700",
+};
 
 export default async function InvoiceDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,8 +37,36 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
   if (!inv) notFound();
   if (user && inv.company_id != null && !canAccessCompany(user, inv.company_id)) notFound();
 
-  const items = await query<InvoiceItem>(`SELECT * FROM invoice_items WHERE invoice_id=$1`, [invId]);
+  const items = await query<InvoiceItem & { vat_rate: string | null }>(`SELECT * FROM invoice_items WHERE invoice_id=$1`, [invId]);
   const checks = await query<MatchCheck>(`SELECT * FROM invoice_matching WHERE invoice_id=$1 ORDER BY id`, [invId]);
+
+  // ---- Đối chiếu TỪNG DÒNG với PO (§11.1: kiểm soát dựa trên line, không chỉ po_number) ----
+  const poItems = inv.po_id
+    ? await query<{ item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null }>(
+        `SELECT item_code, description, quantity, unit_price, vat_rate FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`,
+        [inv.po_id]
+      )
+    : [];
+  const invRecon: ReconLine[] = items.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate) }));
+  const poRecon: ReconLine[] = poItems.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate) }));
+  const recon = inv.po_id ? reconcileLines(invRecon, poRecon) : null;
+  const matchCode = deriveMatchCode(checks.map((c) => ({ check_name: c.check_name, result: c.result, reason: c.reason })), { hasPo: !!inv.po_id });
+
+  // ---- PO ứng viên để SỬA/BỎ map (ưu tiên cùng NCC, đang mở) ----
+  const canManage = !!(user && can(user.role, "invoice.manage"));
+  let remapOptions: RemapPoOption[] = [];
+  if (canManage) {
+    remapOptions = (
+      await query<{ id: number; po_number: string | null; supplier_name: string | null; grand_total: string; supplier_id: number | null }>(
+        `SELECT po.id, po.po_number, s.supplier_name, po.grand_total, po.supplier_id
+           FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+          WHERE po.status IN ('Sent','Confirmed','Approved','Partially Received','Received')
+            ${inv.company_id != null ? "AND po.company_id = " + Number(inv.company_id) : ""}
+          ORDER BY (po.supplier_id IS NOT DISTINCT FROM ${inv.supplier_id == null ? "NULL" : Number(inv.supplier_id)}) DESC, po.id DESC
+          LIMIT 50`
+      )
+    ).map((p) => ({ id: p.id, po_number: p.po_number, supplier_name: p.supplier_name, grand_total: Number(p.grand_total), same_supplier: p.supplier_id != null && p.supplier_id === inv.supplier_id }));
+  }
   const payments = await query<PaymentRow>(
     `SELECT id, payment_date, amount, method, reference FROM payments WHERE invoice_id=$1 ORDER BY id`,
     [invId]
@@ -116,6 +153,58 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
               </div>
             </div>
           </Card>
+
+          {recon && (
+            <Card className="p-5">
+              <h3 className="mb-1 text-sm font-semibold text-slate-700">Đối chiếu từng dòng với PO {inv.po_number}</h3>
+              <p className="mb-3 text-[12px] text-slate-500">So khớp mỗi dòng hóa đơn với đúng dòng trên đơn hàng — số lượng, đơn giá và VAT hai bên.</p>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <Th>Mã / Tên hàng</Th>
+                      <Th className="text-right">SL HĐ</Th>
+                      <Th className="text-right">SL PO</Th>
+                      <Th className="text-right">Giá HĐ</Th>
+                      <Th className="text-right">Giá PO</Th>
+                      <Th className="text-center">VAT HĐ</Th>
+                      <Th className="text-center">VAT PO</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recon.rows.map((r, i) => (
+                      <tr key={i} className="border-t border-slate-100 align-top">
+                        <Td>
+                          <div className="text-slate-800">{r.inv.description ?? r.inv.itemCode ?? "?"}</div>
+                          {!r.po && <div className="text-[11px] text-rose-500">Không có dòng này trên PO</div>}
+                        </Td>
+                        <Td className={`text-right tabular-nums ${CELL_TONE[r.qtyStatus]}`}>{r.inv.quantity}</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{r.po ? r.po.quantity : "—"}</Td>
+                        <Td className={`text-right tabular-nums ${CELL_TONE[r.priceStatus]}`}>{money(r.inv.unitPrice)}</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{r.po ? money(r.po.unitPrice) : "—"}</Td>
+                        <Td className={`text-center tabular-nums ${CELL_TONE[r.vatStatus]}`}>{r.inv.vatRate != null ? `${r.inv.vatRate}%` : "—"}</Td>
+                        <Td className="text-center tabular-nums text-slate-500">{r.po?.vatRate != null ? `${r.po.vatRate}%` : "—"}</Td>
+                      </tr>
+                    ))}
+                    {recon.poOnly.map((p, i) => (
+                      <tr key={`po-${i}`} className="border-t border-slate-100 bg-amber-50/40 align-top">
+                        <Td>
+                          <div className="text-slate-700">{p.description ?? p.itemCode ?? "?"}</div>
+                          <div className="text-[11px] text-amber-600">Dòng PO chưa có trên hóa đơn</div>
+                        </Td>
+                        <Td className="text-right text-slate-300">—</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{p.quantity}</Td>
+                        <Td className="text-right text-slate-300">—</Td>
+                        <Td className="text-right tabular-nums text-slate-500">{money(p.unitPrice)}</Td>
+                        <Td className="text-center text-slate-300">—</Td>
+                        <Td className="text-center tabular-nums text-slate-500">{p.vatRate != null ? `${p.vatRate}%` : "—"}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -133,8 +222,11 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
             <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
               Kết quả đối chiếu
             </div>
-            <div className="text-2xl font-bold">
+            <div className="flex items-center gap-2">
               <StatusBadge status={inv.match_result ?? "Pending"} />
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${CODE_TONE[matchCodeTone(matchCode)]}`} title="Mã kết quả theo đặc tả §11.5">
+                {MATCH_CODE_LABEL[matchCode]}
+              </span>
             </div>
 
             <div className="mt-4 space-y-3">
@@ -156,6 +248,8 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
           <Link href={`/document-chain?doc=INV&id=${invId}`} className="block rounded-2xl border border-slate-200/70 bg-white p-3 text-center text-sm font-medium text-brand-600 transition hover:border-slate-300 hover:bg-slate-50">
             🔗 Xem chuỗi chứng từ
           </Link>
+
+          {canManage && <RemapPanel invoiceId={invId} currentPoId={inv.po_id} options={remapOptions} />}
 
           <PaymentPanel invoiceId={invId} total={Number(inv.total_amount)} payments={payments} canPay={canPay} />
 

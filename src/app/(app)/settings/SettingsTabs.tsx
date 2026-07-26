@@ -146,25 +146,54 @@ function StoragePanel() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 p-4">
               <div className="mb-2 flex items-baseline justify-between">
-                <span className="text-sm font-semibold text-slate-700">Cơ sở dữ liệu</span>
+                <span className="text-sm font-semibold text-slate-700">DB nghiệp vụ · {stats.businessEngine}</span>
                 <span className="text-lg font-bold text-slate-900">{fmtBytes(dbUsed)}</span>
               </div>
               <div className="space-y-2">
-                <UsageBar used={dbUsed} limit={stats.limits.freeDb} label={`Supabase Free (${fmtBytes(stats.limits.freeDb)})`} />
-                <UsageBar used={dbUsed} limit={stats.limits.proDb} label={`Supabase Pro (${fmtBytes(stats.limits.proDb)})`} />
+                <UsageBar used={dbUsed} limit={stats.limits.freeDb} label={`Gói Free (${fmtBytes(stats.limits.freeDb)})`} />
+                <UsageBar used={dbUsed} limit={stats.limits.proDb} label={`Gói Pro (${fmtBytes(stats.limits.proDb)})`} />
               </div>
             </div>
+
+            {stats.accounts ? (
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="text-sm font-semibold text-slate-700">DB tài khoản · {stats.accounts.engine}</span>
+                  <span className="text-lg font-bold text-slate-900">{stats.accounts.dbBytes != null ? fmtBytes(stats.accounts.dbBytes) : "—"}</span>
+                </div>
+                <p className="text-xs text-slate-500">{stats.accounts.users.toLocaleString("vi-VN")} tài khoản đăng nhập (rất nhỏ so với dữ liệu nghiệp vụ).</p>
+                {stats.accounts.dbBytes != null && (
+                  <div className="mt-2 space-y-2">
+                    <UsageBar used={stats.accounts.dbBytes} limit={stats.limits.freeDb} label={`Supabase Free (${fmtBytes(stats.limits.freeDb)})`} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="text-sm font-semibold text-slate-700">File chứng từ ({stats.files.count})</span>
+                  <span className="text-lg font-bold text-slate-900">{fmtBytes(stats.files.bytes)}</span>
+                </div>
+                <div className="space-y-2">
+                  <UsageBar used={stats.files.bytes} limit={stats.limits.freeFile} label={`Gói Free (${fmtBytes(stats.limits.freeFile)})`} />
+                  <UsageBar used={stats.files.bytes} limit={stats.limits.proFile} label={`Gói Pro (${fmtBytes(stats.limits.proFile)})`} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {stats.accounts && (
             <div className="rounded-xl border border-slate-200 p-4">
               <div className="mb-2 flex items-baseline justify-between">
                 <span className="text-sm font-semibold text-slate-700">File chứng từ ({stats.files.count})</span>
                 <span className="text-lg font-bold text-slate-900">{fmtBytes(stats.files.bytes)}</span>
               </div>
-              <div className="space-y-2">
-                <UsageBar used={stats.files.bytes} limit={stats.limits.freeFile} label={`Supabase Free (${fmtBytes(stats.limits.freeFile)})`} />
-                <UsageBar used={stats.files.bytes} limit={stats.limits.proFile} label={`Supabase Pro (${fmtBytes(stats.limits.proFile)})`} />
+              <div className="space-y-2 md:max-w-md">
+                <UsageBar used={stats.files.bytes} limit={stats.limits.freeFile} label={`Gói Free (${fmtBytes(stats.limits.freeFile)})`} />
+                <UsageBar used={stats.files.bytes} limit={stats.limits.proFile} label={`Gói Pro (${fmtBytes(stats.limits.proFile)})`} />
               </div>
             </div>
-          </div>
+          )}
 
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full">

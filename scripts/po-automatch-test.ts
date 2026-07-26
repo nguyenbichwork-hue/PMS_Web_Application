@@ -49,14 +49,15 @@ r = autoMatchInvoiceToPo(invByName, [poA, poB]);
 check(r.best?.poId === 1, "Mã khác nhưng khớp theo tên → vẫn ra PO A");
 check((r.best?.matchedLines ?? 0) === 2, "Khớp 2 dòng theo tên");
 
-// 3) MST không khớp NCC nào → best vendorOk=false, không AUTO
+// 3) MST không khớp NCC nào → CHẶN CỨNG (§11.4): loại hẳn, không còn ứng viên.
 const invNoVendor: AutoMatchInvoice = {
   sellerTaxId: "0000000000", total: 11_000_000,
   lines: invA.lines,
 };
 r = autoMatchInvoiceToPo(invNoVendor, [poA, poB]);
-check(r.best?.vendorOk === false, "MST lạ → vendorOk=false");
-check(r.level !== "AUTO", "MST không khớp → không AUTO");
+check(r.candidates.length === 0, "MST khác → loại hết ứng viên (chặn cứng)");
+check(r.best === null, "MST khác → không có best");
+check(r.level === "NONE", "MST không khớp → NONE (không AUTO/REVIEW)");
 
 // 4) Hóa đơn TỪNG PHẦN (1 trong 2 dòng) sát 'remainingAmount' → chọn PO A, REVIEW/AUTO
 const poAPartial: AutoMatchPo = { ...poA, remainingAmount: 5_500_000 };

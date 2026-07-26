@@ -166,3 +166,6 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS match_level    TEXT;    -- AUTO | 
 -- Chống nhập lại cùng một bản ghi nguồn (mỗi source_ref chỉ vào 1 lần).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_source_ref
   ON invoices(source_ref) WHERE source_ref IS NOT NULL;
+
+-- Thuế suất TỪNG DÒNG hóa đơn (đọc từ XML/Sheet) để đối chiếu VAT theo dòng với PO.
+ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2);

@@ -75,6 +75,87 @@ export function findPoPrice(
   return null;
 }
 
+// =====================================================================
+// ĐỐI CHIẾU TỪNG DÒNG (line-level reconciliation) — §11.1/§11.4.
+// Ghép mỗi dòng HÓA ĐƠN với đúng dòng PO (theo mã → tên) rồi so SL / ĐƠN GIÁ /
+// VAT để hiện bảng "dòng nào khớp dòng nào". THUẦN, không chạm DB → dùng chung
+// cho tab Đồng bộ (client), chi tiết Hóa đơn và tab Đối chiếu (server).
+// =====================================================================
+
+export interface ReconLine {
+  itemCode: string | null;
+  description: string | null;
+  quantity: number;
+  unitPrice: number;
+  vatRate: number | null;
+}
+
+export interface ReconRow {
+  inv: ReconLine;
+  po: ReconLine | null;          // dòng PO khớp (null = dòng không có trên PO)
+  priceStatus: CheckResult;      // PASS trong ngưỡng · FAIL lệch · FAIL nếu không có PO
+  qtyStatus: CheckResult;        // PASS = SL HĐ ≤ SL PO · WARNING ít hơn · FAIL vượt
+  vatStatus: CheckResult;        // PASS trùng thuế suất · WARNING lệch · PASS nếu thiếu dữ liệu
+}
+
+export interface ReconResult {
+  rows: ReconRow[];
+  poOnly: ReconLine[];           // dòng PO CHƯA có trên hóa đơn (thông tin thêm)
+  matchedLines: number;
+  totalInvLines: number;
+  coverage: number;              // matchedLines / totalInvLines
+}
+
+const cmp = (a: number, b: number, tol: number): CheckResult =>
+  approxEqual(a, b, tol) ? "PASS" : "FAIL";
+
+/** Ghép + so từng dòng hóa đơn với dòng PO. `priceTolerancePct` mặc định 1%. */
+export function reconcileLines(
+  invLines: ReconLine[],
+  poLines: ReconLine[],
+  opts: { priceTolerancePct?: number } = {}
+): ReconResult {
+  const priceTol = (opts.priceTolerancePct ?? 1) / 100;
+  const byCode = new Map<string, ReconLine>();
+  const byDesc = new Map<string, ReconLine>();
+  for (const l of poLines) {
+    if (l.itemCode) byCode.set(matchKey(l.itemCode), l);
+    if (l.description) byDesc.set(matchKey(l.description), l);
+  }
+  const usedPo = new Set<ReconLine>();
+  const rows: ReconRow[] = [];
+  let matchedLines = 0;
+
+  for (const inv of invLines) {
+    let po: ReconLine | null = null;
+    if (inv.itemCode && byCode.has(matchKey(inv.itemCode))) po = byCode.get(matchKey(inv.itemCode))!;
+    else if (inv.description && byDesc.has(matchKey(inv.description))) po = byDesc.get(matchKey(inv.description))!;
+    if (po) { matchedLines++; usedPo.add(po); }
+
+    const priceStatus: CheckResult = po ? cmp(inv.unitPrice, po.unitPrice, priceTol) : "FAIL";
+    let qtyStatus: CheckResult = "PASS";
+    if (po) {
+      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "FAIL";
+      else if (inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING";
+    }
+    let vatStatus: CheckResult = "PASS";
+    if (po && inv.vatRate != null && po.vatRate != null) {
+      vatStatus = Math.abs(inv.vatRate - po.vatRate) <= 0.01 ? "PASS" : "WARNING";
+    }
+    rows.push({ inv, po, priceStatus, qtyStatus, vatStatus });
+  }
+
+  const poOnly = poLines.filter((l) => !usedPo.has(l));
+  const totalInvLines = invLines.length;
+  return {
+    rows,
+    poOnly,
+    matchedLines,
+    totalInvLines,
+    coverage: totalInvLines > 0 ? matchedLines / totalInvLines : 0,
+  };
+}
+
 export interface MatchInput {
   invoiceSupplierId: number | null;
   poSupplierId: number | null;
@@ -243,4 +324,65 @@ export function evaluateMatch(input: MatchInput): {
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n));
+}
+
+// =====================================================================
+// MÃ KẾT QUẢ ĐỐI CHIẾU theo đặc tả §11.5 (thay cho MATCHED/WARNING/FAILED chung).
+// Suy ra từ 4 phép kiểm đã lưu + ngữ cảnh (có PO chưa, có trùng không) để hiện
+// đúng "vì sao lệch": sai NCC, vượt hóa đơn, lệch giá, lệch thuế…
+// =====================================================================
+export type MatchCode =
+  | "MATCHED"
+  | "MATCHED_WITHIN_TOLERANCE"
+  | "WRONG_ENTITY_VENDOR"
+  | "OVER_INVOICED"
+  | "QTY_MISMATCH"
+  | "PRICE_MISMATCH"
+  | "TAX_MISMATCH"
+  | "MISSING_PO"
+  | "DUPLICATE_INVOICE";
+
+export const MATCH_CODE_LABEL: Record<MatchCode, string> = {
+  MATCHED: "Khớp",
+  MATCHED_WITHIN_TOLERANCE: "Khớp trong ngưỡng",
+  WRONG_ENTITY_VENDOR: "Sai nhà cung cấp",
+  OVER_INVOICED: "Vượt đơn hàng",
+  QTY_MISMATCH: "Lệch số lượng",
+  PRICE_MISMATCH: "Lệch đơn giá",
+  TAX_MISMATCH: "Lệch thuế",
+  MISSING_PO: "Chưa có PO",
+  DUPLICATE_INVOICE: "Trùng hóa đơn",
+};
+
+/** Mức nghiêm trọng để tô màu: ok (xanh) · tolerance (xanh nhạt) · warn (vàng) · fail (đỏ). */
+export function matchCodeTone(code: MatchCode): "ok" | "tolerance" | "warn" | "fail" {
+  if (code === "MATCHED") return "ok";
+  if (code === "MATCHED_WITHIN_TOLERANCE") return "tolerance";
+  if (code === "TAX_MISMATCH" || code === "QTY_MISMATCH") return "warn";
+  return "fail";
+}
+
+/** Suy MÃ KẾT QUẢ (§11.5) từ danh sách phép kiểm đã lưu + ngữ cảnh. */
+export function deriveMatchCode(
+  checks: { check_name: string; result: string; reason?: string | null }[],
+  ctx: { hasPo: boolean; duplicate?: boolean } = { hasPo: true }
+): MatchCode {
+  if (ctx.duplicate) return "DUPLICATE_INVOICE";
+  if (!ctx.hasPo) return "MISSING_PO";
+  const find = (n: string) => checks.find((c) => c.check_name === n);
+  const supplier = find("Supplier");
+  const qty = find("Quantity");
+  const price = find("Price");
+  const vat = find("VAT");
+
+  if (supplier?.result === "FAIL") return "WRONG_ENTITY_VENDOR";
+  if (qty?.result === "FAIL") {
+    // "vượt SL đặt trên PO" → xuất hóa đơn vượt đơn hàng; còn lại → lệch số lượng.
+    return (qty.reason ?? "").includes("PO") ? "OVER_INVOICED" : "QTY_MISMATCH";
+  }
+  if (price?.result === "FAIL") return "PRICE_MISMATCH";
+  // Thuế: đặc tả không cho tự bỏ qua sai thuế suất → nêu rõ TAX_MISMATCH.
+  if (vat && vat.result !== "PASS") return "TAX_MISMATCH";
+  const anyWarn = checks.some((c) => c.result === "WARNING");
+  return anyWarn ? "MATCHED_WITHIN_TOLERANCE" : "MATCHED";
 }

@@ -16,6 +16,15 @@ import { logAudit } from "@/lib/audit";
 //   • confirmInvoiceSyncAction — ghi các hóa đơn người dùng xác nhận (transaction).
 // =====================================================================
 
+// Dòng tối giản để đối chiếu ở client (reconcileLines) — dùng chung kiểu ReconLine.
+export interface SyncLine {
+  itemCode: string | null;
+  description: string | null;
+  quantity: number;
+  unitPrice: number;
+  vatRate: number | null;
+}
+
 export interface SyncPreviewItem {
   sourceRef: string;              // Invoice_ID (khóa nguồn)
   invoiceNumber: string | null;
@@ -28,11 +37,13 @@ export interface SyncPreviewItem {
   lineCount: number;
   level: "AUTO" | "REVIEW" | "NONE";
   matchKey: string | null;
+  invLines: SyncLine[];           // dòng hóa đơn (để bung đối chiếu từng dòng)
   best: {
     poId: number; poNumber: string; supplierName: string | null;
     score: number; coverage: number; matchedLines: number; totalLines: number; reasons: string[];
   } | null;
-  candidates: { poId: number; poNumber: string; score: number }[]; // tối đa vài ứng viên
+  // Mỗi ứng viên kèm dòng PO để client tự đối chiếu theo PO đang chọn.
+  candidates: { poId: number; poNumber: string; score: number; poLines: SyncLine[] }[];
 }
 
 export interface SyncPreview {
@@ -67,15 +78,15 @@ async function loadCandidatePos(user: Awaited<ReturnType<typeof requireUser>>): 
   );
   if (pos.length === 0) return [];
 
-  const lines = await query<{ po_id: number; item_code: string | null; description: string; unit_price: string }>(
-    `SELECT po_id, item_code, description, unit_price FROM purchase_order_items
+  const lines = await query<{ po_id: number; item_code: string | null; description: string; unit_price: string; quantity: string; vat_rate: string | null }>(
+    `SELECT po_id, item_code, description, unit_price, quantity, vat_rate FROM purchase_order_items
       WHERE po_id = ANY($1::bigint[])`,
     [pos.map((p) => p.id)]
   );
-  const linesByPo = new Map<number, { itemCode: string | null; description: string | null; unitPrice: number }[]>();
+  const linesByPo = new Map<number, AutoMatchPo["lines"]>();
   for (const l of lines) {
     const arr = linesByPo.get(l.po_id) ?? [];
-    arr.push({ itemCode: l.item_code, description: l.description, unitPrice: Number(l.unit_price) });
+    arr.push({ itemCode: l.item_code, description: l.description, unitPrice: Number(l.unit_price), quantity: Number(l.quantity), vatRate: l.vat_rate == null ? null : Number(l.vat_rate) });
     linesByPo.set(l.po_id, arr);
   }
 
@@ -116,6 +127,9 @@ export async function previewInvoiceSyncAction(): Promise<SyncPreview> {
   const fresh = invoices.filter((i) => i.lines.length > 0 && !imported.has(i.invoiceId));
 
   const candidatePos = await loadCandidatePos(user);
+  const poById = new Map(candidatePos.map((p) => [p.poId, p]));
+  const toSyncLines = (ls: AutoMatchPo["lines"]): SyncLine[] =>
+    ls.map((l) => ({ itemCode: l.itemCode, description: l.description, quantity: l.quantity ?? 0, unitPrice: l.unitPrice, vatRate: l.vatRate ?? null }));
 
   const items: SyncPreviewItem[] = [];
   for (const inv of fresh) {
@@ -139,10 +153,14 @@ export async function previewInvoiceSyncAction(): Promise<SyncPreview> {
       lineCount: inv.lines.length,
       level: res.level,
       matchKey: b?.key ?? null,
+      invLines: inv.lines.map((l) => ({ itemCode: l.itemCode, description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, vatRate: l.taxRate ?? null })),
       best: b
         ? { poId: b.poId, poNumber: b.poNumber, supplierName: b.supplierName ?? null, score: b.score, coverage: b.coverage, matchedLines: b.matchedLines, totalLines: b.totalLines, reasons: b.reasons }
         : null,
-      candidates: res.candidates.slice(0, 4).map((c) => ({ poId: c.poId, poNumber: c.poNumber, score: c.score })),
+      candidates: res.candidates.slice(0, 4).map((c) => ({
+        poId: c.poId, poNumber: c.poNumber, score: c.score,
+        poLines: toSyncLines(poById.get(c.poId)?.lines ?? []),
+      })),
     });
   }
   // AUTO trước, rồi REVIEW; trong mỗi nhóm điểm cao trước.
@@ -290,9 +308,9 @@ async function importOneInvoice(
     );
     for (const l of inv.lines) {
       await exec(
-        `INSERT INTO invoice_items (invoice_id, item_code, description, quantity, unit_price, amount)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [created!.id, l.itemCode || null, l.description || null, l.quantity, l.unitPrice, Number(l.quantity) * Number(l.unitPrice)]
+        `INSERT INTO invoice_items (invoice_id, item_code, description, quantity, unit_price, amount, vat_rate)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [created!.id, l.itemCode || null, l.description || null, l.quantity, l.unitPrice, Number(l.quantity) * Number(l.unitPrice), l.taxRate ?? null]
       );
     }
     for (const c of result.checks) {

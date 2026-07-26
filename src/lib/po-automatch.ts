@@ -46,6 +46,8 @@ export interface AutoMatchPoLine {
   itemCode: string | null;
   description: string | null;
   unitPrice: number;
+  quantity?: number;      // để đối chiếu SL theo dòng (tùy chọn, không ảnh hưởng chấm điểm)
+  vatRate?: number | null; // để đối chiếu VAT theo dòng
 }
 
 export interface AutoMatchPo {
@@ -66,7 +68,8 @@ export interface CandidateScore {
   supplierId: number | null;
   supplierName?: string | null;
   score: number; // 0..1
-  vendorOk: boolean; // MST khớp
+  vendorOk: boolean; // MST khớp (cả 2 bên có MST và trùng)
+  vendorConflict: boolean; // cả 2 bên có MST nhưng KHÁC nhau → chặn cứng (§11.4)
   coverage: number; // tỷ lệ dòng hóa đơn khớp được dòng PO
   matchedLines: number;
   totalLines: number;
@@ -125,10 +128,12 @@ export function scoreCandidate(
 ): CandidateScore {
   const priceTol = opts.priceTolerance ?? 0.01;
 
-  const vendorOk =
-    !!invoice.sellerTaxId &&
-    !!po.supplierTaxId &&
-    normTax(invoice.sellerTaxId) === normTax(po.supplierTaxId);
+  const invTax = normTax(invoice.sellerTaxId);
+  const poTax = normTax(po.supplierTaxId);
+  const vendorOk = !!invTax && !!poTax && invTax === poTax;
+  // Cả hai bên đều CÓ MST nhưng KHÁC nhau → xung đột NCC: theo đặc tả §11.4
+  // "Vendor & legal entity … Block nếu sai" — PO này KHÔNG được phép ghép.
+  const vendorConflict = !!invTax && !!poTax && invTax !== poTax;
 
   // Bảng tra giá PO theo mã & theo tên.
   const byCode = new Map<string, number>();
@@ -166,7 +171,8 @@ export function scoreCandidate(
 
   // Tổng điểm: coverage quan trọng nhất, rồi giá, rồi tiền. Nhân cổng NCC.
   const raw = 0.5 * coverage + 0.3 * priceAgreement + 0.2 * amountScore;
-  const score = vendorOk ? raw : raw * 0.25; // sai/thiếu MST → hạ mạnh, không loại hẳn
+  // Khác MST → xung đột NCC: điểm 0 (bị loại ở autoMatch). Thiếu MST 1 bên → hạ mạnh.
+  const score = vendorConflict ? 0 : vendorOk ? raw : raw * 0.25;
 
   const key =
     `MST:${normTax(invoice.sellerTaxId) || "?"}` +
@@ -188,6 +194,7 @@ export function scoreCandidate(
     supplierName: po.supplierName,
     score,
     vendorOk,
+    vendorConflict,
     coverage,
     matchedLines,
     totalLines,
@@ -211,6 +218,9 @@ export function autoMatchInvoiceToPo(
 
   const scored = candidates
     .map((po) => scoreCandidate(invoice, po, opts))
+    // CHẶN CỨNG (§11.4): loại mọi PO khác MST NCC hoặc KHÔNG có dòng nào khớp.
+    // → tab đề xuất/đối chiếu KHÔNG bao giờ gợi ý sai NCC như trước nữa.
+    .filter((c) => !c.vendorConflict && c.matchedLines > 0)
     .sort((a, b) => b.score - a.score);
 
   const best = scored[0] ?? null;
