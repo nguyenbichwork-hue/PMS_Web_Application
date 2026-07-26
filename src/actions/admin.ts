@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { query, withTransaction, type Executor } from "@/lib/db";
 import { pushLocalRealUsers, deleteRemoteUser } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
+import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import type { Role } from "@/lib/types";
 
@@ -188,7 +189,8 @@ export async function saveUserAction(formData: FormData) {
       `UPDATE users SET name=$1, email=$2, department=$3, role=$4, company_id=$5, status=$6 WHERE id=$7`,
       [name, email, department, role, company_id, status, id]
     );
-    if (password) await query(`UPDATE users SET password=$1 WHERE id=$2`, [password, id]);
+    // Băm mật khẩu trước khi lưu (không lưu thô). Chỉ đổi khi nhập mật khẩu mới.
+    if (password) await query(`UPDATE users SET password=$1 WHERE id=$2`, [hashPassword(password), id]);
     await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "User", documentId: id, action: "Update", newValue: `${name} · ${role}` });
   } else {
     const dup = await query(`SELECT id FROM users WHERE lower(email)=lower($1)`, [email]);
@@ -196,7 +198,7 @@ export async function saveUserAction(formData: FormData) {
     const rows = await query<{ id: number }>(
       `INSERT INTO users (name, email, password, department, role, company_id, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [name, email, password || "password", department, role, company_id, status]
+      [name, email, hashPassword(password || "password"), department, role, company_id, status]
     );
     await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "User", documentId: rows[0]?.id, action: "Create", newValue: `${name} · ${role}` });
   }

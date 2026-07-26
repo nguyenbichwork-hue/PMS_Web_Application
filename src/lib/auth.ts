@@ -2,7 +2,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { queryOne, query } from "./db";
-import { accountsOnSupabase, syncOneUserToLocal } from "./accounts";
+import { accountsOnSupabase, syncOneUserToLocal, updateRemotePassword } from "./accounts";
+import { verifyPassword, hashPassword, isHashed } from "./password";
 import type { Role, User } from "./types";
 
 const COOKIE = "pms_session";
@@ -56,7 +57,7 @@ export async function login(email: string, password: string): Promise<User | nul
   // ACCOUNTS_ONLY: chỉ chạm Supabase khi CẦN — tài khoản chưa có ở local, hoặc
   // mật khẩu local không khớp (có thể đã đổi trên master). Đăng nhập đúng &
   // lặp lại đi thẳng local, không round-trip Supabase → nhanh.
-  if (accountsOnSupabase && (!user || user.password !== password)) {
+  if (accountsOnSupabase && (!user || !verifyPassword(password, user.password))) {
     try {
       await syncOneUserToLocal(email, (sql, params) => query(sql, params) as Promise<Record<string, unknown>[]>);
       user = await read();
@@ -64,7 +65,16 @@ export async function login(email: string, password: string): Promise<User | nul
       console.error("[accounts] đồng bộ tài khoản khi đăng nhập thất bại (bỏ qua):", e);
     }
   }
-  if (!user || user.password !== password || user.status !== "Active") return null;
+  if (!user || !verifyPassword(password, user.password) || user.status !== "Active") return null;
+
+  // TỰ NÂNG CẤP: mật khẩu còn lưu THÔ → băm ngay sau lần đăng nhập đúng đầu tiên
+  // (cả local lẫn Supabase). Best-effort, không chặn đăng nhập nếu ghi lỗi.
+  if (!isHashed(user.password)) {
+    const hashed = hashPassword(password);
+    try { await query(`UPDATE users SET password=$1 WHERE id=$2`, [hashed, user.id]); } catch (e) { console.error("[auth] nâng cấp hash mật khẩu (local) lỗi:", e); }
+    if (accountsOnSupabase) { try { await updateRemotePassword(email, hashed); } catch (e) { console.error("[auth] nâng cấp hash mật khẩu (Supabase) lỗi:", e); } }
+  }
+
   const jar = await cookies();
   jar.set(COOKIE, makeSessionValue(user.id), {
     httpOnly: true,

@@ -136,6 +136,13 @@ export async function remoteAccountsStats(): Promise<{ users: number; dbBytes: n
   }
 }
 
+/** Cập nhật mật khẩu (đã băm) 1 tài khoản trên Supabase — dùng khi tự nâng cấp
+ *  hash lúc đăng nhập. Best-effort: chỉ chạy khi bật ACCOUNTS_ONLY. */
+export async function updateRemotePassword(email: string, password: string): Promise<void> {
+  if (!accountsOnSupabase) return;
+  await remoteQuery(`UPDATE users SET password=$1 WHERE lower(email)=lower($2)`, [password, email]);
+}
+
 /** Xóa MỘT tài khoản (theo email) trên Supabase — dùng khi xóa user ở app.
  *  Best-effort: chỉ chạy khi bật ACCOUNTS_ONLY. */
 export async function deleteRemoteUser(email: string): Promise<void> {

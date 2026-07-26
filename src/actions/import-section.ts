@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { withTransaction, firstRow, query, type Executor } from "@/lib/db";
 import { pushLocalRealUsers } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
+import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { parseSection, type Section } from "@/lib/import-section";
 
@@ -112,9 +113,11 @@ export async function importSectionAction(section: Section, formData: FormData):
         }
       } else {
         // users — map company_code → id; giữ nguyên mật khẩu khi cập nhật.
+        // Mật khẩu mặc định "password" được BĂM trước khi lưu (không lưu thô).
         const companyMap = new Map<string, number>();
         for (const c of await exec<{ id: number; company_code: string }>(`SELECT id, company_code FROM companies`))
           companyMap.set(c.company_code, c.id);
+        const defaultPwdHash = hashPassword("password");
         for (const u of parsed.users!) {
           let cid: number | null = null;
           if (u.company_code) {
@@ -123,12 +126,12 @@ export async function importSectionAction(section: Section, formData: FormData):
           }
           const row = await firstRow<{ inserted: boolean }>(exec,
             `INSERT INTO users (name, email, password, department, role, company_id, status)
-             VALUES ($1,$2,'password',$3,$4,$5,$6)
+             VALUES ($1,$2,$7,$3,$4,$5,$6)
              ON CONFLICT (email) DO UPDATE SET
                name=EXCLUDED.name, department=EXCLUDED.department, role=EXCLUDED.role,
                company_id=EXCLUDED.company_id, status=EXCLUDED.status
              RETURNING (xmax = 0) AS inserted`,
-            [u.name, u.email, u.department, u.role, cid, u.status]);
+            [u.name, u.email, u.department, u.role, cid, u.status, defaultPwdHash]);
           if (row?.inserted) added++; else updated++;
         }
       }
