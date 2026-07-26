@@ -47,17 +47,9 @@ export default async function SettingsPage() {
   }>(
     `SELECT data_type, label, last_count, last_run, last_sync_time FROM misa_sync_state ORDER BY data_type`
   );
-  const audit = await query<{
-    id: number; actor_name: string | null; action: string; document_type: string; document_id: number | null;
-    field: string | null; old_value: string | null; new_value: string | null; created_at: string;
-  }>(
-    `SELECT id, actor_name, action, document_type, document_id, field, old_value, new_value, created_at
-       FROM audit_log ORDER BY id DESC LIMIT 100`
-  );
-
   return (
     <div>
-      <ModuleBanner accent="slate" icon="⚙️" title="Cấu hình hệ thống" subtitle="MISA · Luồng duyệt · Đối chiếu · Người dùng · Công ty · Nhật ký" />
+      <ModuleBanner accent="slate" icon="⚙️" title="Cấu hình hệ thống" subtitle="MISA · Luồng duyệt · Đối chiếu · Người dùng · Công ty" />
       <MisaPanel mode={misaMode()} state={misaState} />
       <SettingsTabs
         rules={rules.map((r) => ({
@@ -69,7 +61,6 @@ export default async function SettingsPage() {
         users={users}
         companies={companies.map((c) => ({ id: c.id, company_code: c.company_code, company_name: c.company_name, tax_code: c.tax_code, address: c.address, status: c.status }))}
         matchSettings={matchSettings}
-        audit={audit}
       />
     </div>
   );

@@ -16,15 +16,14 @@ interface UserRow { id: number; name: string; email: string; department: string 
 interface CompanyRow { id: number; company_code: string; company_name: string; tax_code: string | null; address: string | null; status: string }
 interface AuditRow { id: number; actor_name: string | null; action: string; document_type: string; document_id: number | null; field: string | null; old_value: string | null; new_value: string | null; created_at: string }
 
+// LƯU Ý: Dung lượng / Truy cập / Nhật ký ĐÃ TÁCH sang trang giám sát ẩn (có PIN)
+// — xem MonitorTabs bên dưới + src/app/(app)/giam-sat. Không để ở Cấu hình nữa.
 const TABS = [
   { key: "rules", label: "Luồng duyệt", icon: "flow" },
   { key: "match", label: "Đối chiếu", icon: "invoice" },
   { key: "users", label: "Người dùng", icon: "users" },
   { key: "companies", label: "Công ty", icon: "company" },
   { key: "theme", label: "Giao diện", icon: "palette" },
-  { key: "storage", label: "Dung lượng", icon: "dashboard" },
-  { key: "access", label: "Truy cập", icon: "bell" },
-  { key: "audit", label: "Nhật ký", icon: "log" },
 ] as const;
 
 interface MatchSettings { price: number; amount: number; qty: number }
@@ -33,7 +32,7 @@ const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "
 
 type TabKey = (typeof TABS)[number]["key"];
 
-export function SettingsTabs({ rules, users, companies, matchSettings, audit }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; matchSettings: MatchSettings; audit: AuditRow[] }) {
+export function SettingsTabs({ rules, users, companies, matchSettings }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; matchSettings: MatchSettings }) {
   const [tab, setTab] = useState<TabKey>("rules");
 
   // Khôi phục tab từ URL (?tab=) khi mở/quay lại trang.
@@ -72,6 +71,39 @@ export function SettingsTabs({ rules, users, companies, matchSettings, audit }: 
         {tab === "users" && <UsersPanel users={users} companies={companies} />}
         {tab === "companies" && <CompaniesPanel companies={companies} />}
         {tab === "theme" && <AccentPicker />}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// GIÁM SÁT (ẩn, có PIN): Dung lượng · Truy cập · Nhật ký — tách khỏi Cấu hình
+// để chỉ Admin biết URL + nhập PIN mới xem được. Dùng lại 3 panel bên dưới.
+// ---------------------------------------------------------------------
+const MONITOR_TABS = [
+  { key: "storage", label: "Dung lượng", icon: "dashboard" },
+  { key: "access", label: "Truy cập", icon: "bell" },
+  { key: "audit", label: "Nhật ký", icon: "log" },
+] as const;
+
+export function MonitorTabs({ audit }: { audit: AuditRow[] }) {
+  const [tab, setTab] = useState<(typeof MONITOR_TABS)[number]["key"]>("storage");
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1">
+        {MONITOR_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              tab === t.key ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Icon name={t.icon} size={16} /> {t.label}
+          </button>
+        ))}
+      </div>
+      <div key={tab} className="animate-fade-up [animation-duration:.25s]">
         {tab === "storage" && <StoragePanel />}
         {tab === "access" && <AccessPanel />}
         {tab === "audit" && <AuditPanel audit={audit} />}
