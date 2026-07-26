@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ModuleBanner, StatStrip } from "@/components/module";
+import { date } from "@/lib/format";
 import { deriveMatchCode, matchCodeTone, type ReconLine } from "@/lib/matching";
 import { ReconClient, type ReconRowData } from "./ReconClient";
 
@@ -77,7 +78,7 @@ export default async function ReconciliationPage() {
   const rows: ReconRowData[] = invoices.map((i) => ({
     invoiceId: i.id,
     invoiceNumber: i.invoice_number,
-    invoiceDate: i.invoice_date,
+    invoiceDate: i.invoice_date ? date(i.invoice_date) : null,
     supplierName: i.supplier_name,
     sellerTaxId: i.seller_tax_id,
     poId: i.po_id,
