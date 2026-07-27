@@ -165,6 +165,62 @@ export async function getStorageStatsAction(): Promise<StorageStats> {
   };
 }
 
+// ==================== KIỂM TRA DỮ LIỆU KÉO VỀ (Admin) ====================
+export interface DataHealthRow { company: string; pr: number; po: number; grn: number; invoice: number }
+export interface DataHealth {
+  generatedAt: string;
+  totals: { label: string; rows: number }[];
+  byCompany: DataHealthRow[];
+}
+
+/** Đếm dữ liệu nghiệp vụ đang có trong DB: tổng từng bảng + tách theo công ty
+ *  (để kiểm "dữ liệu có được kéo về đủ / mỗi pháp nhân có bao nhiêu"). */
+export async function getDataHealthAction(): Promise<DataHealth> {
+  const admin = await requireUser();
+  if (!can(admin.role, "settings.manage")) throw new Error("FORBIDDEN");
+
+  const TABLES: [string, string][] = [
+    ["companies", "Công ty (pháp nhân)"],
+    ["users", "Người dùng"],
+    ["suppliers", "Nhà cung cấp"],
+    ["products", "Hàng hóa / dịch vụ"],
+    ["approval_rules", "Ngưỡng duyệt"],
+    ["purchase_requests", "Yêu cầu mua (PR)"],
+    ["purchase_orders", "Đơn đặt hàng (PO)"],
+    ["goods_receipts", "Phiếu nhận (GRN)"],
+    ["goods_receipt_items", "Dòng phiếu nhận"],
+    ["invoices", "Hóa đơn"],
+    ["invoice_items", "Dòng hóa đơn"],
+    ["payments", "Thanh toán"],
+    ["comments", "Bình luận"],
+    ["notifications", "Thông báo"],
+    ["attachments", "Đính kèm"],
+  ];
+  const totals: DataHealth["totals"] = [];
+  for (const [t, label] of TABLES) {
+    try {
+      const r = await query<{ c: number }>(`SELECT count(*)::int AS c FROM ${t}`);
+      totals.push({ label, rows: r[0]?.c ?? 0 });
+    } catch { /* bảng chưa migrate → bỏ qua */ }
+  }
+
+  // Tách theo công ty: PR & PO theo company_id trực tiếp; GRN & Hóa đơn suy theo PO.
+  const byCompany: DataHealthRow[] = [];
+  try {
+    const rows = await query<{ company: string; pr: string; po: string; grn: string; invoice: string }>(
+      `SELECT c.company_name AS company,
+              (SELECT count(*) FROM purchase_requests pr WHERE pr.company_id = c.id) AS pr,
+              (SELECT count(*) FROM purchase_orders po WHERE po.company_id = c.id) AS po,
+              (SELECT count(*) FROM goods_receipts gr JOIN purchase_orders po ON po.id = gr.po_id WHERE po.company_id = c.id) AS grn,
+              (SELECT count(*) FROM invoices i JOIN purchase_orders po ON po.id = i.po_id WHERE po.company_id = c.id) AS invoice
+         FROM companies c ORDER BY c.company_name`
+    );
+    for (const r of rows) byCompany.push({ company: r.company, pr: Number(r.pr), po: Number(r.po), grn: Number(r.grn), invoice: Number(r.invoice) });
+  } catch { /* bỏ qua nếu lỗi */ }
+
+  return { generatedAt: new Date().toISOString(), totals, byCompany };
+}
+
 // ---------------- Người dùng ----------------
 export async function saveUserAction(formData: FormData) {
   const admin = await requireUser();

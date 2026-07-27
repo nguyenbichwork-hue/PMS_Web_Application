@@ -5,7 +5,7 @@ import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany, isCrossCompany } from "@/lib/access";
 import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
 import { autoMatchInvoiceToPo, scoreCandidate, type AutoMatchPo, type CandidateScore } from "@/lib/po-automatch";
-import { fetchPurchaseInvoices, googleSyncConfigured } from "@/lib/google-invoices";
+import { fetchPurchaseInvoices, googleSyncConfigured, probeDriveFile } from "@/lib/google-invoices";
 import type { SheetInvoice } from "@/lib/google-sheet-parse";
 import { writeInvoiceAllocations, invoiceDupKey, type AllocInvItem, type AllocPoItem } from "@/lib/allocation";
 import { logAudit } from "@/lib/audit";
@@ -107,6 +107,105 @@ async function loadCandidatePos(user: Awaited<ReturnType<typeof requireUser>>): 
       lines: linesByPo.get(p.id) ?? [],
     };
   });
+}
+
+// =====================================================================
+// CHẨN ĐOÁN ĐỒNG BỘ (cho trang /giam-sat): liệt kê MỌI hóa đơn mua-vào đọc
+// được từ Sheet — kể cả loại KHÔNG ghép được PO (NONE) — kèm LÝ DO, để kiểm
+// "dữ liệu có được kéo về đủ không / vì sao chưa hiện để đồng bộ".
+// =====================================================================
+export interface SyncDiagItem {
+  invoiceNumber: string | null;
+  sellerName: string | null;
+  sellerTaxId: string | null;
+  total: number;
+  lineCount: number;
+  level: "AUTO" | "REVIEW" | "NONE" | "IMPORTED";
+  reason: string;
+}
+export interface SyncDiagnostic {
+  configured: boolean;
+  error?: string;
+  companyTaxId: string | null;   // COMPANY_TAX_ID đang lọc (bên mua)
+  openPoCount: number;           // số PO đang mở dùng làm ứng viên
+  totalPurchase: number;         // tổng HĐ mua-vào đọc từ Sheet
+  alreadyImported: number;
+  counts: { auto: number; review: number; none: number };
+  // Trạng thái Google Drive (file XML gốc): có kéo/đọc được không.
+  drive: { withXml: number; withoutXml: number; probed: boolean; ok: boolean; status?: number; fileName?: string; error?: string };
+  items: SyncDiagItem[];         // liệt kê (tối đa 300) để soi
+}
+
+export async function syncDiagnosticAction(): Promise<SyncDiagnostic> {
+  const user = await requireUser();
+  if (!can(user.role, "invoice.manage")) throw new Error("FORBIDDEN");
+  const base: SyncDiagnostic = {
+    configured: false, companyTaxId: process.env.COMPANY_TAX_ID || null,
+    openPoCount: 0, totalPurchase: 0, alreadyImported: 0,
+    counts: { auto: 0, review: 0, none: 0 },
+    drive: { withXml: 0, withoutXml: 0, probed: false, ok: false },
+    items: [],
+  };
+  if (!googleSyncConfigured()) return base;
+  base.configured = true;
+
+  let invoices: SheetInvoice[];
+  try {
+    invoices = await fetchPurchaseInvoices();
+  } catch (e) {
+    return { ...base, error: e instanceof Error ? e.message : String(e) };
+  }
+  base.totalPurchase = invoices.length;
+
+  const imported = new Set(
+    (await query<{ source_ref: string }>(`SELECT source_ref FROM invoices WHERE source_ref IS NOT NULL`)).map((r) => r.source_ref)
+  );
+  const candidatePos = await loadCandidatePos(user);
+  base.openPoCount = candidatePos.length;
+
+  // ---- KIỂM TRA GOOGLE DRIVE (file XML gốc) ----
+  const withXml = invoices.filter((i) => !!i.xmlFileId);
+  base.drive.withXml = withXml.length;
+  base.drive.withoutXml = invoices.length - withXml.length;
+  if (withXml.length > 0) {
+    const probe = await probeDriveFile(withXml[0].xmlFileId!);
+    base.drive = { ...base.drive, probed: true, ok: probe.ok, status: probe.status, fileName: probe.name, error: probe.error };
+  }
+
+  for (const inv of invoices) {
+    if (inv.lines.length > 0 && imported.has(inv.invoiceId)) {
+      base.alreadyImported++;
+      base.items.push({ invoiceNumber: inv.invoiceNumber, sellerName: inv.sellerName, sellerTaxId: inv.sellerTaxId, total: inv.total, lineCount: inv.lines.length, level: "IMPORTED", reason: "Đã nhập trước đó (chống trùng)." });
+      continue;
+    }
+    if (inv.lines.length === 0) {
+      base.counts.none++;
+      base.items.push({ invoiceNumber: inv.invoiceNumber, sellerName: inv.sellerName, sellerTaxId: inv.sellerTaxId, total: inv.total, lineCount: 0, level: "NONE", reason: "Hóa đơn không có dòng hàng trong Sheet." });
+      continue;
+    }
+    const res = autoMatchInvoiceToPo({ sellerTaxId: inv.sellerTaxId, total: inv.total, lines: inv.lines }, candidatePos);
+    let reason = "";
+    if (res.level === "AUTO") { base.counts.auto++; reason = `Khớp chắc PO ${res.best?.poNumber} (điểm ${(res.best!.score * 100).toFixed(0)}%).`; }
+    else if (res.level === "REVIEW") { base.counts.review++; reason = `Cần xem: PO gợi ý ${res.best?.poNumber} (điểm ${((res.best?.score ?? 0) * 100).toFixed(0)}%).`; }
+    else {
+      base.counts.none++;
+      // Tìm LÝ DO chưa ghép được: chấm mọi PO đang mở để biết vướng ở đâu.
+      const scored = candidatePos.map((po) => scoreCandidate({ sellerTaxId: inv.sellerTaxId, total: inv.total, lines: inv.lines }, po));
+      const vendorOk = scored.filter((c) => c.vendorOk);
+      const withLines = vendorOk.filter((c) => c.matchedLines > 0);
+      if (candidatePos.length === 0) reason = "Chưa có PO nào đang mở (Đã duyệt/Gửi/Xác nhận/Đã nhận) để ghép.";
+      else if (vendorOk.length === 0) reason = `Không PO đang mở nào khớp MST người bán (${inv.sellerTaxId || "trống"}).`;
+      else if (withLines.length === 0) reason = "MST khớp nhưng KHÔNG dòng hàng nào trùng mã/tên với PO.";
+      else reason = `Khớp yếu (điểm cao nhất ${((withLines.sort((a, b) => b.score - a.score)[0]?.score ?? 0) * 100).toFixed(0)}%) — kiểm đơn giá/số tiền.`;
+      reason = "Chưa hiện để đồng bộ — " + reason;
+    }
+    base.items.push({ invoiceNumber: inv.invoiceNumber, sellerName: inv.sellerName, sellerTaxId: inv.sellerTaxId, total: inv.total, lineCount: inv.lines.length, level: res.level, reason });
+  }
+  // Ưu tiên hiện NONE (cần xử lý) trước, rồi REVIEW, AUTO, IMPORTED.
+  const order = { NONE: 0, REVIEW: 1, AUTO: 2, IMPORTED: 3 } as const;
+  base.items.sort((a, b) => order[a.level] - order[b.level]);
+  base.items = base.items.slice(0, 300);
+  return base;
 }
 
 /** Đọc Sheet + auto-match, trả bản xem trước. KHÔNG ghi DB. */

@@ -114,6 +114,21 @@ export async function downloadXml(fileId: string): Promise<string> {
   return res.text();
 }
 
+/** Thử truy cập 1 file trên Drive (lấy metadata) để kiểm service account có
+ *  quyền đọc không — dùng cho chẩn đoán ở /giam-sat. KHÔNG tải nội dung. */
+export async function probeDriveFile(fileId: string): Promise<{ ok: boolean; status: number; name?: string; error?: string }> {
+  try {
+    const token = await getAccessToken();
+    const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,size,mimeType&supportsAllDrives=true`;
+    const res = await fetchRetry(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return { ok: false, status: res.status, error: (await res.text()).slice(0, 200) };
+    const j = (await res.json()) as { name?: string };
+    return { ok: true, status: 200, name: j.name };
+  } catch (e) {
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Đã cấu hình Google chưa? (để UI ẩn/hiện chức năng đồng bộ.) */
 export function googleSyncConfigured(): boolean {
   const hasKey =
