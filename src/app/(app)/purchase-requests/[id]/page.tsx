@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { canAccessCompany } from "@/lib/access";
+import { canAccessCompany, isCrossCompanyApprover } from "@/lib/access";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { Card, PageHeader, StatusBadge, PriorityBadge, Th, Td } from "@/components/ui";
 import { money, date } from "@/lib/format";
@@ -28,8 +28,9 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
     [prId]
   );
   if (!pr) notFound();
-  // Cho xem nếu: người TẠO PR (luôn xem được của mình) HOẶC cùng công ty / Admin.
-  const allowed = !user || user.id === pr.requester_id || canAccessCompany(user, pr.company_id);
+  // Cho xem nếu: người TẠO PR (luôn xem được của mình) HOẶC cùng công ty / Admin
+  // HOẶC vai trò duyệt xuyên công ty (Manager/Finance).
+  const allowed = !user || user.id === pr.requester_id || canAccessCompany(user, pr.company_id) || isCrossCompanyApprover(user);
   if (!allowed) notFound();
 
   const items = await query<PRItem>(
@@ -70,8 +71,8 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
     pr.status === "Pending Approval" &&
     isNextApprover(chain, pr.current_level, user.role);
   const canSubmit = user && pr.status === "Draft" && pr.requester_id === user.id;
-  // Mở lại PR bị từ chối — chỉ vai trò có quyền duyệt, cùng công ty.
-  const canReopen = !!user && can(user.role, "pr.approve") && pr.status === "Rejected" && canAccessCompany(user, pr.company_id);
+  // Mở lại PR bị từ chối — vai trò duyệt (xuyên công ty với Manager/Finance/Admin).
+  const canReopen = !!user && can(user.role, "pr.approve") && pr.status === "Rejected" && (isCrossCompanyApprover(user) || canAccessCompany(user, pr.company_id));
 
   return (
     <div className="mx-auto max-w-5xl">

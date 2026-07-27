@@ -11,6 +11,15 @@ export function isAdmin(user: User): boolean {
   return user.role === "Admin";
 }
 
+/**
+ * Vai trò DUYỆT xuyên công ty: Manager/Finance (và Admin) thấy & duyệt Yêu cầu
+ * mua (PR) của MỌI pháp nhân trong tập đoàn — vì đội duyệt/kế toán dùng chung cho
+ * nhiều công ty. Nhân viên/Mua hàng vẫn bị giới hạn theo công ty của mình.
+ */
+export function isCrossCompanyApprover(user: User): boolean {
+  return user.role === "Admin" || user.role === "Manager" || user.role === "Finance";
+}
+
 /** True nếu user được phép truy cập chứng từ thuộc companyId. */
 export function canAccessCompany(user: User, companyId: number | null | undefined): boolean {
   if (user.role === "Admin") return true;

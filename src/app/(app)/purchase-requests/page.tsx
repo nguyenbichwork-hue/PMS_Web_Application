@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { pushCompanyScope } from "@/lib/access";
+import { pushCompanyScope, isCrossCompanyApprover } from "@/lib/access";
 import { Card, LinkButton, ExportButton, StatusBadge, PriorityBadge, DueBadge, Th, Td, EmptyState } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
@@ -37,7 +37,8 @@ export default async function PRListPage({
   // Phân quyền dữ liệu (chống IDOR): non-admin chỉ thấy công ty mình;
   // Employee chỉ thấy PR của chính mình.
   if (user) {
-    pushCompanyScope(user, "pr.company_id", where, params);
+    // Manager/Finance/Admin: duyệt xuyên công ty → KHÔNG giới hạn theo pháp nhân.
+    if (!isCrossCompanyApprover(user)) pushCompanyScope(user, "pr.company_id", where, params);
     if (user.role === "Employee") {
       params.push(user.id);
       where.push(`pr.requester_id = $${params.length}`);
@@ -63,7 +64,7 @@ export default async function PRListPage({
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
   if (user) {
-    pushCompanyScope(user, "company_id", sWhere, sParams);
+    if (!isCrossCompanyApprover(user)) pushCompanyScope(user, "company_id", sWhere, sParams);
     if (user.role === "Employee") {
       sParams.push(user.id);
       sWhere.push(`requester_id = $${sParams.length}`);

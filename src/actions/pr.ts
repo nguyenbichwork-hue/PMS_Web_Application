@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
-import { canAccessCompany } from "@/lib/access";
+import { canAccessCompany, isCrossCompanyApprover } from "@/lib/access";
 import { docNumber } from "@/lib/numbering";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { generatePOFromPR } from "@/lib/po-generate";
@@ -117,7 +117,8 @@ export async function approvePRAction(prId: number, comment: string) {
     [prId]
   );
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
-  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
+  // Manager/Finance/Admin duyệt xuyên công ty; vai trò khác phải cùng công ty.
+  if (!isCrossCompanyApprover(user) && !canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
   // SoD (§4.1, UAT-40): không được tự duyệt PR do chính mình tạo (kể cả Admin).
   if (pr.requester_id === user.id) throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
 
@@ -168,7 +169,7 @@ export async function rejectPRAction(prId: number, comment: string) {
     [prId]
   );
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
-  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
+  if (!isCrossCompanyApprover(user) && !canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
   await query(`UPDATE purchase_requests SET status = 'Rejected', updated_at = now() WHERE id = $1`, [prId]);
   await query(
     `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
@@ -190,7 +191,7 @@ export async function reopenPRAction(prId: number, comment: string) {
     [prId]
   );
   if (!pr || pr.status !== "Rejected") throw new Error("Chỉ mở lại được PR đang ở trạng thái Từ chối.");
-  if (!canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
+  if (!isCrossCompanyApprover(user) && !canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
 
   await withTransaction(async (exec) => {
     await exec(

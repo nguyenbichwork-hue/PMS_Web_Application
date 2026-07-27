@@ -1,7 +1,7 @@
 import "server-only";
 import { query } from "./db";
 import { can } from "./auth";
-import { pushCompanyScope } from "./access";
+import { pushCompanyScope, isCrossCompanyApprover } from "./access";
 import { isNextApprover } from "./approval";
 import type { User } from "./types";
 
@@ -47,7 +47,8 @@ export async function getMyTasks(user: User): Promise<{ groups: TaskGroup[]; tot
   if (can(user.role, "pr.approve")) {
     const where = ["pr.status = 'Pending Approval'"];
     const params: unknown[] = [];
-    pushCompanyScope(user, "pr.company_id", where, params);
+    // Manager/Finance/Admin duyệt xuyên công ty → không giới hạn theo pháp nhân.
+    if (!isCrossCompanyApprover(user)) pushCompanyScope(user, "pr.company_id", where, params);
     const prs = await query<{ total_amount: string; current_level: number }>(
       `SELECT pr.total_amount, pr.current_level FROM purchase_requests pr WHERE ${where.join(" AND ")}`,
       params
