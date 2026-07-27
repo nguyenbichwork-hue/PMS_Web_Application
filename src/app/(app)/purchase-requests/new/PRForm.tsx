@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { createPRAction } from "@/actions/pr";
 import { Card, Field, inputCls, Button } from "@/components/ui";
 import { SearchSelect, type SSOption } from "@/components/SearchSelect";
+import { CatalogPicker } from "@/components/CatalogPicker";
 import { money } from "@/lib/format";
 import type { Company, Product, Supplier } from "@/lib/types";
 
@@ -46,6 +47,8 @@ export function PRForm({
   department: string;
 }) {
   const [lines, setLines] = useState<Line[]>([{ ...emptyLine }]);
+  // Modal "Chọn từ danh mục": biết đang mở cho dòng nào & loại nào.
+  const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
 
   // Options cho combobox (dựng 1 lần).
   const productOpts: SSOption[] = useMemo(
@@ -153,7 +156,17 @@ export function PRForm({
               {/* Hàng 1: sản phẩm + tên rộng rãi, các ô số gọn bên phải */}
               <div className="grid gap-3 md:grid-cols-12">
                 <div className="md:col-span-4">
-                  <label className="mb-1 block text-xs font-medium text-slate-500">Sản phẩm (gõ mã/tên để tìm)</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-medium text-slate-500">Sản phẩm (gõ mã/tên để tìm)</label>
+                    <button
+                      type="button"
+                      onClick={() => setPicker({ kind: "product", line: i })}
+                      className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+                      title="Xem toàn bộ danh mục hàng hóa dạng bảng"
+                    >
+                      📋 Danh mục
+                    </button>
+                  </div>
                   <SearchSelect
                     options={productOpts}
                     value={l.item_code}
@@ -215,7 +228,17 @@ export function PRForm({
               {/* Hàng 2: Nhà cung cấp — ô tìm RIÊNG cho rộng + chip gợi ý bên cạnh */}
               <div className="mt-3 grid gap-3 md:grid-cols-12">
                 <div className="md:col-span-4">
-                  <label className="mb-1 block text-xs font-medium text-slate-500">Nhà cung cấp đề xuất</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-medium text-slate-500">Nhà cung cấp đề xuất</label>
+                    <button
+                      type="button"
+                      onClick={() => setPicker({ kind: "supplier", line: i })}
+                      className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+                      title="Xem toàn bộ danh mục nhà cung cấp dạng bảng"
+                    >
+                      📋 Danh mục
+                    </button>
+                  </div>
                   <SearchSelect
                     options={supplierOpts}
                     value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
@@ -282,6 +305,46 @@ export function PRForm({
           <Button onClick={submit("submit")}>Gửi phê duyệt</Button>
         </div>
       </Card>
+
+      {/* Bảng chọn HÀNG HÓA đầy đủ chi tiết */}
+      <CatalogPicker
+        open={picker?.kind === "product"}
+        onClose={() => setPicker(null)}
+        title="Chọn hàng hóa từ danh mục"
+        rows={products}
+        rowKey={(p) => p.item_code}
+        selectedKey={picker ? lines[picker.line]?.item_code : null}
+        searchText={(p) => `${p.item_code} ${p.item_name} ${p.category ?? ""}`}
+        onPick={(p) => picker && onPickProduct(picker.line, p.item_code)}
+        columns={[
+          { header: "Mã", cell: (p) => <span className="font-mono text-xs text-slate-500">{p.item_code}</span> },
+          { header: "Tên hàng", cell: (p) => <span className="font-medium">{p.item_name}</span> },
+          { header: "Nhóm", cell: (p) => p.category ?? "—" },
+          { header: "ĐVT", cell: (p) => p.unit },
+          { header: "VAT %", cell: (p) => `${p.vat_rate}%`, className: "text-right" },
+          { header: "NCC mặc định", cell: (p) => (p.default_supplier ? supplierName.get(p.default_supplier) ?? "—" : "—") },
+        ]}
+      />
+
+      {/* Bảng chọn NHÀ CUNG CẤP đầy đủ chi tiết */}
+      <CatalogPicker
+        open={picker?.kind === "supplier"}
+        onClose={() => setPicker(null)}
+        title="Chọn nhà cung cấp từ danh mục"
+        rows={suppliers}
+        rowKey={(s) => s.id}
+        selectedKey={picker ? (lines[picker.line]?.supplier_suggestion || null) : null}
+        searchText={(s) => `${s.supplier_code} ${s.supplier_name} ${s.tax_code ?? ""} ${s.contact_name ?? ""}`}
+        onPick={(s) => picker && setLine(picker.line, { supplier_suggestion: s.id })}
+        columns={[
+          { header: "Mã", cell: (s) => <span className="font-mono text-xs text-slate-500">{s.supplier_code}</span> },
+          { header: "Tên NCC", cell: (s) => <span className="font-medium">{s.supplier_name}</span> },
+          { header: "MST", cell: (s) => s.tax_code ?? "—" },
+          { header: "Liên hệ", cell: (s) => s.contact_name ?? "—" },
+          { header: "Điện thoại", cell: (s) => s.phone ?? "—" },
+          { header: "Điều khoản", cell: (s) => s.payment_term ?? "—" },
+        ]}
+      />
     </form>
   );
 }
