@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
-import { canAccessCompany } from "@/lib/access";
+import { canAccessCompany, isCrossCompany } from "@/lib/access";
 import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@/lib/matching";
 import { autoMatchInvoiceToPo, scoreCandidate, type AutoMatchPo, type CandidateScore } from "@/lib/po-automatch";
 import { fetchPurchaseInvoices, googleSyncConfigured } from "@/lib/google-invoices";
@@ -60,8 +60,8 @@ export interface SyncPreview {
 async function loadCandidatePos(user: Awaited<ReturnType<typeof requireUser>>): Promise<AutoMatchPo[]> {
   const where = [`po.status IN ('Sent','Confirmed','Approved','Partially Received','Received')`];
   const params: unknown[] = [];
-  // Scope công ty (Admin thấy tất cả) — dùng cùng quy ước pushCompanyScope.
-  if (user.role !== "Admin" && user.company_id != null) {
+  // Scope công ty: đội back-office (không phải Nhân viên) thấy PO mọi pháp nhân.
+  if (!isCrossCompany(user) && user.company_id != null) {
     params.push(user.company_id);
     where.push(`po.company_id = $${params.length}`);
   }
