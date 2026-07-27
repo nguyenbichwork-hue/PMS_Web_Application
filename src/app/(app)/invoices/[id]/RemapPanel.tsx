@@ -31,10 +31,15 @@ export function RemapPanel({ invoiceId, currentPoId, options }: { invoiceId: num
 
   return (
     <Card className="p-4">
-      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Sửa / bỏ ghép PO</div>
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Đối chiếu lại / sửa / bỏ ghép PO</div>
       <p className="mb-3 text-[12px] text-slate-500">
-        Chọn đúng PO tương ứng rồi bấm <b>Đổi PO</b> để đối chiếu lại, hoặc <b>Bỏ ghép</b> nếu ghép sai.
+        Bấm <b>↻ Đối chiếu lại</b> để chạy lại đối chiếu với PO hiện tại (cập nhật theo GRN mới nhập thêm). Hoặc chọn PO khác rồi <b>Đổi PO</b>, hoặc <b>Bỏ ghép</b> nếu ghép sai.
       </p>
+      {currentPoId != null && (
+        <Button onClick={() => run(currentPoId)} disabled={pending} variant="primary" className="mb-3 w-full">
+          {pending ? "Đang xử lý…" : "↻ Đối chiếu lại (PO hiện tại)"}
+        </Button>
+      )}
       <select className={inputCls} value={pick} onChange={(e) => setPick(Number(e.target.value))} disabled={pending}>
         <option value={0}>— Chọn PO —</option>
         {options.map((o) => (
@@ -44,7 +49,7 @@ export function RemapPanel({ invoiceId, currentPoId, options }: { invoiceId: num
         ))}
       </select>
       <div className="mt-3 flex gap-2">
-        <Button onClick={() => run(pick > 0 ? pick : null)} disabled={pending || pick === 0 || pick === currentPoId} variant="primary">
+        <Button onClick={() => run(pick > 0 ? pick : null)} disabled={pending || pick === 0 || pick === currentPoId} variant={currentPoId != null ? "secondary" : "primary"}>
           {pending ? "Đang xử lý…" : "Đổi PO"}
         </Button>
         {currentPoId != null && (
