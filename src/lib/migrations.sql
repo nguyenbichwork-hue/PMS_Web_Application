@@ -250,6 +250,8 @@ CREATE TABLE IF NOT EXISTS payment_requisition_items (
 );
 CREATE INDEX IF NOT EXISTS idx_prq_items_prq ON payment_requisition_items(prq_id);
 CREATE INDEX IF NOT EXISTS idx_prq_items_po  ON payment_requisition_items(po_id);
+-- % thuế theo dòng PRQ (nhập nhanh: tiền trước thuế × (1+%/100) = số tiền gồm thuế).
+ALTER TABLE payment_requisition_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2);
 
 -- PHÂN BỔ TỪNG DÒNG hóa đơn ↔ dòng PO — "bảng hạng nhất" (§11.2/§15.2
 -- invoice_po_allocation): kiểm soát số lượng/giá trị dựa trên LINE, không chỉ

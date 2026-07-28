@@ -50,7 +50,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
 
   const lines = await query<PRQLine>(
     `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
-            it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.line_no
+            it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
        FROM payment_requisition_items it
        LEFT JOIN purchase_orders po ON po.id = it.po_id
       WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
@@ -108,7 +108,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           </Card>
 
           {editable ? (
-            <PRQEditor prq={prq} lines={lines} addablePOs={addablePOs} />
+            <PRQEditor key={lines.map((l) => `${l.id}:${l.amount}:${l.vat_rate ?? ""}`).join("|")} prq={prq} lines={lines} addablePOs={addablePOs} />
           ) : (
             <Card className="p-5">
               <h3 className="mb-3 text-sm font-semibold text-slate-700">Chi tiết dòng thanh toán</h3>

@@ -49,6 +49,12 @@ export async function updatePRQAction(formData: FormData) {
         const amount = Math.max(0, Number(amountRaw) || 0);
         await exec(`UPDATE payment_requisition_items SET amount=$1 WHERE id=$2`, [amount, it.id]);
       }
+      const vatRaw = get("vat_rate");
+      if (vatRaw !== null) {
+        const vr = String(vatRaw).trim();
+        const vatVal = vr === "" ? null : Math.max(0, Math.min(100, Number(vr) || 0));
+        await exec(`UPDATE payment_requisition_items SET vat_rate=$1 WHERE id=$2`, [vatVal, it.id]);
+      }
       const setTxt = async (f: string, col: string) => {
         const v = get(f);
         if (v !== null) await exec(`UPDATE payment_requisition_items SET ${col}=$1 WHERE id=$2`, [String(v).trim() || null, it.id]);
@@ -88,15 +94,15 @@ export async function addPOToPRQAction(prqId: number, poId: number) {
   await withTransaction(async (exec) => {
     const maxLine = await firstRow<{ n: number }>(exec, `SELECT COALESCE(max(line_no),0)::int n FROM payment_requisition_items WHERE prq_id=$1`, [prqId]);
     let line = (maxLine?.n ?? 0) + 1;
-    const items = await exec<{ id: number; description: string; amount: string }>(
-      `SELECT id, description, amount FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`,
+    const items = await exec<{ id: number; description: string; amount: string; vat_rate: string | null }>(
+      `SELECT id, description, amount, vat_rate FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`,
       [poId]
     );
     for (const it of items) {
       await exec(
-        `INSERT INTO payment_requisition_items (prq_id, po_id, po_item_id, description, tax_code, currency, amount, line_no)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [prqId, poId, it.id, it.description, sup?.tax_code ?? null, po.currency || "VND", Number(it.amount), line++]
+        `INSERT INTO payment_requisition_items (prq_id, po_id, po_item_id, description, tax_code, currency, amount, vat_rate, line_no)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [prqId, poId, it.id, it.description, sup?.tax_code ?? null, po.currency || "VND", Number(it.amount), it.vat_rate != null ? Number(it.vat_rate) : null, line++]
       );
     }
     await recomputePRQTotals(exec, prqId);

@@ -12,7 +12,7 @@ import { docNumber } from "./numbering";
  *  PO gốc (dòng không gắn PO coi như thuế 0). grand_total = tổng tiền GỒM thuế. */
 export async function recomputePRQTotals(exec: Executor, prqId: number): Promise<void> {
   const rows = await exec<{ amount: string; vat_rate: string | null }>(
-    `SELECT it.amount, poi.vat_rate
+    `SELECT it.amount, COALESCE(it.vat_rate, poi.vat_rate) AS vat_rate
        FROM payment_requisition_items it
        LEFT JOIN purchase_order_items poi ON poi.id = it.po_item_id
       WHERE it.prq_id = $1`,
@@ -71,17 +71,17 @@ export async function generatePRQFromPO(poId: number, exec: Executor = dbExec, u
   );
   await exec(`UPDATE payment_requisitions SET prq_number = $1 WHERE id = $2`, [docNumber("PRQ", prq!.id), prq!.id]);
 
-  const items = await exec<{ id: number; description: string; amount: string }>(
-    `SELECT id, description, amount FROM purchase_order_items WHERE po_id = $1 ORDER BY line_no`,
+  const items = await exec<{ id: number; description: string; amount: string; vat_rate: string | null }>(
+    `SELECT id, description, amount, vat_rate FROM purchase_order_items WHERE po_id = $1 ORDER BY line_no`,
     [poId]
   );
   let line = 1;
   for (const it of items) {
     await exec(
       `INSERT INTO payment_requisition_items
-         (prq_id, po_id, po_item_id, description, tax_code, currency, amount, line_no)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [prq!.id, poId, it.id, it.description, sup?.tax_code ?? null, po.currency || "VND", Number(it.amount), line++]
+         (prq_id, po_id, po_item_id, description, tax_code, currency, amount, vat_rate, line_no)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [prq!.id, poId, it.id, it.description, sup?.tax_code ?? null, po.currency || "VND", Number(it.amount), it.vat_rate != null ? Number(it.vat_rate) : null, line++]
     );
   }
   await recomputePRQTotals(exec, prq!.id);

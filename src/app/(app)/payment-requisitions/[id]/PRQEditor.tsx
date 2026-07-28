@@ -17,6 +17,7 @@ export interface PRQLine {
   cost_center: string | null;
   currency: string;
   amount: string;
+  vat_rate: string | null;
   line_no: number;
 }
 
@@ -45,6 +46,25 @@ export function PRQEditor({
   const [pending, start] = useTransition();
   const [addPo, setAddPo] = useState("");
   const router = useRouter();
+
+  // Tính nhanh: nhập TIỀN TRƯỚC THUẾ + % VAT → tự ra SỐ TIỀN GỒM THUẾ (vẫn sửa tay được).
+  const round = (n: number) => Math.round(n) || 0;
+  const [amt, setAmt] = useState<Record<number, { net: number; vat: number; gross: number }>>(() => {
+    const m: Record<number, { net: number; vat: number; gross: number }> = {};
+    for (const l of lines) {
+      const vat = l.vat_rate != null && String(l.vat_rate) !== "" ? Number(l.vat_rate) : 0;
+      const gross = Number(l.amount) || 0;
+      const net = vat > 0 ? round(gross / (1 + vat / 100)) : gross;
+      m[l.id] = { net, vat, gross };
+    }
+    return m;
+  });
+  const setNet = (id: number, net: number) =>
+    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, net, gross: v.vat > 0 ? round(net * (1 + v.vat / 100)) : net } }; });
+  const setVat = (id: number, vat: number) =>
+    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, vat, gross: vat > 0 ? round(v.net * (1 + vat / 100)) : v.net } }; });
+  const setGross = (id: number, gross: number) =>
+    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, gross } }; });
 
   const doAdd = () => {
     if (!addPo) return;
@@ -117,8 +137,14 @@ export function PRQEditor({
                   <Field label="Mã số thuế">
                     <input name={`tax_code_${l.id}`} defaultValue={l.tax_code ?? ""} className={inputCls} />
                   </Field>
+                  <Field label="Tiền trước thuế">
+                    <input type="number" min={0} value={amt[l.id]?.net ?? 0} onChange={(e) => setNet(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right"} />
+                  </Field>
+                  <Field label="% VAT">
+                    <input name={`vat_rate_${l.id}`} type="number" min={0} max={100} step={0.5} value={amt[l.id]?.vat ?? 0} onChange={(e) => setVat(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right"} />
+                  </Field>
                   <Field label="Số tiền (gồm thuế)">
-                    <input name={`amount_${l.id}`} type="number" min={0} defaultValue={Number(l.amount)} className={inputCls + " text-right"} />
+                    <input name={`amount_${l.id}`} type="number" min={0} value={amt[l.id]?.gross ?? 0} onChange={(e) => setGross(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right font-semibold text-teal-700"} />
                   </Field>
                   <div className="sm:col-span-2">
                     <Field label="Diễn giải">

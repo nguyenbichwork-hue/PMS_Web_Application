@@ -62,8 +62,8 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
     [po.company_id]
   );
 
-  // Chỉ sửa nội dung PO khi còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ được bình luận).
-  const editable = user && can(user.role, "po.manage") && po.status === "Draft";
+  // Cho sửa PO (kể cả sau duyệt) để khớp hóa đơn điện tử; chỉ khóa khi Đóng/Hủy.
+  const editable = user && can(user.role, "po.manage") && !["Closed", "Cancelled"].includes(po.status);
   const canManage = !!(user && can(user.role, "po.manage"));
   const canApprove = !!(user && can(user.role, "po.approve")); // Manager/Admin duyệt PO
   // PRQ (đề nghị thanh toán) sinh khi duyệt PO — hiện link nếu đã có.

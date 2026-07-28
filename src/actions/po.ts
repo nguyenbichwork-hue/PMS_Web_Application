@@ -77,8 +77,10 @@ export async function updatePOAction(formData: FormData) {
   }>(`SELECT supplier_id, delivery_date, payment_term, company_id, status FROM purchase_orders WHERE id = $1`, [poId]);
   if (!current) throw new Error("PO not found");
   if (!canAccessCompany(user, current.company_id)) throw new Error("FORBIDDEN");
-  // Chỉ được sửa nội dung khi PO còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ bình luận).
-  if (current.status !== "Draft") throw new Error("PO đã được duyệt — không thể chỉnh sửa nội dung nữa.");
+  // Cho phép SỬA để KHỚP hóa đơn điện tử (số lượng/đơn giá PO sai so với HĐ) —
+  // kể cả sau khi đã duyệt/gửi/nhận. Chỉ khóa khi PO đã ĐÓNG/HỦY. Mọi thay đổi
+  // đều ghi po_change_history + audit. Sau khi sửa nên vào hóa đơn "↻ Đối chiếu lại".
+  if (["Closed", "Cancelled"].includes(current.status)) throw new Error("PO đã đóng/hủy — không thể chỉnh sửa nội dung.");
 
   const supplier_id = formData.get("supplier_id") ? Number(formData.get("supplier_id")) : null;
   const delivery_date = String(formData.get("delivery_date") ?? "") || null;
@@ -96,15 +98,24 @@ export async function updatePOAction(formData: FormData) {
       [supplier_id, delivery_date, payment_term, poId]
     );
 
-    // Line price updates
+    // Line updates: đơn giá + SỐ LƯỢNG (để sửa cho khớp hóa đơn điện tử).
     const items = await exec<POItem>(`SELECT * FROM purchase_order_items WHERE po_id = $1`, [poId]);
     for (const it of items) {
       const raw = formData.get(`price_${it.id}`);
-      if (raw === null) continue;
-      const newPrice = Number(raw);
-      if (newPrice !== Number(it.unit_price)) {
-        await logChange(exec, poId, `price[line ${it.line_no}]`, it.unit_price, newPrice, user.id, user.name);
-        await exec(`UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2`, [newPrice, it.id]);
+      if (raw !== null) {
+        const newPrice = Number(raw);
+        if (Number.isFinite(newPrice) && newPrice !== Number(it.unit_price)) {
+          await logChange(exec, poId, `price[line ${it.line_no}]`, it.unit_price, newPrice, user.id, user.name);
+          await exec(`UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2`, [newPrice, it.id]);
+        }
+      }
+      const qraw = formData.get(`qty_${it.id}`);
+      if (qraw !== null) {
+        const newQty = Number(qraw);
+        if (Number.isFinite(newQty) && newQty > 0 && newQty !== Number(it.quantity)) {
+          await logChange(exec, poId, `qty[line ${it.line_no}]`, it.quantity, newQty, user.id, user.name);
+          await exec(`UPDATE purchase_order_items SET quantity = $1 WHERE id = $2`, [newQty, it.id]);
+        }
       }
     }
 
