@@ -1,8 +1,9 @@
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { Card, StatusBadge, EmptyState, ExportButton } from "@/components/ui";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
+import { SectionImport } from "@/components/SectionImport";
 import { CustomerManager } from "./CustomerManager";
 import type { Customer } from "@/lib/types";
 
@@ -32,13 +33,24 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     params
   );
 
+  const eq = new URLSearchParams();
+  if (sp.q) eq.set("q", sp.q);
+  if (sp.status) eq.set("status", sp.status);
+  const exportQs = eq.toString();
+
   return (
     <div>
       <ModuleBanner
         accent="violet"
         title="Khách hàng"
         subtitle="Danh mục khách hàng — gắn vào PR/PO để biết đơn mua phục vụ khách nào"
-        action={canManage ? <CustomerManager /> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton href={`/export/customers?${exportQs}`} />
+            {canManage && <SectionImport section="customers" variant="light" />}
+            {canManage && <CustomerManager />}
+          </div>
+        }
       />
       <Filters
         searchPlaceholder="Tìm khách hàng…"

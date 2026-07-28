@@ -27,6 +27,8 @@ const PERM: Record<Section, string> = {
   products: "product.manage",
   users: "user.manage",
   business_units: "settings.manage",
+  customers: "customer.manage",
+  projects: "project.manage",
 };
 
 const HEADER_ERR: Record<Section, string> = {
@@ -34,6 +36,8 @@ const HEADER_ERR: Record<Section, string> = {
   products: "Không tìm thấy dòng tiêu đề có cột Mã & Tên. Kiểm tra file có cột 'Mã' và 'Tên'.",
   users: "Không tìm thấy dòng tiêu đề có cột Email & Tên. Kiểm tra file có cột 'Email' và 'Họ tên'.",
   business_units: "Không tìm thấy dòng tiêu đề có cột Mã & Tên phòng ban. Kiểm tra file có cột 'Mã phòng ban' và 'Tên phòng ban'.",
+  customers: "Không tìm thấy dòng tiêu đề có cột Mã & Tên khách hàng. Kiểm tra file có cột 'Mã khách hàng' và 'Tên khách hàng'.",
+  projects: "Không tìm thấy dòng tiêu đề có cột Mã & Tên dự án. Kiểm tra file có cột 'Mã dự án' và 'Tên dự án'.",
 };
 
 /**
@@ -48,7 +52,7 @@ export async function importSectionAction(section: Section, formData: FormData):
 
   // sync=1: ĐỒNG BỘ ĐẦY ĐỦ — mục KHÔNG có trong file sẽ bị xóa (hoặc chuyển Ngưng
   // nếu đã có chứng từ). Chỉ áp cho suppliers/products.
-  const sync = formData.get("sync") === "1" && (section === "suppliers" || section === "products");
+  const sync = formData.get("sync") === "1" && ["suppliers", "products", "customers", "projects"].includes(section);
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Chưa chọn file Excel." };
@@ -67,6 +71,8 @@ export async function importSectionAction(section: Section, formData: FormData):
     section === "suppliers" ? parsed.suppliers!
     : section === "products" ? parsed.products!
     : section === "business_units" ? parsed.business_units!
+    : section === "customers" ? parsed.customers!
+    : section === "projects" ? parsed.projects!
     : parsed.users!;
   if (rows.length === 0) {
     return { ok: false, error: "Không có dòng dữ liệu hợp lệ nào (đọc được tiêu đề nhưng không có dữ liệu).", sheetName: parsed.sheetName, warnings: parsed.warnings };
@@ -141,6 +147,53 @@ export async function importSectionAction(section: Section, formData: FormData):
             added++;
           }
         }
+      } else if (section === "customers") {
+        for (const c of parsed.customers!) {
+          const row = await firstRow<{ inserted: boolean }>(exec,
+            `INSERT INTO customers (customer_code, customer_name, tax_code, address, contact_name, phone, email, note, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             ON CONFLICT (customer_code) DO UPDATE SET
+               customer_name=EXCLUDED.customer_name, tax_code=EXCLUDED.tax_code, address=EXCLUDED.address,
+               contact_name=EXCLUDED.contact_name, phone=EXCLUDED.phone, email=EXCLUDED.email,
+               note=EXCLUDED.note, status=EXCLUDED.status
+             RETURNING (xmax = 0) AS inserted`,
+            [c.customer_code, c.customer_name, c.tax_code, c.address, c.contact_name, c.phone, c.email, c.note, c.status]);
+          if (row?.inserted) added++; else updated++;
+        }
+      } else if (section === "projects") {
+        // Khớp công ty (mã) và khách hàng (mã) về id — cột trống thì null.
+        const companyMap = new Map<string, number>();
+        for (const c of await exec<{ id: number; company_code: string }>(`SELECT id, company_code FROM companies`))
+          companyMap.set(c.company_code.trim().toLowerCase(), c.id);
+        const customerMap = new Map<string, number>();
+        for (const c of await exec<{ id: number; customer_code: string }>(`SELECT id, customer_code FROM customers`))
+          customerMap.set(c.customer_code.trim().toLowerCase(), c.id);
+        for (const p of parsed.projects!) {
+          let cid: number | null = null;
+          if (p.company_code) {
+            cid = companyMap.get(p.company_code.trim().toLowerCase()) ?? null;
+            if (!cid) warnings.push(`Dự án "${p.project_code}": không thấy công ty "${p.company_code}" → để trống công ty.`);
+          }
+          let custId: number | null = null;
+          if (p.customer_code) {
+            custId = customerMap.get(p.customer_code.trim().toLowerCase()) ?? null;
+            if (!custId) warnings.push(`Dự án "${p.project_code}": không thấy khách hàng "${p.customer_code}" → để trống khách hàng.`);
+          }
+          const row = await firstRow<{ inserted: boolean }>(exec,
+            `INSERT INTO projects (project_code, project_name, company_id, customer_id, budget, manager_name, location, start_date, end_date, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             ON CONFLICT (project_code) DO UPDATE SET
+               project_name=EXCLUDED.project_name,
+               company_id=COALESCE(EXCLUDED.company_id, projects.company_id),
+               customer_id=COALESCE(EXCLUDED.customer_id, projects.customer_id),
+               budget=EXCLUDED.budget, manager_name=EXCLUDED.manager_name, location=EXCLUDED.location,
+               start_date=COALESCE(EXCLUDED.start_date, projects.start_date),
+               end_date=COALESCE(EXCLUDED.end_date, projects.end_date),
+               status=EXCLUDED.status
+             RETURNING (xmax = 0) AS inserted`,
+            [p.project_code, p.project_name, cid, custId, p.budget, p.manager_name, p.location, p.start_date, p.end_date, p.status]);
+          if (row?.inserted) added++; else updated++;
+        }
       } else {
         // users — map company_code → id; giữ nguyên mật khẩu khi cập nhật.
         // Mật khẩu mặc định "password" được BĂM trước khi lưu (không lưu thô).
@@ -195,6 +248,22 @@ export async function importSectionAction(section: Section, formData: FormData):
           try { await query(`DELETE FROM products WHERE id=$1`, [e.id]); removed++; }
           catch { await query(`UPDATE products SET status='Inactive' WHERE id=$1`, [e.id]); deactivated++; }
         }
+      } else if (section === "customers") {
+        const fileCodes = new Set(parsed.customers!.map((c) => c.customer_code.toLowerCase()));
+        const existing = await query<{ id: number; customer_code: string }>(`SELECT id, customer_code FROM customers`);
+        for (const e of existing) {
+          if (fileCodes.has(e.customer_code.toLowerCase())) continue;
+          try { await query(`DELETE FROM customers WHERE id=$1`, [e.id]); removed++; }
+          catch { await query(`UPDATE customers SET status='Inactive' WHERE id=$1`, [e.id]); deactivated++; }
+        }
+      } else if (section === "projects") {
+        const fileCodes = new Set(parsed.projects!.map((p) => p.project_code.toLowerCase()));
+        const existing = await query<{ id: number; project_code: string }>(`SELECT id, project_code FROM projects`);
+        for (const e of existing) {
+          if (fileCodes.has(e.project_code.toLowerCase())) continue;
+          try { await query(`DELETE FROM projects WHERE id=$1`, [e.id]); removed++; }
+          catch { await query(`UPDATE projects SET status='Inactive' WHERE id=$1`, [e.id]); deactivated++; }
+        }
       }
       if (removed || deactivated) {
         await logAudit({ actorId: user.id, actorName: user.name, documentType: "Import", action: `SyncExcel:${section}`, field: file.name, newValue: `-${removed} xóa / ${deactivated} ngưng` });
@@ -210,8 +279,12 @@ export async function importSectionAction(section: Section, formData: FormData):
     catch (e) { console.error("[accounts] đẩy user lên Supabase sau import thất bại (bỏ qua):", e); }
   }
 
-  revalidatePath(section === "suppliers" ? "/suppliers" : section === "products" ? "/products" : "/settings");
-  if (section === "business_units") revalidatePath("/purchase-requests/new");
+  const REVALIDATE: Record<Section, string> = {
+    suppliers: "/suppliers", products: "/products", users: "/settings",
+    business_units: "/settings", customers: "/customers", projects: "/du-an",
+  };
+  revalidatePath(REVALIDATE[section]);
+  if (section === "business_units" || section === "customers" || section === "projects") revalidatePath("/purchase-requests/new");
   revalidatePath("/dashboard");
 
   return {

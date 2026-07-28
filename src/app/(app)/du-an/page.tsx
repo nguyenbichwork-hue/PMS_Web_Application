@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { Card, StatusBadge, EmptyState, ExportButton } from "@/components/ui";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
+import { SectionImport } from "@/components/SectionImport";
 import { money } from "@/lib/format";
 import { ProjectManager } from "./ProjectManager";
 import type { Project } from "@/lib/types";
@@ -48,13 +49,24 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const companies = (await query<{ id: number; name: string }>(`SELECT id, company_name AS name FROM companies WHERE status='Active' ORDER BY company_name`, []));
   const customers = (await query<{ id: number; name: string }>(`SELECT id, customer_name AS name FROM customers WHERE status='Active' ORDER BY customer_name`, []));
 
+  const eq = new URLSearchParams();
+  if (sp.q) eq.set("q", sp.q);
+  if (sp.status) eq.set("status", sp.status);
+  const exportQs = eq.toString();
+
   return (
     <div>
       <ModuleBanner
         accent="indigo"
         title="Dự án / Công trình"
         subtitle="Ngân sách từng dự án + chi phí đã cam kết (PO) — kiểm soát 'còn đủ tiền không'"
-        action={canManage ? <ProjectManager companies={companies} customers={customers} /> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton href={`/export/projects?${exportQs}`} />
+            {canManage && <SectionImport section="projects" variant="light" />}
+            {canManage && <ProjectManager companies={companies} customers={customers} />}
+          </div>
+        }
       />
       <Filters
         searchPlaceholder="Tìm dự án…"

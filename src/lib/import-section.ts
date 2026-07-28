@@ -11,7 +11,7 @@ import { cellStr, norm, colOf } from "./import-excel";
 // khớp cột theo tên tiếng Việt/tiếng Anh. Chỉ PARSE; ghi DB ở actions.
 // =====================================================================
 
-export type Section = "suppliers" | "products" | "users" | "business_units";
+export type Section = "suppliers" | "products" | "users" | "business_units" | "customers" | "projects";
 
 export interface ParsedSectionSupplier {
   supplier_code: string; supplier_name: string; tax_code: string | null; address: string | null;
@@ -29,6 +29,15 @@ export interface ParsedSectionUser {
 }
 export interface ParsedSectionBU {
   company_code: string | null; bu_code: string; bu_name: string;
+}
+export interface ParsedSectionCustomer {
+  customer_code: string; customer_name: string; tax_code: string | null; address: string | null;
+  contact_name: string | null; phone: string | null; email: string | null; note: string | null; status: string;
+}
+export interface ParsedSectionProject {
+  project_code: string; project_name: string; company_code: string | null; customer_code: string | null;
+  budget: number; manager_name: string | null; location: string | null;
+  start_date: string | null; end_date: string | null; status: string;
 }
 
 const VALID_ROLES = ["Employee", "Purchasing", "Manager", "Finance", "Admin"];
@@ -95,6 +104,35 @@ const CONFIG: Record<Section, SectionConfig> = {
       { key: "company_code", aliases: ["macongty", "companycode", "macty", "congty"] },
     ],
   },
+  customers: {
+    sheetTokens: ["khachhang", "customer", "client"],
+    cols: [
+      { key: "customer_code", aliases: ["makhachhang", "makh", "customercode", "macode", "ma"], required: true },
+      { key: "customer_name", aliases: ["tenkhachhang", "tenkh", "customername", "ten", "name"], required: true },
+      { key: "tax_code", aliases: ["masothue", "mst", "taxcode", "cccd"] },
+      { key: "address", aliases: ["diachi", "address"] },
+      { key: "contact_name", aliases: ["nguoilienhe", "nguoidaidien", "contactname"] },
+      { key: "phone", aliases: ["dienthoai", "sodienthoai", "sdt", "phone"] },
+      { key: "email", aliases: ["email", "thudientu"] },
+      { key: "note", aliases: ["ghichu", "note"] },
+      { key: "status", aliases: ["trangthai", "status"] },
+    ],
+  },
+  projects: {
+    sheetTokens: ["duan", "congtrinh", "project"],
+    cols: [
+      { key: "project_code", aliases: ["maduan", "macongtrinh", "projectcode", "macode", "ma"], required: true },
+      { key: "project_name", aliases: ["tenduan", "tencongtrinh", "projectname", "ten", "name"], required: true },
+      { key: "company_code", aliases: ["macongty", "companycode", "macty", "congty"] },
+      { key: "customer_code", aliases: ["makhachhang", "makh", "customercode", "khachhang"] },
+      { key: "budget", aliases: ["ngansach", "budget", "kinhphi", "dutoan"] },
+      { key: "manager_name", aliases: ["nguoiphutrach", "phutrach", "quanly", "manager", "chuduan"] },
+      { key: "location", aliases: ["diadiem", "noithicong", "location"] },
+      { key: "start_date", aliases: ["ngaybatdau", "batdau", "startdate", "tungay"] },
+      { key: "end_date", aliases: ["ngayketthuc", "ketthuc", "enddate", "denngay"] },
+      { key: "status", aliases: ["trangthai", "status"] },
+    ],
+  },
 };
 
 export interface SectionParseResult {
@@ -106,6 +144,8 @@ export interface SectionParseResult {
   products?: ParsedSectionProduct[];
   users?: ParsedSectionUser[];
   business_units?: ParsedSectionBU[];
+  customers?: ParsedSectionCustomer[];
+  projects?: ParsedSectionProject[];
   warnings: string[];
   dataRows: number; // số dòng dữ liệu hợp lệ đọc được
 }
@@ -141,6 +181,28 @@ const toNum = (s: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const okStatus = (s: string) => (norm(s) === "inactive" || norm(s) === "ngung" ? "Inactive" : "Active");
+// Trạng thái dự án: nhận thêm "Đã đóng"/"Closed".
+const projStatus = (s: string) => {
+  const n = norm(s);
+  if (n === "closed" || n === "dadong" || n === "dong") return "Closed";
+  if (n === "inactive" || n === "ngung") return "Inactive";
+  return "Active";
+};
+// Chuẩn hóa ngày về YYYY-MM-DD (nhận dd/mm/yyyy, yyyy-mm-dd, ISO). Không đọc được → null.
+const toDateStr = (s: string): string | null => {
+  const t = String(s).trim();
+  if (!t) return null;
+  const dmy = t.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+  if (dmy) {
+    let yy = dmy[3];
+    if (yy.length === 2) yy = "20" + yy;
+    return `${yy}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  }
+  const ymd = t.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/);
+  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
 
 export async function parseSection(section: Section, buffer: ArrayBuffer): Promise<SectionParseResult> {
   const cfg = CONFIG[section];
@@ -163,6 +225,8 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
     ...(section === "suppliers" ? { suppliers: [] }
       : section === "products" ? { products: [] }
       : section === "business_units" ? { business_units: [] }
+      : section === "customers" ? { customers: [] }
+      : section === "projects" ? { projects: [] }
       : { users: [] }),
   };
   if (headerRow < 0) return result;
@@ -220,6 +284,38 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
         company_code: g("company_code").trim() || null,
         bu_code: code, bu_name: name || code,
       });
+    } else if (section === "customers") {
+      const code = g("customer_code").trim();
+      const name = g("customer_name").trim();
+      if (!code && !name) continue;
+      if (!code) { warnings.push(`Dòng ${r}: thiếu Mã khách hàng → bỏ qua.`); continue; }
+      const key = code.toLowerCase();
+      if (seen.has(key)) { warnings.push(`Dòng ${r}: trùng mã "${code}" trong file → dùng dòng cuối.`); }
+      seen.add(key);
+      result.customers!.push({
+        customer_code: code, customer_name: name || code,
+        tax_code: g("tax_code") || null, address: g("address") || null,
+        contact_name: g("contact_name") || null, phone: g("phone") || null,
+        email: g("email") || null, note: g("note") || null,
+        status: okStatus(g("status")),
+      });
+    } else if (section === "projects") {
+      const code = g("project_code").trim();
+      const name = g("project_name").trim();
+      if (!code && !name) continue;
+      if (!code) { warnings.push(`Dòng ${r}: thiếu Mã dự án → bỏ qua.`); continue; }
+      const key = code.toLowerCase();
+      if (seen.has(key)) { warnings.push(`Dòng ${r}: trùng mã "${code}" trong file → dùng dòng cuối.`); }
+      seen.add(key);
+      result.projects!.push({
+        project_code: code, project_name: name || code,
+        company_code: g("company_code").trim() || null,
+        customer_code: g("customer_code").trim() || null,
+        budget: toNum(g("budget")) ?? 0,
+        manager_name: g("manager_name") || null, location: g("location") || null,
+        start_date: toDateStr(g("start_date")), end_date: toDateStr(g("end_date")),
+        status: projStatus(g("status")),
+      });
     } else {
       // users
       const email = g("email").trim().toLowerCase();
@@ -244,6 +340,8 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
   result.dataRows = section === "suppliers" ? result.suppliers!.length
     : section === "products" ? result.products!.length
     : section === "business_units" ? result.business_units!.length
+    : section === "customers" ? result.customers!.length
+    : section === "projects" ? result.projects!.length
     : result.users!.length;
   return result;
 }

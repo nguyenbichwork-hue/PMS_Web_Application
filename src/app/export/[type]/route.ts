@@ -150,6 +150,48 @@ function build(type: string, user: User, status: string, q: string, category: st
         map: (r) => ({ a: s(r.name), b: s(r.email), c: s(r.department), d: s(r.role), e: s(r.company_code), f: s(r.status) }),
       };
     }
+    case "customers": {
+      // Cột KHỚP với parser nhập (import-section) để xuất xong nhập lại được.
+      const where: string[] = []; const params: unknown[] = [];
+      if (status) { params.push(status); where.push(`status=$${params.length}`); }
+      if (q) { params.push(`%${q}%`); where.push(`(customer_name ILIKE $${params.length} OR customer_code ILIKE $${params.length})`); }
+      const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      return {
+        sheet: "Danh sách khách hàng", file: "khach-hang",
+        sql: `SELECT customer_code, customer_name, tax_code, address, contact_name, phone, email, note, status
+                FROM customers ${clause} ORDER BY customer_name`,
+        params,
+        columns: [
+          { h: "Mã khách hàng", k: "a", w: 20 }, { h: "Tên khách hàng", k: "b", w: 36 }, { h: "Mã số thuế", k: "c", w: 16 },
+          { h: "Địa chỉ", k: "d", w: 34 }, { h: "Người liên hệ", k: "e", w: 20 }, { h: "Điện thoại", k: "f", w: 16 },
+          { h: "Email", k: "g", w: 22 }, { h: "Ghi chú", k: "h", w: 24 }, { h: "Trạng thái", k: "i", w: 12 },
+        ],
+        map: (r) => ({ a: s(r.customer_code), b: s(r.customer_name), c: s(r.tax_code), d: s(r.address), e: s(r.contact_name), f: s(r.phone), g: s(r.email), h: s(r.note), i: s(r.status) }),
+      };
+    }
+    case "projects": {
+      const where: string[] = []; const params: unknown[] = [];
+      if (status) { params.push(status); where.push(`p.status=$${params.length}`); }
+      if (q) { params.push(`%${q}%`); where.push(`(p.project_name ILIKE $${params.length} OR p.project_code ILIKE $${params.length})`); }
+      const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      return {
+        sheet: "Danh sách dự án", file: "du-an",
+        sql: `SELECT p.project_code, p.project_name, c.company_code, cu.customer_code, p.budget,
+                     p.manager_name, p.location, p.start_date, p.end_date, p.status
+                FROM projects p
+                LEFT JOIN companies c ON c.id = p.company_id
+                LEFT JOIN customers cu ON cu.id = p.customer_id
+                ${clause} ORDER BY p.project_name`,
+        params,
+        columns: [
+          { h: "Mã dự án", k: "a", w: 18 }, { h: "Tên dự án", k: "b", w: 34 }, { h: "Mã công ty", k: "c", w: 14 },
+          { h: "Mã khách hàng", k: "d", w: 16 }, { h: "Ngân sách", k: "e", w: 18 }, { h: "Người phụ trách", k: "f", w: 20 },
+          { h: "Địa điểm", k: "g", w: 24 }, { h: "Ngày bắt đầu", k: "h", w: 14 }, { h: "Ngày kết thúc", k: "i", w: 14 },
+          { h: "Trạng thái", k: "j", w: 12 },
+        ],
+        map: (r) => ({ a: s(r.project_code), b: s(r.project_name), c: s(r.company_code), d: s(r.customer_code), e: n(r.budget), f: s(r.manager_name), g: s(r.location), h: s(r.start_date), i: s(r.end_date), j: s(r.status) }),
+      };
+    }
     default:
       return null;
   }

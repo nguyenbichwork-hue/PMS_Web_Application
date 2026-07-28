@@ -249,6 +249,7 @@ export default async function GuidePage() {
           <li><b>Khách hàng</b> (Danh mục → Khách hàng): thêm/sửa khách; khi tạo PR chọn khách hàng + số đơn bán để biết <b>đơn mua phục vụ khách nào</b> — theo suốt sang PO.</li>
           <li><b>Dự án/Công trình</b> (Danh mục → Dự án): đặt <b>ngân sách</b> cho dự án. Trang dự án hiện <b>Ngân sách · Đã cam kết (PO) · Còn lại</b>.</li>
           <li><b>Kiểm soát ngân sách:</b> khi duyệt PO thuộc dự án, nếu tổng cam kết <b>vượt ngân sách</b> → hệ thống <b>chặn duyệt</b>. Đặt ngân sách = 0 nghĩa là không kiểm soát.</li>
+          <li><b>Nhập/Xuất Excel:</b> cả Khách hàng và Dự án đều có nút <b>“Nhập Excel”</b> và <b>“Xuất Excel”</b> (giống Nhà cung cấp/Hàng hóa) — xuất ra rồi nhập lại được; trùng mã sẽ cập nhật.</li>
         </ul>
       ),
     });

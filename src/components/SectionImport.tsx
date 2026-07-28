@@ -22,7 +22,7 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
   users: {
     title: "Nhập người dùng từ Excel",
     entity: "người dùng",
-    btn: "⬆ Nhập từ Excel",
+    btn: "Nhập Excel",
     hint: "File .xlsx có cột Email và Họ tên (tùy chọn: Phòng ban, Vai trò, Mã công ty, Trạng thái). Vai trò nhận cả tiếng Việt (Nhân viên, Mua hàng, Quản lý, Kế toán, Quản trị). Tài khoản mới dùng mật khẩu mặc định 'password'. Trùng email sẽ được cập nhật (giữ nguyên mật khẩu).",
   },
   business_units: {
@@ -30,6 +30,18 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
     entity: "phòng ban",
     btn: "Nhập Excel",
     hint: "File .xlsx có cột Mã phòng ban và Tên phòng ban (tùy chọn: Mã công ty — trống thì gán công ty mặc định). Hệ thống tự dò dòng tiêu đề. Trùng mã (trong cùng công ty) sẽ được cập nhật tên.",
+  },
+  customers: {
+    title: "Nhập khách hàng từ Excel",
+    entity: "khách hàng",
+    btn: "Nhập Excel",
+    hint: "File .xlsx có cột Mã khách hàng và Tên khách hàng (tùy chọn: Mã số thuế, Địa chỉ, Người liên hệ, Điện thoại, Email, Ghi chú). Hệ thống tự dò dòng tiêu đề. Trùng mã sẽ được cập nhật.",
+  },
+  projects: {
+    title: "Nhập dự án / công trình từ Excel",
+    entity: "dự án",
+    btn: "Nhập Excel",
+    hint: "File .xlsx có cột Mã dự án và Tên dự án (tùy chọn: Mã công ty, Mã khách hàng, Ngân sách, Người phụ trách, Địa điểm, Ngày bắt đầu/kết thúc, Trạng thái). Hệ thống tự dò dòng tiêu đề. Trùng mã sẽ được cập nhật.",
   },
 };
 
@@ -42,7 +54,7 @@ export function SectionImport({ section, variant = "banner" }: { section: Sectio
   const [sync, setSync] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  const canSync = section === "suppliers" || section === "products";
+  const canSync = ["suppliers", "products", "customers", "projects"].includes(section);
 
   const submit = () => {
     const f = inputRef.current?.files?.[0];
@@ -85,7 +97,7 @@ export function SectionImport({ section, variant = "banner" }: { section: Sectio
 
         <div className="flex flex-wrap items-center gap-3">
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-            📎 Chọn file .xlsx
+            Chọn file .xlsx
             <input
               ref={inputRef}
               type="file"
