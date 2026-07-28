@@ -93,45 +93,52 @@ export function PRQEditor({
 
         <div>
           <h3 className="mb-3 text-sm font-semibold text-slate-700">Chi tiết dòng thanh toán (số tiền GỒM thuế)</h3>
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="p-2 text-left">STT</th>
-                  <th className="p-2 text-left">Số HĐ</th>
-                  <th className="p-2 text-left">Ngày HĐ</th>
-                  <th className="p-2 text-left">Diễn giải</th>
-                  <th className="p-2 text-left">MST</th>
-                  <th className="p-2 text-left">GL</th>
-                  <th className="p-2 text-left">Cost center</th>
-                  <th className="p-2 text-right">Số tiền</th>
-                  <th className="p-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={l.id} className="border-t border-slate-100">
-                    <td className="p-1.5 align-middle">
-                      {i + 1}
-                      {l.po_number && <div className="text-[10px] text-slate-400">{l.po_number}</div>}
-                    </td>
-                    <td className="p-1.5"><input name={`inv_no_${l.id}`} defaultValue={l.inv_no ?? ""} className={inputCls + " !py-1"} /></td>
-                    <td className="p-1.5"><input name={`inv_date_${l.id}`} type="date" defaultValue={d10(l.inv_date)} className={inputCls + " !py-1"} /></td>
-                    <td className="p-1.5"><input name={`description_${l.id}`} defaultValue={l.description ?? ""} className={inputCls + " !py-1 min-w-[180px]"} /></td>
-                    <td className="p-1.5"><input name={`tax_code_${l.id}`} defaultValue={l.tax_code ?? ""} className={inputCls + " !py-1 w-24"} /></td>
-                    <td className="p-1.5"><input name={`gl_account_${l.id}`} defaultValue={l.gl_account ?? ""} className={inputCls + " !py-1 w-20"} /></td>
-                    <td className="p-1.5"><input name={`cost_center_${l.id}`} defaultValue={l.cost_center ?? ""} className={inputCls + " !py-1 w-24"} /></td>
-                    <td className="p-1.5"><input name={`amount_${l.id}`} type="number" min={0} defaultValue={Number(l.amount)} className={inputCls + " !py-1 w-32 text-right"} /></td>
-                    <td className="p-1.5 text-center">
-                      <button type="button" onClick={() => doRemove(l.id)} disabled={pending} className="text-rose-500 hover:underline">Xóa</button>
-                    </td>
-                  </tr>
-                ))}
-                {lines.length === 0 && (
-                  <tr><td colSpan={9} className="p-3 text-center text-slate-400">Chưa có dòng nào.</td></tr>
-                )}
-              </tbody>
-            </table>
+          {/* Mỗi dòng = một THẺ có nhãn rõ ràng (tránh bảng nhiều cột bị bó chật). */}
+          <div className="space-y-3">
+            {lines.map((l, i) => (
+              <div key={l.id} className="rounded-xl border border-slate-200 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-teal-100 text-xs text-teal-700">{i + 1}</span>
+                    Dòng {i + 1}
+                    {l.po_number && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{l.po_number}</span>}
+                  </div>
+                  <button type="button" onClick={() => doRemove(l.id)} disabled={pending} className="text-xs font-medium text-rose-500 hover:underline">
+                    Xóa dòng
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="Số hóa đơn">
+                    <input name={`inv_no_${l.id}`} defaultValue={l.inv_no ?? ""} className={inputCls} placeholder="VD: 099/VM/2026" />
+                  </Field>
+                  <Field label="Ngày hóa đơn">
+                    <input name={`inv_date_${l.id}`} type="date" defaultValue={d10(l.inv_date)} className={inputCls} />
+                  </Field>
+                  <Field label="Mã số thuế">
+                    <input name={`tax_code_${l.id}`} defaultValue={l.tax_code ?? ""} className={inputCls} />
+                  </Field>
+                  <Field label="Số tiền (gồm thuế)">
+                    <input name={`amount_${l.id}`} type="number" min={0} defaultValue={Number(l.amount)} className={inputCls + " text-right"} />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="Diễn giải">
+                      <input name={`description_${l.id}`} defaultValue={l.description ?? ""} className={inputCls} placeholder="Nội dung thanh toán…" />
+                    </Field>
+                  </div>
+                  <Field label="GL Account">
+                    <input name={`gl_account_${l.id}`} defaultValue={l.gl_account ?? ""} className={inputCls} />
+                  </Field>
+                  <Field label="Cost center">
+                    <input name={`cost_center_${l.id}`} defaultValue={l.cost_center ?? ""} className={inputCls} />
+                  </Field>
+                </div>
+              </div>
+            ))}
+            {lines.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                Chưa có dòng nào. Gộp thêm PO ở bên dưới.
+              </div>
+            )}
           </div>
 
           {addablePOs.length > 0 && (
