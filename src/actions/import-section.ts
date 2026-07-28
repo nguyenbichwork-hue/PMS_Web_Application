@@ -26,12 +26,14 @@ const PERM: Record<Section, string> = {
   suppliers: "supplier.manage",
   products: "product.manage",
   users: "user.manage",
+  business_units: "settings.manage",
 };
 
 const HEADER_ERR: Record<Section, string> = {
   suppliers: "Không tìm thấy dòng tiêu đề có cột Mã & Tên nhà cung cấp. Kiểm tra file có cột 'Mã nhà cung cấp' và 'Tên nhà cung cấp'.",
   products: "Không tìm thấy dòng tiêu đề có cột Mã & Tên. Kiểm tra file có cột 'Mã' và 'Tên'.",
   users: "Không tìm thấy dòng tiêu đề có cột Email & Tên. Kiểm tra file có cột 'Email' và 'Họ tên'.",
+  business_units: "Không tìm thấy dòng tiêu đề có cột Mã & Tên phòng ban. Kiểm tra file có cột 'Mã phòng ban' và 'Tên phòng ban'.",
 };
 
 /**
@@ -46,7 +48,7 @@ export async function importSectionAction(section: Section, formData: FormData):
 
   // sync=1: ĐỒNG BỘ ĐẦY ĐỦ — mục KHÔNG có trong file sẽ bị xóa (hoặc chuyển Ngưng
   // nếu đã có chứng từ). Chỉ áp cho suppliers/products.
-  const sync = formData.get("sync") === "1" && section !== "users";
+  const sync = formData.get("sync") === "1" && (section === "suppliers" || section === "products");
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Chưa chọn file Excel." };
@@ -62,7 +64,10 @@ export async function importSectionAction(section: Section, formData: FormData):
   if (parsed.headerRow < 0) return { ok: false, error: HEADER_ERR[section] };
 
   const rows =
-    section === "suppliers" ? parsed.suppliers! : section === "products" ? parsed.products! : parsed.users!;
+    section === "suppliers" ? parsed.suppliers!
+    : section === "products" ? parsed.products!
+    : section === "business_units" ? parsed.business_units!
+    : parsed.users!;
   if (rows.length === 0) {
     return { ok: false, error: "Không có dòng dữ liệu hợp lệ nào (đọc được tiêu đề nhưng không có dữ liệu).", sheetName: parsed.sheetName, warnings: parsed.warnings };
   }
@@ -110,6 +115,31 @@ export async function importSectionAction(section: Section, formData: FormData):
              RETURNING (xmax = 0) AS inserted`,
             [p.item_code, p.item_name, p.category, p.unit, p.vat_rate, p.accounting_code, p.status, supId]);
           if (row?.inserted) added++; else updated++;
+        }
+      } else if (section === "business_units") {
+        // Phòng ban — khớp công ty theo mã; upsert theo (công ty + mã BU).
+        const companyMap = new Map<string, number>();
+        for (const c of await exec<{ id: number; company_code: string }>(`SELECT id, company_code FROM companies`))
+          companyMap.set(c.company_code.trim().toLowerCase(), c.id);
+        // Công ty mặc định khi file không có cột Mã công ty: pháp nhân đầu tiên.
+        const firstCompany = await firstRow<{ id: number }>(exec, `SELECT id FROM companies ORDER BY id LIMIT 1`);
+        for (const b of parsed.business_units!) {
+          let cid: number | null = null;
+          if (b.company_code) {
+            cid = companyMap.get(b.company_code.trim().toLowerCase()) ?? null;
+            if (!cid) warnings.push(`Phòng ban "${b.bu_code}": không thấy công ty "${b.company_code}" → dùng công ty mặc định.`);
+          }
+          cid = cid ?? firstCompany?.id ?? null;
+          if (!cid) { warnings.push(`Phòng ban "${b.bu_code}": chưa có công ty nào trong hệ thống → bỏ qua.`); continue; }
+          const existing = await firstRow<{ id: number }>(exec,
+            `SELECT id FROM business_units WHERE company_id=$1 AND lower(bu_code)=lower($2) LIMIT 1`, [cid, b.bu_code]);
+          if (existing) {
+            await exec(`UPDATE business_units SET bu_name=$1 WHERE id=$2`, [b.bu_name, existing.id]);
+            updated++;
+          } else {
+            await exec(`INSERT INTO business_units (company_id, bu_code, bu_name) VALUES ($1,$2,$3)`, [cid, b.bu_code, b.bu_name]);
+            added++;
+          }
         }
       } else {
         // users — map company_code → id; giữ nguyên mật khẩu khi cập nhật.
@@ -181,6 +211,7 @@ export async function importSectionAction(section: Section, formData: FormData):
   }
 
   revalidatePath(section === "suppliers" ? "/suppliers" : section === "products" ? "/products" : "/settings");
+  if (section === "business_units") revalidatePath("/purchase-requests/new");
   revalidatePath("/dashboard");
 
   return {

@@ -124,3 +124,37 @@ export async function deleteCompanyAction(id: number): Promise<DeleteResult> {
     return { ok: true, deactivated: true };
   }
 }
+
+// ---------------- Phòng ban / BU (business_units) ----------------
+// Admin thêm/sửa phòng ban → làm giàu combobox "BU / Phòng ban" ở form PR.
+export async function saveBUAction(formData: FormData) {
+  const user = await requireUser();
+  if (!can(user.role, "settings.manage")) throw new Error("FORBIDDEN");
+  const id = formData.get("id") ? Number(formData.get("id")) : null;
+  const company_id = formData.get("company_id") ? Number(formData.get("company_id")) : null;
+  const bu_code = String(formData.get("bu_code") ?? "").trim();
+  const bu_name = String(formData.get("bu_name") ?? "").trim();
+  if (!company_id) throw new Error("Vui lòng chọn công ty.");
+  if (!bu_code) throw new Error("Vui lòng nhập mã phòng ban.");
+
+  if (id) {
+    await query(`UPDATE business_units SET company_id=$1, bu_name=$2 WHERE id=$3`, [company_id, bu_name || bu_code, id]);
+  } else {
+    await query(
+      `INSERT INTO business_units (company_id, bu_code, bu_name) VALUES ($1,$2,$3)`,
+      [company_id, bu_code, bu_name || bu_code]
+    );
+  }
+  revalidatePath("/settings");
+  revalidatePath("/purchase-requests/new");
+}
+
+/** Xóa phòng ban. PR lưu tên phòng ban dạng text (không FK) nên xóa cứng an toàn. */
+export async function deleteBUAction(id: number): Promise<DeleteResult> {
+  const user = await requireUser();
+  if (!can(user.role, "settings.manage")) return { ok: false, error: "Bạn không có quyền xóa phòng ban." };
+  await query(`DELETE FROM business_units WHERE id=$1`, [id]);
+  revalidatePath("/settings");
+  revalidatePath("/purchase-requests/new");
+  return { ok: true };
+}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, saveMatchSettingsAction, getStorageStatsAction, getAccessLogAction, getDataHealthAction, type UsageItem, type StorageStats, type AccessEntry, type DataHealth } from "@/actions/admin";
 import { syncDiagnosticAction, type SyncDiagnostic } from "@/actions/invoice-sync";
-import { saveCompanyAction, deleteCompanyAction } from "@/actions/master";
+import { saveCompanyAction, deleteCompanyAction, saveBUAction, deleteBUAction } from "@/actions/master";
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { SectionImport } from "@/components/SectionImport";
@@ -15,6 +15,7 @@ import { money, date } from "@/lib/format";
 interface Rule { id: number; amount_min: number; amount_max: number | null; levels: string[] }
 interface UserRow { id: number; name: string; email: string; department: string | null; role: string; company_id: number | null; company_name: string | null; status: string }
 interface CompanyRow { id: number; company_code: string; company_name: string; tax_code: string | null; address: string | null; status: string }
+interface BURow { id: number; company_id: number | null; bu_code: string; bu_name: string; company_name: string | null }
 interface AuditRow { id: number; actor_name: string | null; action: string; document_type: string; document_id: number | null; field: string | null; old_value: string | null; new_value: string | null; created_at: string }
 
 // LƯU Ý: Dung lượng / Truy cập / Nhật ký ĐÃ TÁCH sang trang giám sát ẩn (có PIN)
@@ -24,6 +25,7 @@ const TABS = [
   { key: "match", label: "Đối chiếu", icon: "invoice" },
   { key: "users", label: "Người dùng", icon: "users" },
   { key: "companies", label: "Công ty", icon: "company" },
+  { key: "business_units", label: "Phòng ban", icon: "users" },
   { key: "theme", label: "Giao diện", icon: "palette" },
 ] as const;
 
@@ -33,7 +35,7 @@ const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "
 
 type TabKey = (typeof TABS)[number]["key"];
 
-export function SettingsTabs({ rules, users, companies, matchSettings }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; matchSettings: MatchSettings }) {
+export function SettingsTabs({ rules, users, companies, businessUnits, matchSettings }: { rules: Rule[]; users: UserRow[]; companies: CompanyRow[]; businessUnits: BURow[]; matchSettings: MatchSettings }) {
   const [tab, setTab] = useState<TabKey>("rules");
 
   // Khôi phục tab từ URL (?tab=) khi mở/quay lại trang.
@@ -71,6 +73,7 @@ export function SettingsTabs({ rules, users, companies, matchSettings }: { rules
         {tab === "match" && <TolerancePanel settings={matchSettings} />}
         {tab === "users" && <UsersPanel users={users} companies={companies} />}
         {tab === "companies" && <CompaniesPanel companies={companies} />}
+        {tab === "business_units" && <BUsPanel businessUnits={businessUnits} companies={companies} />}
         {tab === "theme" && <AccentPicker />}
       </div>
     </div>
@@ -819,6 +822,88 @@ function CompaniesPanel({ companies }: { companies: CompanyRow[] }) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Mã số thuế"><input name="tax_code" defaultValue={editing === "new" ? "" : editing.tax_code ?? ""} className={inputCls} /></Field>
               <Field label="Địa chỉ"><input name="address" defaultValue={editing === "new" ? "" : editing.address ?? ""} className={inputCls} /></Field>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
+              <Button type="submit">Lưu</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </Card>
+  );
+}
+
+// ---------------- Phòng ban / BU (Admin thêm/sửa + nhập Excel) ----------------
+function BUsPanel({ businessUnits, companies }: { businessUnits: BURow[]; companies: CompanyRow[] }) {
+  const [editing, setEditing] = useState<BURow | "new" | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const activeCompanies = companies.filter((c) => c.status !== "Inactive");
+
+  const remove = (b: BURow) => {
+    if (!confirm(`Xóa phòng ban "${b.bu_name}" (${b.bu_code})?`)) return;
+    start(async () => {
+      const res = await deleteBUAction(b.id);
+      if (!res.ok) { alert(res.error ?? "Không xóa được phòng ban."); return; }
+      router.refresh();
+    });
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-700">Phòng ban / BU</h3>
+        <div className="flex gap-2">
+          <SectionImport section="business_units" variant="light" />
+          <Button onClick={() => setEditing("new")}>+ Thêm phòng ban</Button>
+        </div>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">Phòng ban ở đây làm giàu combobox “BU / Phòng ban” khi tạo Yêu cầu mua hàng.</p>
+      <div className="overflow-hidden rounded-lg border border-slate-200">
+        <table className="w-full">
+          <thead>
+            <tr><Th>Công ty</Th><Th>Mã</Th><Th>Tên phòng ban</Th><Th className="text-right">Thao tác</Th></tr>
+          </thead>
+          <tbody>
+            {businessUnits.length === 0 && (
+              <tr><Td className="text-slate-400" colSpan={4}>Chưa có phòng ban nào — bấm “+ Thêm phòng ban” hoặc nhập Excel.</Td></tr>
+            )}
+            {businessUnits.map((b) => (
+              <tr key={b.id} className="hover:bg-slate-50">
+                <Td>{b.company_name ?? "—"}</Td>
+                <Td className="font-medium">{b.bu_code}</Td>
+                <Td>{b.bu_name}</Td>
+                <Td>
+                  <div className="flex justify-end gap-3">
+                    <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(b)}>Sửa</button>
+                    <button className="text-sm text-rose-500 hover:underline disabled:opacity-40" onClick={() => remove(b)} disabled={pending}>Xóa</button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <Modal open title={editing === "new" ? "Thêm phòng ban" : "Sửa phòng ban"} onClose={() => setEditing(null)}>
+          <form action={async (fd) => { await saveBUAction(fd); setEditing(null); router.refresh(); }} className="space-y-3">
+            {editing !== "new" && <input type="hidden" name="id" value={editing.id} />}
+            <Field label="Công ty (pháp nhân)" required>
+              <select name="company_id" defaultValue={editing === "new" ? (activeCompanies[0]?.id ?? "") : editing.company_id ?? ""} className={inputCls} required>
+                {activeCompanies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mã phòng ban" required>
+                <input name="bu_code" defaultValue={editing === "new" ? "" : editing.bu_code} className={inputCls} required disabled={editing !== "new"} placeholder="VD: KH-OPS" />
+              </Field>
+              <Field label="Tên phòng ban" required>
+                <input name="bu_name" defaultValue={editing === "new" ? "" : editing.bu_name} className={inputCls} required placeholder="VD: Vận hành" />
+              </Field>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>

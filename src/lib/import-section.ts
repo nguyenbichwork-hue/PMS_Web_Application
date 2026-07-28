@@ -11,7 +11,7 @@ import { cellStr, norm, colOf } from "./import-excel";
 // khớp cột theo tên tiếng Việt/tiếng Anh. Chỉ PARSE; ghi DB ở actions.
 // =====================================================================
 
-export type Section = "suppliers" | "products" | "users";
+export type Section = "suppliers" | "products" | "users" | "business_units";
 
 export interface ParsedSectionSupplier {
   supplier_code: string; supplier_name: string; tax_code: string | null; address: string | null;
@@ -26,6 +26,9 @@ export interface ParsedSectionProduct {
 export interface ParsedSectionUser {
   name: string; email: string; department: string | null; role: string;
   company_code: string | null; status: string;
+}
+export interface ParsedSectionBU {
+  company_code: string | null; bu_code: string; bu_name: string;
 }
 
 const VALID_ROLES = ["Employee", "Purchasing", "Manager", "Finance", "Admin"];
@@ -84,6 +87,14 @@ const CONFIG: Record<Section, SectionConfig> = {
       { key: "status", aliases: ["trangthai", "status"] },
     ],
   },
+  business_units: {
+    sheetTokens: ["phongban", "bophan", "businessunit", "bu", "phong", "department", "donvi"],
+    cols: [
+      { key: "bu_code", aliases: ["maphongban", "mabophan", "mabu", "madonvi", "bucode", "macode", "ma"], required: true },
+      { key: "bu_name", aliases: ["tenphongban", "tenbophan", "tenbu", "tendonvi", "buname", "phongban", "bophan", "ten", "name", "department"], required: true },
+      { key: "company_code", aliases: ["macongty", "companycode", "macty", "congty"] },
+    ],
+  },
 };
 
 export interface SectionParseResult {
@@ -94,6 +105,7 @@ export interface SectionParseResult {
   suppliers?: ParsedSectionSupplier[];
   products?: ParsedSectionProduct[];
   users?: ParsedSectionUser[];
+  business_units?: ParsedSectionBU[];
   warnings: string[];
   dataRows: number; // số dòng dữ liệu hợp lệ đọc được
 }
@@ -148,7 +160,10 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
   const result: SectionParseResult = {
     section, sheetName: ws.name, headerRow, columns, warnings,
     dataRows: 0,
-    ...(section === "suppliers" ? { suppliers: [] } : section === "products" ? { products: [] } : { users: [] }),
+    ...(section === "suppliers" ? { suppliers: [] }
+      : section === "products" ? { products: [] }
+      : section === "business_units" ? { business_units: [] }
+      : { users: [] }),
   };
   if (headerRow < 0) return result;
 
@@ -193,6 +208,18 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
         accounting_code: g("accounting_code") || null, status: okStatus(g("status")),
         default_supplier_code: g("default_supplier_code").trim() || null,
       });
+    } else if (section === "business_units") {
+      const code = g("bu_code").trim();
+      const name = g("bu_name").trim();
+      if (!code && !name) continue;
+      if (!code) { warnings.push(`Dòng ${r}: thiếu Mã phòng ban → bỏ qua.`); continue; }
+      const key = `${g("company_code").trim().toLowerCase()}|${code.toLowerCase()}`;
+      if (seen.has(key)) { warnings.push(`Dòng ${r}: trùng mã phòng ban "${code}" trong file → dùng dòng cuối.`); }
+      seen.add(key);
+      result.business_units!.push({
+        company_code: g("company_code").trim() || null,
+        bu_code: code, bu_name: name || code,
+      });
     } else {
       // users
       const email = g("email").trim().toLowerCase();
@@ -216,6 +243,7 @@ export async function parseSection(section: Section, buffer: ArrayBuffer): Promi
 
   result.dataRows = section === "suppliers" ? result.suppliers!.length
     : section === "products" ? result.products!.length
+    : section === "business_units" ? result.business_units!.length
     : result.users!.length;
   return result;
 }

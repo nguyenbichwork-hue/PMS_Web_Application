@@ -25,6 +25,12 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
     btn: "⬆ Nhập từ Excel",
     hint: "File .xlsx có cột Email và Họ tên (tùy chọn: Phòng ban, Vai trò, Mã công ty, Trạng thái). Vai trò nhận cả tiếng Việt (Nhân viên, Mua hàng, Quản lý, Kế toán, Quản trị). Tài khoản mới dùng mật khẩu mặc định 'password'. Trùng email sẽ được cập nhật (giữ nguyên mật khẩu).",
   },
+  business_units: {
+    title: "Nhập phòng ban từ Excel",
+    entity: "phòng ban",
+    btn: "⬆ Nhập Excel",
+    hint: "File .xlsx có cột Mã phòng ban và Tên phòng ban (tùy chọn: Mã công ty — trống thì gán công ty mặc định). Hệ thống tự dò dòng tiêu đề. Trùng mã (trong cùng công ty) sẽ được cập nhật tên.",
+  },
 };
 
 export function SectionImport({ section, variant = "banner" }: { section: Section; variant?: "banner" | "light" }) {
@@ -36,7 +42,7 @@ export function SectionImport({ section, variant = "banner" }: { section: Sectio
   const [sync, setSync] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  const canSync = section !== "users";
+  const canSync = section === "suppliers" || section === "products";
 
   const submit = () => {
     const f = inputRef.current?.files?.[0];
