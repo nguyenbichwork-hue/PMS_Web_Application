@@ -8,10 +8,12 @@ export function POActions({
   poId,
   status,
   canManage,
+  canApprove,
 }: {
   poId: number;
   status: string;
   canManage: boolean;
+  canApprove: boolean;
 }) {
   const [pending, start] = useTransition();
   const [sent, setSent] = useState(false);
@@ -35,9 +37,9 @@ export function POActions({
           ⬇ Xuất PDF / In
         </Button>
 
-        {canManage && status === "Draft" && (
+        {canApprove && status === "Draft" && (
           <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePOAction(poId))}>
-            ✓ Duyệt PO
+            ✓ Duyệt PO (→ tạo đề nghị thanh toán)
           </Button>
         )}
         {canManage && ["Approved", "Draft"].includes(status) && (

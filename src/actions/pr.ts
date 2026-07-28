@@ -32,6 +32,17 @@ export async function createPRAction(formData: FormData) {
   const department = String(formData.get("department") ?? user.department ?? "");
   const submit = formData.get("submit") === "1";
   const items: ItemInput[] = JSON.parse(String(formData.get("items") ?? "[]"));
+  // Các trường người YÊU CẦU điền (ô vàng) — spec 07/2026.
+  const project_code = String(formData.get("project_code") ?? "").trim() || null;
+  const delivery_location = String(formData.get("delivery_location") ?? "").trim() || null;
+  const requester_status = String(formData.get("requester_status") ?? "").trim() || null;
+  const payment_method = String(formData.get("payment_method") ?? "").trim() || null;
+  const advRaw = formData.get("advance_percent");
+  // % ứng trước chỉ có nghĩa khi hình thức = Ứng trước.
+  const advance_percent =
+    payment_method === "Ứng trước" && advRaw != null && String(advRaw).trim() !== ""
+      ? Math.max(0, Math.min(100, Number(advRaw)))
+      : null;
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
@@ -57,9 +68,11 @@ export async function createPRAction(formData: FormData) {
     const pr = await firstRow<{ id: number }>(
       exec,
       `INSERT INTO purchase_requests
-         (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1) RETURNING id`,
-      [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal]
+         (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
+          project_code, delivery_location, requester_status, payment_method, advance_percent)
+       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14) RETURNING id`,
+      [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
+       project_code, delivery_location, requester_status, payment_method, advance_percent]
     );
     await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 

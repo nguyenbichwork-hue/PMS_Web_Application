@@ -21,11 +21,17 @@ export function isCrossCompany(user: User): boolean {
 }
 
 /**
- * Vai trò DUYỆT xuyên công ty (Manager/Finance/Admin) — giữ để dùng riêng ở
- * luồng duyệt PR. Là tập con của isCrossCompany.
+ * Vai trò DUYỆT xuyên công ty. Theo quy trình 07/2026: PURCHASING duyệt PR,
+ * MANAGER duyệt PO — cả hai + Finance/Admin đều xử lý xuyên pháp nhân. Là tập
+ * con của isCrossCompany (mọi vai trò trừ Nhân viên).
  */
 export function isCrossCompanyApprover(user: User): boolean {
-  return user.role === "Admin" || user.role === "Manager" || user.role === "Finance";
+  return (
+    user.role === "Admin" ||
+    user.role === "Manager" ||
+    user.role === "Finance" ||
+    user.role === "Purchasing"
+  );
 }
 
 /** True nếu user được phép truy cập chứng từ thuộc companyId. */

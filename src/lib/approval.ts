@@ -13,6 +13,9 @@ export async function resolveApprovalChain(
   amount: number,
   documentType = "PR"
 ): Promise<string[]> {
+  // Quy trình 07/2026: PR chỉ 1 cấp — PURCHASING duyệt (rồi tự sinh PO nháp,
+  // Manager duyệt PO ở bước sau). Bỏ chuỗi duyệt theo hạn mức tiền cho PR.
+  if (documentType === "PR") return ["Purchasing"];
   const rows = await query<{ amount_min: string; amount_max: string | null; levels: string[] }>(
     `SELECT amount_min, amount_max, levels
        FROM approval_rules
@@ -36,5 +39,6 @@ export async function resolveApprovalChain(
  */
 export function isNextApprover(chain: string[], currentLevel: number, role: string): boolean {
   if (currentLevel >= chain.length) return false;
+  if (role === "Admin") return true; // Quản trị là siêu quyền — duyệt được mọi cấp
   return chain[currentLevel] === role;
 }

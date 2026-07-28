@@ -110,8 +110,14 @@ export async function requireUser(): Promise<User> {
 export function can(role: Role, action: string): boolean {
   const matrix: Record<string, Role[]> = {
     "pr.create": ["Employee", "Purchasing", "Admin"],
-    "pr.approve": ["Manager", "Finance", "Admin"],
+    // Quy trình 07/2026: PURCHASING duyệt PR (→ tự sinh PO nháp).
+    "pr.approve": ["Purchasing", "Admin"],
     "po.manage": ["Purchasing", "Admin"],
+    // MANAGER duyệt PO (→ nhảy sang Payment Requisition).
+    "po.approve": ["Manager", "Admin"],
+    // Đề nghị thanh toán (PRQ): lập/sửa/xuất; Finance/Admin duyệt.
+    "prq.manage": ["Purchasing", "Finance", "Manager", "Admin"],
+    "prq.approve": ["Finance", "Admin"],
     "supplier.manage": ["Purchasing", "Finance", "Admin"],
     "product.manage": ["Purchasing", "Finance", "Admin"],
     "gr.manage": ["Purchasing", "Finance", "Admin"],

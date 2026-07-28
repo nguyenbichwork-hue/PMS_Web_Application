@@ -65,6 +65,13 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
   // Chỉ sửa nội dung PO khi còn NHÁP. Đã duyệt/gửi… thì khóa (chỉ được bình luận).
   const editable = user && can(user.role, "po.manage") && po.status === "Draft";
   const canManage = !!(user && can(user.role, "po.manage"));
+  const canApprove = !!(user && can(user.role, "po.approve")); // Manager/Admin duyệt PO
+  // PRQ (đề nghị thanh toán) sinh khi duyệt PO — hiện link nếu đã có.
+  const prq = await queryOne<{ id: number; prq_number: string | null }>(
+    `SELECT prq.id, prq.prq_number FROM payment_requisition_items it
+       JOIN payment_requisitions prq ON prq.id = it.prq_id WHERE it.po_id = $1 LIMIT 1`,
+    [poId]
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -157,7 +164,16 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
             </Link>
           </Card>
 
-          <POActions poId={poId} status={po.status} canManage={canManage} />
+          <POActions poId={poId} status={po.status} canManage={canManage} canApprove={canApprove} />
+
+          {prq && (
+            <Card className="p-5">
+              <h3 className="mb-1 text-sm font-semibold text-slate-700">Đề nghị thanh toán</h3>
+              <Link href={`/payment-requisitions/${prq.id}`} className="text-sm font-medium text-teal-600 hover:underline">
+                💸 {prq.prq_number ?? `PRQ-${prq.id}`} →
+              </Link>
+            </Card>
+          )}
 
           <AttachmentPanel documentType="PO" documentId={poId} attachments={attachments} canManage={canManage} />
 

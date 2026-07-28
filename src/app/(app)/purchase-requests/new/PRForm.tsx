@@ -31,24 +31,35 @@ const emptyLine: Line = {
   note: "",
 };
 
+// Ô do NGƯỜI YÊU CẦU điền → tô vàng để dễ nhận biết (spec 07/2026).
+const yellowCls = inputCls + " bg-amber-50 border-amber-300 focus:border-amber-400";
+
 export function PRForm({
   companies,
   products,
   suppliers,
   productSuppliers,
+  businessUnits,
   defaultCompanyId,
   department,
+  requesterName,
 }: {
   companies: Company[];
   products: Product[];
   suppliers: Supplier[];
   productSuppliers: Record<string, { id: number; name: string; times: number }[]>;
+  businessUnits: { id: number; company_id: number; bu_code: string; bu_name: string }[];
   defaultCompanyId: number;
   department: string;
+  requesterName: string;
 }) {
   const [lines, setLines] = useState<Line[]>([{ ...emptyLine }]);
   // Modal "Chọn từ danh mục": biết đang mở cho dòng nào & loại nào.
   const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
+  const [companyId, setCompanyId] = useState<number>(defaultCompanyId);
+  const [paymentMethod, setPaymentMethod] = useState<string>("Trả sau khi nhận hàng");
+  // BU lọc theo công ty đang chọn (không tự điền — người yêu cầu tự chọn).
+  const buOptions = businessUnits.filter((b) => b.company_id === companyId);
 
   // Options cho combobox (dựng 1 lần).
   const productOpts: SSOption[] = useMemo(
@@ -109,9 +120,19 @@ export function PRForm({
   return (
     <form>
       <Card className="p-6">
+        <div className="mb-4 flex items-center gap-2 text-xs text-slate-500">
+          <span className="inline-block h-3 w-3 rounded-sm border border-amber-300 bg-amber-50" />
+          Ô <b className="text-amber-700">màu vàng</b> do người yêu cầu mua điền.
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Công ty" required>
-            <select name="company_id" defaultValue={defaultCompanyId} className={inputCls} required>
+            <select
+              name="company_id"
+              value={companyId}
+              onChange={(e) => setCompanyId(Number(e.target.value))}
+              className={inputCls}
+              required
+            >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.company_name}
@@ -119,24 +140,60 @@ export function PRForm({
               ))}
             </select>
           </Field>
-          <Field label="Phòng ban">
-            <input name="department" defaultValue={department} className={inputCls} />
+          <Field label="Người yêu cầu mua hàng">
+            <input value={requesterName} readOnly className={yellowCls + " text-slate-600"} />
+          </Field>
+          <Field label="Mã công trình">
+            <input name="project_code" className={yellowCls} placeholder="VD: CT-2026-001" />
+          </Field>
+          <Field label="BU / Phòng ban">
+            <select name="department" defaultValue={department} className={yellowCls}>
+              <option value="">— Chọn phòng ban —</option>
+              {buOptions.map((b) => (
+                <option key={b.id} value={b.bu_name}>{b.bu_name}</option>
+              ))}
+              {/* Giữ giá trị mặc định của người dùng nếu không nằm trong danh sách BU */}
+              {department && !buOptions.some((b) => b.bu_name === department) && (
+                <option value={department}>{department}</option>
+              )}
+            </select>
+          </Field>
+          <Field label="Địa điểm giao hàng">
+            <input name="delivery_location" className={yellowCls} placeholder="VD: Kho công trình A…" />
+          </Field>
+          <Field label="Ngày giao hàng dự kiến">
+            <input name="required_date" type="date" className={yellowCls} />
+          </Field>
+          <Field label="Tình trạng">
+            <input name="requester_status" className={yellowCls} placeholder="VD: Gấp / Chờ vật tư…" />
           </Field>
           <Field label="Mục đích mua" required>
             <input name="purpose" className={inputCls} required placeholder="VD: Mua thiết bị cho dự án…" />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Ưu tiên">
-              <select name="priority" defaultValue="Normal" className={inputCls}>
-                {["Low", "Normal", "High", "Urgent"].map((p) => (
-                  <option key={p}>{p}</option>
-                ))}
-              </select>
+          <Field label="Ưu tiên">
+            <select name="priority" defaultValue="Normal" className={inputCls}>
+              {["Low", "Normal", "High", "Urgent"].map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Hình thức thanh toán">
+            <select
+              name="payment_method"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className={yellowCls}
+            >
+              {["Trả sau khi nhận hàng", "Ứng trước", "Khác"].map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </Field>
+          {paymentMethod === "Ứng trước" && (
+            <Field label="Tỷ lệ ứng trước (%)">
+              <input name="advance_percent" type="number" min={0} max={100} step={1} className={yellowCls} placeholder="VD: 30" />
             </Field>
-            <Field label="Ngày cần">
-              <input name="required_date" type="date" className={inputCls} />
-            </Field>
-          </div>
+          )}
         </div>
       </Card>
 

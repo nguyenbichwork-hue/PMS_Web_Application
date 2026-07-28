@@ -180,6 +180,13 @@ export function GRForm({
           </div>
         )}
 
+        <div className="mt-5">
+          <Field label="Ghi chú (tùy chọn — lý do thiếu / chênh lệch hàng…)">
+            <textarea name="note" rows={2} className={inputCls} placeholder="VD: Thiếu 5 cái do NCC giao chưa đủ, sẽ giao bù đợt sau…" />
+          </Field>
+          <p className="mt-1 text-xs text-slate-400">Phiếu nhận hàng là tùy chọn và không làm thay đổi số lượng/giá trị của PO.</p>
+        </div>
+
         <div className="mt-5 flex justify-end">
           <Button onClick={submit} disabled={!poId || lines.length === 0 || saving}>
             {saving ? "Đang lưu…" : "Lưu phiếu nhận"}

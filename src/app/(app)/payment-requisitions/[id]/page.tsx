@@ -1,0 +1,178 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { query, queryOne } from "@/lib/db";
+import { getCurrentUser, can } from "@/lib/auth";
+import { canAccessCompany } from "@/lib/access";
+import { Card, PageHeader, StatusBadge, ExportButton } from "@/components/ui";
+import { money, date } from "@/lib/format";
+import { amountInWordsVi } from "@/lib/num-to-words-vi";
+import { PRQEditor, type PRQLine } from "./PRQEditor";
+import { PRQActions } from "./PRQActions";
+
+interface PRQHead {
+  id: number;
+  prq_number: string | null;
+  company_id: number;
+  company_name: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  supplier_tax: string | null;
+  supplier_address: string | null;
+  payment_type: string;
+  due_date: string | null;
+  bank_account: string | null;
+  bank_name: string | null;
+  bank_address: string | null;
+  swift_code: string | null;
+  reason: string | null;
+  currency: string;
+  subtotal: string;
+  vat_total: string;
+  grand_total: string;
+  status: string;
+}
+
+export default async function PRQDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const prqId = Number(id);
+  const user = await getCurrentUser();
+
+  const prq = await queryOne<PRQHead>(
+    `SELECT prq.*, c.company_name, s.supplier_name, s.tax_code AS supplier_tax, s.address AS supplier_address
+       FROM payment_requisitions prq
+       JOIN companies c ON c.id = prq.company_id
+       LEFT JOIN suppliers s ON s.id = prq.supplier_id
+      WHERE prq.id = $1`,
+    [prqId]
+  );
+  if (!prq) notFound();
+  if (user && !canAccessCompany(user, prq.company_id)) notFound();
+
+  const lines = await query<PRQLine>(
+    `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
+            it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.line_no
+       FROM payment_requisition_items it
+       LEFT JOIN purchase_orders po ON po.id = it.po_id
+      WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
+    [prqId]
+  );
+
+  // PO ứng viên để GỘP thêm: cùng NCC + công ty, đã duyệt (không Nháp/Hủy), chưa có trong PRQ này.
+  const addablePOs = prq.supplier_id
+    ? await query<{ id: number; po_number: string | null; grand_total: string }>(
+        `SELECT po.id, po.po_number, po.grand_total
+           FROM purchase_orders po
+          WHERE po.supplier_id = $1 AND po.company_id = $2
+            AND po.status NOT IN ('Draft','Cancelled')
+            AND NOT EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = $3 AND it.po_id = po.id)
+          ORDER BY po.id DESC LIMIT 50`,
+        [prq.supplier_id, prq.company_id, prqId]
+      )
+    : [];
+
+  const canManage = !!(user && can(user.role, "prq.manage"));
+  const canApprove = !!(user && can(user.role, "prq.approve"));
+  const editable = canManage && prq.status === "Draft";
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <PageHeader
+        title={prq.prq_number ?? `PRQ-${prq.id}`}
+        subtitle={`Đề nghị thanh toán · ${prq.supplier_name ?? "—"}`}
+        action={<StatusBadge status={prq.status} />}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Card className="p-5">
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+              <Info label="Nhà cung cấp" value={prq.supplier_name} />
+              <Info label="MST" value={prq.supplier_tax} />
+              <Info label="Công ty (pháp nhân)" value={prq.company_name} />
+              <Info label="Loại thanh toán" value={prq.payment_type === "Advance" ? "Ứng trước / Đặt cọc" : "Thanh toán thường"} />
+              <Info label="Đến hạn" value={prq.due_date ? date(prq.due_date) : "—"} />
+              <Info label="Tiền tệ" value={prq.currency} />
+              <Info label="Số TK ngân hàng" value={prq.bank_account} />
+              <Info label="Tên ngân hàng" value={prq.bank_name} />
+              <Info label="Swift" value={prq.swift_code} />
+            </div>
+            <div className="mt-4 ml-auto w-72 space-y-1 text-sm">
+              <Row label="Tạm tính (chưa thuế)" value={money(prq.subtotal)} />
+              <Row label="VAT" value={money(prq.vat_total)} />
+              <div className="flex justify-between border-t border-slate-200 pt-2 text-base font-bold text-teal-700">
+                <span>Tổng (gồm thuế)</span>
+                <span>{money(prq.grand_total)}</span>
+              </div>
+              <p className="pt-1 text-right text-xs italic text-slate-500">{amountInWordsVi(Number(prq.grand_total))}</p>
+            </div>
+          </Card>
+
+          {editable ? (
+            <PRQEditor prq={prq} lines={lines} addablePOs={addablePOs} />
+          ) : (
+            <Card className="p-5">
+              <h3 className="mb-3 text-sm font-semibold text-slate-700">Chi tiết dòng thanh toán</h3>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="p-2 text-left">STT</th>
+                      <th className="p-2 text-left">Số HĐ</th>
+                      <th className="p-2 text-left">Ngày HĐ</th>
+                      <th className="p-2 text-left">Diễn giải</th>
+                      <th className="p-2 text-left">PO</th>
+                      <th className="p-2 text-right">Số tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l, i) => (
+                      <tr key={l.id} className="border-t border-slate-100">
+                        <td className="p-2">{i + 1}</td>
+                        <td className="p-2">{l.inv_no ?? "—"}</td>
+                        <td className="p-2">{l.inv_date ? date(l.inv_date) : "—"}</td>
+                        <td className="p-2">{l.description}</td>
+                        <td className="p-2">{l.po_number ?? "—"}</td>
+                        <td className="p-2 text-right font-medium">{money(l.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <Card className="p-5">
+            <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
+            <p className="mb-3 text-xs text-slate-400">Điền vào mẫu Payment Requisition của công ty (.xlsx) để ký.</p>
+            <ExportButton href={`/export/prq/${prqId}`} label="⬇ Xuất Excel (mẫu PRQ)" />
+          </Card>
+
+          <PRQActions prqId={prqId} status={prq.status} canManage={canManage} canApprove={canApprove} />
+
+          <Card className="p-5 text-xs text-slate-500">
+            <p>PRQ được sinh tự động khi Manager duyệt PO. Có thể gộp nhiều PO cùng nhà cung cấp, sửa số tiền để thanh toán từng phần, rồi xuất Excel để ký & nộp cùng hồ sơ (hợp đồng, hóa đơn, PO, biên bản…).</p>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="font-medium text-slate-800">{value ?? "—"}</div>
+    </div>
+  );
+}
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-slate-600">
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}

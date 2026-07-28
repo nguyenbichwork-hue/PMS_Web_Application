@@ -194,6 +194,62 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'VN
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dup_key TEXT;
 CREATE INDEX IF NOT EXISTS idx_invoices_dup_key ON invoices(dup_key);
 
+-- ---------- PR: các trường người YÊU CẦU điền (ô vàng) — spec 07/2026 ----------
+-- Mã công trình, địa điểm giao, tình trạng, hình thức thanh toán + % ứng trước.
+-- (Ngày giao hàng dự kiến dùng lại cột required_date; BU/Phòng ban dùng department.)
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS project_code      TEXT;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS delivery_location TEXT;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS requester_status  TEXT;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_method    TEXT;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS advance_percent   NUMERIC(6,2);
+
+-- ---------- PAYMENT REQUISITION (PRQ) — Đề nghị thanh toán (spec 07/2026) ----------
+-- Sinh tự động sau khi Manager DUYỆT PO. Một PRQ trả cho MỘT nhà cung cấp, gồm dòng
+-- từ 1 hoặc nhiều PO (partial / từng dòng). Số tiền dòng ĐÃ GỒM THUẾ. Xuất Excel theo
+-- mẫu "Payment Requisition" của công ty (số TK + tên NH tự điền, sửa được).
+CREATE TABLE IF NOT EXISTS payment_requisitions (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  prq_number    TEXT UNIQUE,
+  company_id    BIGINT NOT NULL REFERENCES companies(id),
+  supplier_id   BIGINT REFERENCES suppliers(id),
+  payment_type  TEXT NOT NULL DEFAULT 'Normal',      -- 'Normal' | 'Advance'
+  due_date      DATE,
+  bank_account  TEXT,
+  bank_name     TEXT,
+  bank_address  TEXT,
+  swift_code    TEXT,
+  reason        TEXT,
+  currency      TEXT NOT NULL DEFAULT 'VND',
+  subtotal      NUMERIC(18,2) NOT NULL DEFAULT 0,     -- chưa thuế
+  vat_total     NUMERIC(18,2) NOT NULL DEFAULT 0,
+  grand_total   NUMERIC(18,2) NOT NULL DEFAULT 0,     -- GỒM thuế
+  status        TEXT NOT NULL DEFAULT 'Draft'
+                CHECK (status IN ('Draft','Submitted','Approved','Paid','Cancelled')),
+  created_by    BIGINT REFERENCES users(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_prq_company  ON payment_requisitions(company_id);
+CREATE INDEX IF NOT EXISTS idx_prq_supplier ON payment_requisitions(supplier_id);
+
+CREATE TABLE IF NOT EXISTS payment_requisition_items (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  prq_id       BIGINT NOT NULL REFERENCES payment_requisitions(id) ON DELETE CASCADE,
+  po_id        BIGINT REFERENCES purchase_orders(id),
+  po_item_id   BIGINT REFERENCES purchase_order_items(id),
+  inv_no       TEXT,
+  inv_date     DATE,
+  description  TEXT,
+  tax_code     TEXT,
+  gl_account   TEXT,
+  cost_center  TEXT,
+  currency     TEXT NOT NULL DEFAULT 'VND',
+  amount       NUMERIC(18,2) NOT NULL DEFAULT 0,      -- GỒM thuế
+  line_no      INT NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_prq_items_prq ON payment_requisition_items(prq_id);
+CREATE INDEX IF NOT EXISTS idx_prq_items_po  ON payment_requisition_items(po_id);
+
 -- PHÂN BỔ TỪNG DÒNG hóa đơn ↔ dòng PO — "bảng hạng nhất" (§11.2/§15.2
 -- invoice_po_allocation): kiểm soát số lượng/giá trị dựa trên LINE, không chỉ
 -- lưu po_id trên header. Mỗi dòng hóa đơn ghép với đúng dòng PO + lưu vết đối chiếu.

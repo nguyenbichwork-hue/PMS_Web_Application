@@ -89,6 +89,8 @@ export async function createGRAction(formData: FormData) {
   const po_id = Number(formData.get("po_id"));
   const warehouse = String(formData.get("warehouse") ?? "");
   const receive_date = String(formData.get("receive_date") ?? "") || null;
+  // Ghi chú (lý do thiếu / chênh lệch…). GR là tùy chọn, KHÔNG ảnh hưởng số lượng/giá trị PO.
+  const note = String(formData.get("note") ?? "").trim() || null;
   const lines: { po_item_id: number; item_code: string; description: string; received_qty: number }[] =
     JSON.parse(String(formData.get("lines") ?? "[]"));
 
@@ -107,9 +109,9 @@ export async function createGRAction(formData: FormData) {
   const grId = await withTransaction(async (exec) => {
     const gr = await firstRow<{ id: number }>(
       exec,
-      `INSERT INTO goods_receipts (po_id, receive_date, warehouse, receiver_id, status, created_by)
-       VALUES ($1, COALESCE($2::date, current_date), $3, $4, 'Completed', $4) RETURNING id`,
-      [po_id, receive_date, warehouse, user.id]
+      `INSERT INTO goods_receipts (po_id, receive_date, warehouse, receiver_id, status, note, created_by)
+       VALUES ($1, COALESCE($2::date, current_date), $3, $4, 'Completed', $5, $4) RETURNING id`,
+      [po_id, receive_date, warehouse, user.id, note]
     );
     await exec(`UPDATE goods_receipts SET gr_number = $1 WHERE id = $2`, [docNumber("GR", gr!.id), gr!.id]);
 

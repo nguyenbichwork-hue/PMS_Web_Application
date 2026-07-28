@@ -1,9 +1,11 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { query, queryOne, withTransaction, type Executor } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { query, queryOne, withTransaction, firstRow, type Executor } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
+import { generatePRQFromPO } from "@/lib/prq-generate";
 import type { POItem } from "@/lib/types";
 
 /** Chặn IDOR: PO phải thuộc công ty user (Admin thấy tất cả). */
@@ -112,21 +114,36 @@ export async function updatePOAction(formData: FormData) {
   revalidatePath(`/purchase-orders/${poId}`);
 }
 
+/**
+ * MANAGER duyệt PO (quy trình 07/2026). PO Nháp → Đã duyệt, đồng thời SINH
+ * Payment Requisition (PRQ) nháp từ PO rồi CHUYỂN sang PRQ để bổ sung thông tin
+ * ngân hàng. Nguyên tử trong 1 transaction.
+ */
 export async function approvePOAction(poId: number) {
   const user = await requireUser();
-  if (!can(user.role, "po.manage")) throw new Error("FORBIDDEN");
+  if (!can(user.role, "po.approve")) throw new Error("FORBIDDEN");
   await assertPOAccess(user, poId);
-  await query(
-    `UPDATE purchase_orders SET status = 'Approved', updated_at = now() WHERE id = $1 AND status = 'Draft'`,
-    [poId]
-  );
-  await query(
-    `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
-     VALUES ('PO',$1,$2,1,'Approved','PO approved')`,
-    [poId, user.id]
-  );
-  await logAudit({ actorId: user.id, actorName: user.name, documentType: "PO", documentId: poId, action: "Approve" });
+
+  const prqId = await withTransaction(async (exec) => {
+    const upd = await firstRow<{ id: number }>(
+      exec,
+      `UPDATE purchase_orders SET status = 'Approved', updated_at = now()
+        WHERE id = $1 AND status = 'Draft' RETURNING id`,
+      [poId]
+    );
+    if (!upd) throw new Error("PO không ở trạng thái Nháp để duyệt (có thể đã được duyệt).");
+    await exec(
+      `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
+       VALUES ('PO',$1,$2,1,'Approved','PO approved')`,
+      [poId, user.id]
+    );
+    await logAudit({ actorId: user.id, actorName: user.name, documentType: "PO", documentId: poId, action: "Approve" }, exec);
+    return generatePRQFromPO(poId, exec, user.id);
+  });
+
   revalidatePath(`/purchase-orders/${poId}`);
+  revalidatePath("/payment-requisitions");
+  redirect(`/payment-requisitions/${prqId}`);
 }
 
 export async function sendPOAction(poId: number) {

@@ -13,6 +13,10 @@ export default async function NewPRPage() {
   const companies = await query<Company>(`SELECT * FROM companies WHERE status='Active' ORDER BY company_name`);
   const products = await query<Product>(`SELECT * FROM products WHERE status='Active' ORDER BY item_name`);
   const suppliers = await query<Supplier>(`SELECT * FROM suppliers WHERE status='Active' ORDER BY supplier_name`);
+  // BU / Phòng ban theo công ty (combobox — người yêu cầu tự chọn).
+  const businessUnits = await query<{ id: number; company_id: number; bu_code: string; bu_name: string }>(
+    `SELECT id, company_id, bu_code, bu_name FROM business_units ORDER BY bu_name`
+  );
 
   // NCC ĐỀ XUẤT theo lịch sử: các nhà cung cấp đã từng có PO chứa mã hàng này
   // (đếm số lần để xếp hạng), gộp theo item_code → truyền cho form gợi ý khi chọn hàng.
@@ -38,8 +42,10 @@ export default async function NewPRPage() {
         products={products}
         suppliers={suppliers}
         productSuppliers={productSuppliers}
+        businessUnits={businessUnits}
         defaultCompanyId={user.company_id ?? companies[0]?.id ?? 0}
         department={user.department ?? ""}
+        requesterName={user.name}
       />
     </div>
   );

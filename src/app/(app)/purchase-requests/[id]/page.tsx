@@ -19,7 +19,15 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
 
   // LEFT JOIN để PR LUÔN tải được kể cả khi thiếu dòng công ty/người yêu cầu
   // tham chiếu (tránh 404 giả do INNER JOIN rỗng).
-  const pr = await queryOne<PurchaseRequest>(
+  const pr = await queryOne<
+    PurchaseRequest & {
+      project_code: string | null;
+      delivery_location: string | null;
+      requester_status: string | null;
+      payment_method: string | null;
+      advance_percent: string | null;
+    }
+  >(
     `SELECT pr.*, u.name AS requester_name, c.company_name
        FROM purchase_requests pr
        LEFT JOIN users u ON u.id = pr.requester_id
@@ -87,9 +95,20 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <Info label="Người yêu cầu" value={pr.requester_name} />
             <Info label="Công ty" value={pr.company_name} />
-            <Info label="Phòng ban" value={pr.department} />
+            <Info label="BU / Phòng ban" value={pr.department} />
+            <Info label="Mã công trình" value={pr.project_code} />
+            <Info label="Địa điểm giao hàng" value={pr.delivery_location} />
+            <Info label="Ngày giao hàng dự kiến" value={date(pr.required_date)} />
             <Info label="Ngày yêu cầu" value={date(pr.request_date)} />
-            <Info label="Ngày cần" value={date(pr.required_date)} />
+            <Info
+              label="Hình thức thanh toán"
+              value={
+                pr.payment_method
+                  ? pr.payment_method + (pr.payment_method === "Ứng trước" && pr.advance_percent ? ` (${Number(pr.advance_percent)}%)` : "")
+                  : "—"
+              }
+            />
+            <Info label="Tình trạng" value={pr.requester_status} />
             <div>
               <div className="text-xs text-slate-400">Ưu tiên</div>
               <PriorityBadge priority={pr.priority} />

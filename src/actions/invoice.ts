@@ -140,8 +140,8 @@ export async function createInvoiceAction(formData: FormData) {
   let checks: { check_name: string; result: string; reason: string }[] = [];
 
   if (po_id) {
-    const po = await queryOne<{ supplier_id: number | null; company_id: number | null; grand_total: string; vat_total: string; po_qty: string; po_sub: string }>(
-      `SELECT po.supplier_id, po.company_id, po.grand_total, po.vat_total,
+    const po = await queryOne<{ supplier_id: number | null; company_id: number | null; order_date: string; grand_total: string; vat_total: string; po_qty: string; po_sub: string }>(
+      `SELECT po.supplier_id, po.company_id, po.order_date, po.grand_total, po.vat_total,
               COALESCE((SELECT sum(quantity) FROM purchase_order_items WHERE po_id = po.id),0) AS po_qty,
               COALESCE((SELECT sum(quantity*unit_price - discount) FROM purchase_order_items WHERE po_id = po.id),0) AS po_sub
          FROM purchase_orders po WHERE po.id = $1`,
@@ -149,6 +149,10 @@ export async function createInvoiceAction(formData: FormData) {
     );
     if (!po) throw new Error("PO not found");
     if (!canAccessCompany(user, po.company_id)) throw new Error("FORBIDDEN"); // chặn IDOR: PO khác công ty
+    // Ràng buộc: ngày hóa đơn KHÔNG được trước ngày PO (spec 07/2026).
+    if (invoice_date && po.order_date && invoice_date < String(po.order_date).slice(0, 10)) {
+      throw new Error(`Ngày hóa đơn (${invoice_date}) không được trước ngày đặt hàng PO (${String(po.order_date).slice(0, 10)}).`);
+    }
     poSupplierId = po?.supplier_id ?? null;
 
     // MAP dòng hóa đơn → dòng PO để lấy đơn giá PO đem so (khớp theo MÃ trước,
