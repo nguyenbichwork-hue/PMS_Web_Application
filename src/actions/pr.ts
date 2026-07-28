@@ -36,6 +36,7 @@ export async function createPRAction(formData: FormData) {
   const project_code = String(formData.get("project_code") ?? "").trim() || null;
   const delivery_location = String(formData.get("delivery_location") ?? "").trim() || null;
   const requester_status = String(formData.get("requester_status") ?? "").trim() || null;
+  const buyer = String(formData.get("buyer") ?? "").trim() || null;
   const payment_method = String(formData.get("payment_method") ?? "").trim() || null;
   const advRaw = formData.get("advance_percent");
   // % ứng trước chỉ có nghĩa khi hình thức = Ứng trước.
@@ -69,10 +70,10 @@ export async function createPRAction(formData: FormData) {
       exec,
       `INSERT INTO purchase_requests
          (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
-          project_code, delivery_location, requester_status, payment_method, advance_percent)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14) RETURNING id`,
+          project_code, delivery_location, requester_status, payment_method, advance_percent, buyer)
+       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15) RETURNING id`,
       [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
-       project_code, delivery_location, requester_status, payment_method, advance_percent]
+       project_code, delivery_location, requester_status, payment_method, advance_percent, buyer]
     );
     await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 
@@ -133,7 +134,12 @@ export async function approvePRAction(prId: number, comment: string) {
   // Manager/Finance/Admin duyệt xuyên công ty; vai trò khác phải cùng công ty.
   if (!isCrossCompanyApprover(user) && !canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
   // SoD (§4.1, UAT-40): không được tự duyệt PR do chính mình tạo (kể cả Admin).
-  if (pr.requester_id === user.id) throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
+  // NGOẠI LỆ: tài khoản SIÊU QUẢN TRỊ để TEST nghiệp vụ (SUPER_TEST_EMAIL, mặc
+  // định super@k-homes.vn) được tự duyệt để chạy một mình toàn luồng. SoD vẫn
+  // áp cho MỌI tài khoản khác — đây là chốt bảo mật thật, chỉ nới cho 1 email test.
+  const SUPER_TEST_EMAIL = (process.env.SUPER_TEST_EMAIL || "super@k-homes.vn").toLowerCase();
+  const isSuperTest = user.email.toLowerCase() === SUPER_TEST_EMAIL;
+  if (pr.requester_id === user.id && !isSuperTest) throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   if (!isNextApprover(chain, pr.current_level, user.role)) {

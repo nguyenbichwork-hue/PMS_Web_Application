@@ -202,6 +202,7 @@ ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS delivery_location TEXT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS requester_status  TEXT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_method    TEXT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS advance_percent   NUMERIC(6,2);
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS buyer             TEXT; -- Nhân viên mua hàng (ô vàng)
 
 -- ---------- PAYMENT REQUISITION (PRQ) — Đề nghị thanh toán (spec 07/2026) ----------
 -- Sinh tự động sau khi Manager DUYỆT PO. Một PRQ trả cho MỘT nhà cung cấp, gồm dòng

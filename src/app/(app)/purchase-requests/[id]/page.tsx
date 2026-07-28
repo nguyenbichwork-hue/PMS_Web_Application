@@ -26,6 +26,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
       requester_status: string | null;
       payment_method: string | null;
       advance_percent: string | null;
+      buyer: string | null;
     }
   >(
     `SELECT pr.*, u.name AS requester_name, c.company_name
@@ -94,6 +95,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
         <Card className="p-5 lg:col-span-2">
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <Info label="Người yêu cầu" value={pr.requester_name} />
+            <Info label="Nhân viên mua hàng" value={pr.buyer} />
             <Info label="Công ty" value={pr.company_name} />
             <Info label="BU / Phòng ban" value={pr.department} />
             <Info label="Mã công trình" value={pr.project_code} />

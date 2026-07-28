@@ -125,12 +125,12 @@ export function PRForm({
           Ô <b className="text-amber-700">màu vàng</b> do người yêu cầu mua điền.
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Công ty" required>
+          <Field label="Công ty (pháp nhân)" required>
             <select
               name="company_id"
               value={companyId}
               onChange={(e) => setCompanyId(Number(e.target.value))}
-              className={inputCls}
+              className={yellowCls}
               required
             >
               {companies.map((c) => (
@@ -142,6 +142,9 @@ export function PRForm({
           </Field>
           <Field label="Người yêu cầu mua hàng">
             <input value={requesterName} readOnly className={yellowCls + " text-slate-600"} />
+          </Field>
+          <Field label="Nhân viên mua hàng">
+            <input name="buyer" className={yellowCls} placeholder="Tên NV mua hàng phụ trách…" />
           </Field>
           <Field label="Mã công trình">
             <input name="project_code" className={yellowCls} placeholder="VD: CT-2026-001" />
@@ -236,7 +239,7 @@ export function PRForm({
                   <input
                     value={l.item_name}
                     onChange={(e) => setLine(i, { item_name: e.target.value })}
-                    className={inputCls}
+                    className={yellowCls}
                     placeholder="Tên hàng hóa"
                   />
                 </div>
@@ -247,7 +250,7 @@ export function PRForm({
                     min={0}
                     value={l.quantity}
                     onChange={(e) => setLine(i, { quantity: Number(e.target.value) })}
-                    className={inputCls}
+                    className={yellowCls}
                   />
                 </div>
                 <div className="md:col-span-1">
@@ -255,7 +258,7 @@ export function PRForm({
                   <input
                     value={l.unit}
                     onChange={(e) => setLine(i, { unit: e.target.value })}
-                    className={inputCls}
+                    className={yellowCls}
                   />
                 </div>
                 <div className="md:col-span-1">
@@ -267,7 +270,7 @@ export function PRForm({
                     step={0.5}
                     value={l.vat_rate}
                     onChange={(e) => setLine(i, { vat_rate: Number(e.target.value) })}
-                    className={inputCls}
+                    className={yellowCls}
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -277,7 +280,7 @@ export function PRForm({
                     min={0}
                     value={l.estimated_price}
                     onChange={(e) => setLine(i, { estimated_price: Number(e.target.value) })}
-                    className={inputCls}
+                    className={yellowCls}
                   />
                 </div>
               </div>
