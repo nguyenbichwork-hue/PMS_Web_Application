@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, can } from "@/lib/auth";
 import { pushCompanyScope } from "@/lib/access";
 import { Card, ExportButton, StatusBadge, DueBadge, Th, Td, EmptyState } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { Pagination } from "@/components/Pagination";
+import { DocImport } from "@/components/DocImport";
 import { money, date } from "@/lib/format";
 import type { PurchaseOrder } from "@/lib/types";
 
@@ -68,7 +69,18 @@ export default async function POListPage({
 
   return (
     <div>
-      <ModuleBanner accent="indigo" icon="🧾" title="Đơn đặt hàng" subtitle="Đơn hàng được sinh tự động từ yêu cầu đã duyệt" action={<ExportButton href={`/export/po?${qs}`} />} />
+      <ModuleBanner
+        accent="indigo"
+        icon="🧾"
+        title="Đơn đặt hàng"
+        subtitle="Đơn hàng được sinh tự động từ yêu cầu đã duyệt"
+        action={
+          <div className="flex gap-2">
+            <ExportButton href={`/export/po?${qs}`} />
+            {user && can(user.role, "po.manage") && <DocImport kind="po" variant="banner" />}
+          </div>
+        }
+      />
 
       <StatStrip
         items={[

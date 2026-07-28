@@ -6,6 +6,7 @@ import { Card, LinkButton, ExportButton, StatusBadge, PriorityBadge, DueBadge, T
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { Pagination } from "@/components/Pagination";
+import { DocImport } from "@/components/DocImport";
 import { money, date } from "@/lib/format";
 import type { PurchaseRequest } from "@/lib/types";
 
@@ -91,6 +92,7 @@ export default async function PRListPage({
         action={
           <div className="flex gap-2">
             <ExportButton href={`/export/pr?${qs}`} />
+            {user && can(user.role, "pr.create") && <DocImport kind="pr" variant="banner" />}
             {user && can(user.role, "pr.create") && <LinkButton href="/purchase-requests/new">+ Tạo yêu cầu</LinkButton>}
           </div>
         }
