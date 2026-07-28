@@ -10,13 +10,13 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
   suppliers: {
     title: "Nhập nhà cung cấp từ Excel",
     entity: "nhà cung cấp",
-    btn: "⬆ Nhập Excel",
+    btn: "Nhập Excel",
     hint: "File .xlsx có các cột: Mã nhà cung cấp, Tên nhà cung cấp, Địa chỉ, Mã số thuế, Điện thoại, Số tiền nợ… (hệ thống tự dò dòng tiêu đề). Trùng mã sẽ được cập nhật.",
   },
   products: {
     title: "Nhập hàng hóa / dịch vụ từ Excel",
     entity: "hàng hóa",
-    btn: "⬆ Nhập Excel",
+    btn: "Nhập Excel",
     hint: "File .xlsx có cột Mã và Tên (tùy chọn thêm ĐVT, Nhóm, Thuế suất, và cột NCC mặc định — điền mã 'SUP-xxx' hoặc tên nhà cung cấp để gắn NCC cho hàng). Hệ thống tự dò dòng tiêu đề. Trùng mã sẽ được cập nhật.",
   },
   users: {
@@ -28,7 +28,7 @@ const META: Record<Section, { title: string; entity: string; hint: string; btn: 
   business_units: {
     title: "Nhập phòng ban từ Excel",
     entity: "phòng ban",
-    btn: "⬆ Nhập Excel",
+    btn: "Nhập Excel",
     hint: "File .xlsx có cột Mã phòng ban và Tên phòng ban (tùy chọn: Mã công ty — trống thì gán công ty mặc định). Hệ thống tự dò dòng tiêu đề. Trùng mã (trong cùng công ty) sẽ được cập nhật tên.",
   },
 };

@@ -278,3 +278,54 @@ CREATE TABLE IF NOT EXISTS invoice_line_allocation (
 );
 CREATE INDEX IF NOT EXISTS idx_inv_alloc_invoice ON invoice_line_allocation(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_inv_alloc_po_item ON invoice_line_allocation(po_item_id);
+
+-- =====================================================================
+-- KHÁCH HÀNG (customers) + DỰ ÁN (projects) — bổ sung 07/2026
+-- Trả lời 2 nỗi đau: (1) "đơn nào của khách nào" → gắn PR/PO với khách hàng;
+-- (2) "dự án hầu như không có thông tin" → danh mục dự án có NGÂN SÁCH để
+-- kiểm tra "còn đủ tiền không" khi duyệt PO.
+-- =====================================================================
+
+-- ---------- Danh mục KHÁCH HÀNG (toàn tập đoàn, giống suppliers) ----------
+CREATE TABLE IF NOT EXISTS customers (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  customer_code  TEXT NOT NULL UNIQUE,
+  customer_name  TEXT NOT NULL,
+  tax_code       TEXT,
+  address        TEXT,
+  contact_name   TEXT,
+  phone          TEXT,
+  email          TEXT,
+  note           TEXT,
+  status         TEXT NOT NULL DEFAULT 'Active' CHECK (status IN ('Active','Inactive')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------- Danh mục DỰ ÁN / CÔNG TRÌNH (có ngân sách) ----------
+CREATE TABLE IF NOT EXISTS projects (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  project_code  TEXT NOT NULL UNIQUE,
+  project_name  TEXT NOT NULL,
+  company_id    BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+  customer_id   BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  budget        NUMERIC(18,2) NOT NULL DEFAULT 0,   -- 0 = không kiểm soát ngân sách
+  manager_name  TEXT,
+  location       TEXT,
+  start_date    DATE,
+  end_date      DATE,
+  note          TEXT,
+  status        TEXT NOT NULL DEFAULT 'Active' CHECK (status IN ('Active','Closed','Inactive')),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_projects_company ON projects(company_id);
+
+-- ---------- Liên kết chứng từ mua ↔ khách hàng / dự án ----------
+-- sales_order_ref: số đơn bán / hợp đồng bán để truy "mua phục vụ đơn nào".
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS customer_id     BIGINT REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS project_id      BIGINT REFERENCES projects(id)  ON DELETE SET NULL;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS sales_order_ref TEXT;
+ALTER TABLE purchase_orders   ADD COLUMN IF NOT EXISTS customer_id     BIGINT REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE purchase_orders   ADD COLUMN IF NOT EXISTS project_id      BIGINT REFERENCES projects(id)  ON DELETE SET NULL;
+ALTER TABLE purchase_orders   ADD COLUMN IF NOT EXISTS sales_order_ref TEXT;
+CREATE INDEX IF NOT EXISTS idx_pr_project ON purchase_requests(project_id);
+CREATE INDEX IF NOT EXISTS idx_po_project ON purchase_orders(project_id);

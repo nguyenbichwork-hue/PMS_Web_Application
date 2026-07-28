@@ -85,6 +85,85 @@ export async function saveProductAction(formData: FormData) {
   revalidatePath("/products");
 }
 
+// ---------------- Khách hàng (customers) ----------------
+// Danh mục khách hàng → gắn PR/PO để biết "đơn nào của khách nào".
+export async function saveCustomerAction(formData: FormData) {
+  const user = await requireUser();
+  if (!can(user.role, "customer.manage")) throw new Error("FORBIDDEN");
+  const id = formData.get("id") ? Number(formData.get("id")) : null;
+  const f = (k: string) => String(formData.get(k) ?? "") || null;
+
+  if (id) {
+    await query(
+      `UPDATE customers SET customer_name=$1, tax_code=$2, address=$3, contact_name=$4, phone=$5, email=$6, note=$7, status=$8 WHERE id=$9`,
+      [f("customer_name"), f("tax_code"), f("address"), f("contact_name"), f("phone"), f("email"), f("note"), f("status") ?? "Active", id]
+    );
+  } else {
+    await query(
+      `INSERT INTO customers (customer_code, customer_name, tax_code, address, contact_name, phone, email, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [f("customer_code"), f("customer_name"), f("tax_code"), f("address"), f("contact_name"), f("phone"), f("email"), f("note")]
+    );
+  }
+  revalidatePath("/customers");
+  revalidatePath("/purchase-requests/new");
+}
+
+export async function deleteCustomerAction(id: number): Promise<DeleteResult> {
+  const user = await requireUser();
+  if (!can(user.role, "customer.manage")) return { ok: false, error: "Bạn không có quyền xóa khách hàng." };
+  try {
+    await query(`DELETE FROM customers WHERE id=$1`, [id]);
+    revalidatePath("/customers");
+    return { ok: true };
+  } catch {
+    await query(`UPDATE customers SET status='Inactive' WHERE id=$1`, [id]);
+    revalidatePath("/customers");
+    return { ok: true, deactivated: true };
+  }
+}
+
+// ---------------- Dự án / Công trình (projects) ----------------
+// Danh mục dự án CÓ NGÂN SÁCH → kiểm tra "còn đủ tiền không" khi duyệt PO.
+export async function saveProjectAction(formData: FormData) {
+  const user = await requireUser();
+  if (!can(user.role, "project.manage")) throw new Error("FORBIDDEN");
+  const id = formData.get("id") ? Number(formData.get("id")) : null;
+  const f = (k: string) => String(formData.get(k) ?? "") || null;
+  const company_id = formData.get("company_id") ? Number(formData.get("company_id")) : null;
+  const customer_id = formData.get("customer_id") ? Number(formData.get("customer_id")) : null;
+  const budget = Number(formData.get("budget") ?? 0) || 0;
+
+  if (id) {
+    await query(
+      `UPDATE projects SET project_name=$1, company_id=$2, customer_id=$3, budget=$4, manager_name=$5, location=$6, start_date=$7, end_date=$8, note=$9, status=$10 WHERE id=$11`,
+      [f("project_name"), company_id, customer_id, budget, f("manager_name"), f("location"), f("start_date"), f("end_date"), f("note"), f("status") ?? "Active", id]
+    );
+  } else {
+    await query(
+      `INSERT INTO projects (project_code, project_name, company_id, customer_id, budget, manager_name, location, start_date, end_date, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [f("project_code"), f("project_name"), company_id, customer_id, budget, f("manager_name"), f("location"), f("start_date"), f("end_date"), f("note")]
+    );
+  }
+  revalidatePath("/du-an");
+  revalidatePath("/purchase-requests/new");
+}
+
+export async function deleteProjectAction(id: number): Promise<DeleteResult> {
+  const user = await requireUser();
+  if (!can(user.role, "project.manage")) return { ok: false, error: "Bạn không có quyền xóa dự án." };
+  try {
+    await query(`DELETE FROM projects WHERE id=$1`, [id]);
+    revalidatePath("/du-an");
+    return { ok: true };
+  } catch {
+    await query(`UPDATE projects SET status='Inactive' WHERE id=$1`, [id]);
+    revalidatePath("/du-an");
+    return { ok: true, deactivated: true };
+  }
+}
+
 // ---------------- Công ty (pháp nhân) ----------------
 // Thêm/sửa pháp nhân. Cần cho việc nhập dữ liệu THẬT: form PR bắt buộc chọn
 // Công ty nhưng trước đây không có UI tạo/sửa (chỉ sinh từ seed demo).

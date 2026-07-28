@@ -7,6 +7,9 @@ import { CatalogPicker } from "@/components/CatalogPicker";
 import { money } from "@/lib/format";
 import type { Company, Product, Supplier } from "@/lib/types";
 
+interface ProjectOpt { id: number; project_code: string; project_name: string; customer_id: number | null }
+interface CustomerOpt { id: number; customer_name: string }
+
 interface Line {
   item_code: string;
   item_name: string;
@@ -40,6 +43,8 @@ export function PRForm({
   suppliers,
   productSuppliers,
   businessUnits,
+  customers,
+  projects,
   defaultCompanyId,
   department,
   requesterName,
@@ -49,6 +54,8 @@ export function PRForm({
   suppliers: Supplier[];
   productSuppliers: Record<string, { id: number; name: string; times: number }[]>;
   businessUnits: { id: number; company_id: number; bu_code: string; bu_name: string }[];
+  customers: CustomerOpt[];
+  projects: ProjectOpt[];
   defaultCompanyId: number;
   department: string;
   requesterName: string;
@@ -58,6 +65,15 @@ export function PRForm({
   const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
   const [companyId, setCompanyId] = useState<number>(defaultCompanyId);
   const [paymentMethod, setPaymentMethod] = useState<string>("Trả sau khi nhận hàng");
+  // Liên kết mua↔bán: chọn dự án tự điền mã công trình + gợi ý khách hàng.
+  const [projectId, setProjectId] = useState<string>("");
+  const [customerId, setCustomerId] = useState<string>("");
+  const selectedProject = projects.find((p) => String(p.id) === projectId);
+  const onPickProject = (val: string) => {
+    setProjectId(val);
+    const p = projects.find((x) => String(x.id) === val);
+    if (p?.customer_id) setCustomerId(String(p.customer_id));
+  };
   // BU lọc theo công ty đang chọn (không tự điền — người yêu cầu tự chọn).
   const buOptions = businessUnits.filter((b) => b.company_id === companyId);
 
@@ -146,8 +162,26 @@ export function PRForm({
           <Field label="Nhân viên mua hàng">
             <input name="buyer" className={yellowCls} placeholder="Tên NV mua hàng phụ trách…" />
           </Field>
-          <Field label="Mã công trình">
-            <input name="project_code" className={yellowCls} placeholder="VD: CT-2026-001" />
+          <Field label="Dự án / Công trình">
+            <select name="project_id" value={projectId} onChange={(e) => onPickProject(e.target.value)} className={yellowCls}>
+              <option value="">— Chọn dự án —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.project_code} · {p.project_name}</option>
+              ))}
+            </select>
+            {/* Giữ mã công trình dạng text để tương thích & xuất chứng từ. */}
+            <input type="hidden" name="project_code" value={selectedProject?.project_code ?? ""} />
+          </Field>
+          <Field label="Khách hàng (đơn phục vụ khách nào)">
+            <select name="customer_id" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={yellowCls}>
+              <option value="">— Chọn khách hàng —</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>{c.customer_name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Số đơn bán / Hợp đồng bán">
+            <input name="sales_order_ref" className={yellowCls} placeholder="VD: SO-2026-014" />
           </Field>
           <Field label="BU / Phòng ban">
             <select name="department" defaultValue={department} className={yellowCls}>
@@ -224,7 +258,7 @@ export function PRForm({
                       className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
                       title="Xem toàn bộ danh mục hàng hóa dạng bảng"
                     >
-                      📋 Danh mục
+                      Danh mục
                     </button>
                   </div>
                   <SearchSelect
@@ -296,7 +330,7 @@ export function PRForm({
                       className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
                       title="Xem toàn bộ danh mục nhà cung cấp dạng bảng"
                     >
-                      📋 Danh mục
+                      Danh mục
                     </button>
                   </div>
                   <SearchSelect

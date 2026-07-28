@@ -6,7 +6,43 @@ import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { generatePRQFromPO } from "@/lib/prq-generate";
+import { money } from "@/lib/format";
 import type { POItem } from "@/lib/types";
+
+/**
+ * Kiểm tra NGÂN SÁCH dự án khi duyệt PO: nếu PO gắn dự án có ngân sách > 0 và
+ * tổng đã cam kết (các PO khác đã duyệt của dự án) + PO này VƯỢT ngân sách thì
+ * chặn duyệt. budget = 0 nghĩa là không kiểm soát. Trả lời nỗi đau "còn đủ tiền không".
+ */
+async function assertProjectBudget(exec: Executor, poId: number) {
+  const po = await firstRow<{ project_id: number | null; grand_total: string }>(
+    exec,
+    `SELECT project_id, grand_total FROM purchase_orders WHERE id = $1`,
+    [poId]
+  );
+  if (!po?.project_id) return;
+  const proj = await firstRow<{ budget: string; project_name: string; status: string }>(
+    exec,
+    `SELECT budget, project_name, status FROM projects WHERE id = $1`,
+    [po.project_id]
+  );
+  const budget = Number(proj?.budget) || 0;
+  if (budget <= 0) return;
+  const other = await firstRow<{ s: string }>(
+    exec,
+    `SELECT COALESCE(sum(grand_total),0) s FROM purchase_orders
+      WHERE project_id = $1 AND id <> $2 AND status NOT IN ('Draft','Cancelled')`,
+    [po.project_id, poId]
+  );
+  const committed = (Number(other?.s) || 0) + (Number(po.grand_total) || 0);
+  if (committed > budget) {
+    throw new Error(
+      `Vượt ngân sách dự án "${proj?.project_name}". Ngân sách ${money(budget)}; ` +
+        `đã cam kết ${money(Number(other?.s) || 0)}; PO này ${money(po.grand_total)} → tổng ${money(committed)}. ` +
+        `Vui lòng tăng ngân sách dự án hoặc giảm giá trị đơn trước khi duyệt.`
+    );
+  }
+}
 
 /** Chặn IDOR: PO phải thuộc công ty user (Admin thấy tất cả). */
 async function assertPOAccess(user: { role: string; company_id: number | null }, poId: number): Promise<void> {
@@ -136,6 +172,8 @@ export async function approvePOAction(poId: number) {
   await assertPOAccess(user, poId);
 
   const prqId = await withTransaction(async (exec) => {
+    // Chốt ngân sách dự án TRƯỚC khi duyệt (nếu vượt → rollback, không duyệt).
+    await assertProjectBudget(exec, poId);
     const upd = await firstRow<{ id: number }>(
       exec,
       `UPDATE purchase_orders SET status = 'Approved', updated_at = now()

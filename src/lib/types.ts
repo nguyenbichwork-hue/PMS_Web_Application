@@ -35,6 +35,37 @@ export interface Supplier {
   status: string;
 }
 
+export interface Customer {
+  id: number;
+  customer_code: string;
+  customer_name: string;
+  tax_code: string | null;
+  address: string | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  status: string;
+}
+
+export interface Project {
+  id: number;
+  project_code: string;
+  project_name: string;
+  company_id: number | null;
+  customer_id: number | null;
+  budget: number;
+  manager_name: string | null;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  note: string | null;
+  status: string;
+  // joined
+  company_name?: string | null;
+  customer_name?: string | null;
+}
+
 export interface Product {
   id: number;
   item_code: string;

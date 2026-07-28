@@ -120,6 +120,8 @@ export function can(role: Role, action: string): boolean {
     "prq.approve": ["Finance", "Admin"],
     "supplier.manage": ["Purchasing", "Finance", "Admin"],
     "product.manage": ["Purchasing", "Finance", "Admin"],
+    "customer.manage": ["Purchasing", "Finance", "Manager", "Admin"],
+    "project.manage": ["Purchasing", "Finance", "Manager", "Admin"],
     "gr.manage": ["Purchasing", "Finance", "Admin"],
     "invoice.manage": ["Finance", "Admin"],
     "user.manage": ["Admin"],

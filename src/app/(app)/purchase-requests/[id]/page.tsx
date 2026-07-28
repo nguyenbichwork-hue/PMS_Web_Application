@@ -27,12 +27,18 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
       payment_method: string | null;
       advance_percent: string | null;
       buyer: string | null;
+      sales_order_ref: string | null;
+      customer_name: string | null;
+      project_name: string | null;
     }
   >(
-    `SELECT pr.*, u.name AS requester_name, c.company_name
+    `SELECT pr.*, u.name AS requester_name, c.company_name,
+            cu.customer_name, pj.project_name
        FROM purchase_requests pr
        LEFT JOIN users u ON u.id = pr.requester_id
        LEFT JOIN companies c ON c.id = pr.company_id
+       LEFT JOIN customers cu ON cu.id = pr.customer_id
+       LEFT JOIN projects pj ON pj.id = pr.project_id
       WHERE pr.id = $1`,
     [prId]
   );
@@ -98,7 +104,9 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
             <Info label="Nhân viên mua hàng" value={pr.buyer} />
             <Info label="Công ty" value={pr.company_name} />
             <Info label="BU / Phòng ban" value={pr.department} />
-            <Info label="Mã công trình" value={pr.project_code} />
+            <Info label="Dự án / Công trình" value={pr.project_name ?? pr.project_code} />
+            <Info label="Khách hàng" value={pr.customer_name} />
+            <Info label="Số đơn bán / HĐ bán" value={pr.sales_order_ref} />
             <Info label="Địa điểm giao hàng" value={pr.delivery_location} />
             <Info label="Ngày giao hàng dự kiến" value={date(pr.required_date)} />
             <Info label="Ngày yêu cầu" value={date(pr.request_date)} />
@@ -178,7 +186,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
 
         <div className="space-y-4">
           <Link href={`/document-chain?doc=PR&id=${prId}`} className="block rounded-2xl border border-slate-200/70 bg-white p-3 text-center text-sm font-medium text-brand-600 transition hover:border-slate-300 hover:bg-slate-50">
-            🔗 Xem chuỗi chứng từ
+            Xem chuỗi chứng từ
           </Link>
           <Card className="p-5">
             <h3 className="mb-3 text-sm font-semibold text-slate-700">Luồng phê duyệt</h3>

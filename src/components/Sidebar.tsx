@@ -45,10 +45,19 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
     ],
   },
   {
+    title: "Tài chính",
+    items: [
+      { href: "/cong-no", label: "Công nợ NCC", icon: "invoice" },
+      { href: "/thue", label: "Dashboard thuế", icon: "dashboard" },
+    ],
+  },
+  {
     title: "Danh mục",
     items: [
       { href: "/suppliers", label: "Nhà cung cấp", icon: "supplier" },
       { href: "/products", label: "Hàng hóa", icon: "product" },
+      { href: "/customers", label: "Khách hàng", icon: "supplier" },
+      { href: "/du-an", label: "Dự án / Công trình", icon: "po" },
     ],
   },
   {

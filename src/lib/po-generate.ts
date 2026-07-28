@@ -20,9 +20,9 @@ export async function generatePOFromPR(prId: number, exec: Executor = dbExec): P
   );
   if (existing) return existing.id;
 
-  const pr = await firstRow<{ company_id: number }>(
+  const pr = await firstRow<{ company_id: number; customer_id: number | null; project_id: number | null; sales_order_ref: string | null }>(
     exec,
-    `SELECT company_id FROM purchase_requests WHERE id = $1`,
+    `SELECT company_id, customer_id, project_id, sales_order_ref FROM purchase_requests WHERE id = $1`,
     [prId]
   );
   if (!pr) throw new Error("PR not found");
@@ -61,10 +61,11 @@ export async function generatePOFromPR(prId: number, exec: Executor = dbExec): P
   const po = await firstRow<{ id: number }>(
     exec,
     `INSERT INTO purchase_orders
-       (pr_id, supplier_id, company_id, order_date, payment_term, currency, status, subtotal, vat_total, grand_total)
-     VALUES ($1,$2,$3, current_date, 'NET30', 'VND', 'Draft', $4,$5,$6)
+       (pr_id, supplier_id, company_id, order_date, payment_term, currency, status, subtotal, vat_total, grand_total,
+        customer_id, project_id, sales_order_ref)
+     VALUES ($1,$2,$3, current_date, 'NET30', 'VND', 'Draft', $4,$5,$6, $7,$8,$9)
      RETURNING id`,
-    [prId, supplierId, pr.company_id, subtotal, vatTotal, grand]
+    [prId, supplierId, pr.company_id, subtotal, vatTotal, grand, pr.customer_id, pr.project_id, pr.sales_order_ref]
   );
 
   await exec(`UPDATE purchase_orders SET po_number = $1 WHERE id = $2`, [docNumber("PO", po!.id), po!.id]);

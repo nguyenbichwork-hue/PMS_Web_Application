@@ -25,12 +25,15 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
   const poId = Number(id);
   const user = await getCurrentUser();
 
-  const po = await queryOne<PurchaseOrder & { company: Company }>(
-    `SELECT po.*, s.supplier_name, c.company_name, pr.pr_number
+  const po = await queryOne<PurchaseOrder & { company: Company; customer_name: string | null; project_name: string | null; project_id: number | null; sales_order_ref: string | null }>(
+    `SELECT po.*, s.supplier_name, c.company_name, pr.pr_number,
+            cu.customer_name, pj.project_name
        FROM purchase_orders po
        LEFT JOIN suppliers s ON s.id = po.supplier_id
        JOIN companies c ON c.id = po.company_id
        LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN customers cu ON cu.id = po.customer_id
+       LEFT JOIN projects pj ON pj.id = po.project_id
       WHERE po.id = $1`,
     [poId]
   );
@@ -91,6 +94,9 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
               <Info label="Ngày giao" value={date(po.delivery_date)} />
               <Info label="Điều khoản TT" value={po.payment_term} />
               <Info label="Tiền tệ" value={po.currency} />
+              <Info label="Dự án / Công trình" value={po.project_id ? <Link href={`/du-an/${po.project_id}`} className="text-brand-600 hover:underline">{po.project_name}</Link> : (po.project_name ?? "—")} />
+              <Info label="Khách hàng" value={po.customer_name} />
+              <Info label="Số đơn bán / HĐ bán" value={po.sales_order_ref} />
             </div>
 
             <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Chi tiết đơn hàng</h3>
@@ -160,7 +166,7 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
             <p className="mb-3 text-xs text-slate-400">Mẫu MISA (34 cột) — 🟡 người tạo điền · 🟢 kế toán bổ sung sau.</p>
             <ExportButton href={`/export/po-misa/${poId}`} label="Xuất Excel (mẫu MISA)" />
             <Link href={`/document-chain?doc=PO&id=${poId}`} className="mt-2 block text-center text-sm font-medium text-brand-600 hover:underline">
-              🔗 Xem chuỗi chứng từ
+              Xem chuỗi chứng từ
             </Link>
           </Card>
 

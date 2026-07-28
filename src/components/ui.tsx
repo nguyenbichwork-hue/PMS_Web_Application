@@ -188,11 +188,8 @@ export function ExportButton({ href, label = "Xuất Excel" }: { href: string; l
   return (
     <a
       href={href}
-      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M12 15V3" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
-      </svg>
       {label}
     </a>
   );

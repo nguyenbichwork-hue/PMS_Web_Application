@@ -146,7 +146,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           <Card className="p-5">
             <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
             <p className="mb-3 text-xs text-slate-400">Điền vào mẫu Payment Requisition của công ty (.xlsx) để ký.</p>
-            <ExportButton href={`/export/prq/${prqId}`} label="⬇ Xuất Excel (mẫu PRQ)" />
+            <ExportButton href={`/export/prq/${prqId}`} label="Xuất Excel (mẫu PRQ)" />
           </Card>
 
           <PRQActions prqId={prqId} status={prq.status} canManage={canManage} canApprove={canApprove} />

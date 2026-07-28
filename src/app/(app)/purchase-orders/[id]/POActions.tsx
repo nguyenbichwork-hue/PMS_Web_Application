@@ -25,23 +25,30 @@ export function POActions({
       router.refresh();
     });
 
+  const canCancel = canManage && ["Draft", "Approved", "Sent", "Confirmed"].includes(status);
+
   return (
     <Card className="p-5">
       <h3 className="mb-3 text-sm font-semibold text-slate-700">Thao tác</h3>
       <div className="space-y-2">
+        {/* Hành động chính: duyệt đơn hàng */}
+        {canApprove && status === "Draft" && (
+          <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePOAction(poId))}>
+            Duyệt đơn hàng
+          </Button>
+        )}
+        {canApprove && status === "Draft" && (
+          <p className="px-0.5 text-xs text-slate-400">Duyệt xong hệ thống tự tạo Đề nghị thanh toán.</p>
+        )}
+
         <Button
           variant="secondary"
           className="w-full justify-center"
           onClick={() => window.open(`/print/purchase-order/${poId}`, "_blank")}
         >
-          ⬇ Xuất PDF / In
+          Xuất PDF / In
         </Button>
 
-        {canApprove && status === "Draft" && (
-          <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePOAction(poId))}>
-            ✓ Duyệt PO (→ tạo đề nghị thanh toán)
-          </Button>
-        )}
         {canManage && ["Approved", "Draft"].includes(status) && (
           <Button
             variant="secondary"
@@ -55,7 +62,7 @@ export function POActions({
               });
             }}
           >
-            ✉ Send Email Supplier
+            Gửi cho nhà cung cấp
           </Button>
         )}
         {sent && (
@@ -66,25 +73,28 @@ export function POActions({
 
         {canManage && status === "Sent" && (
           <Button variant="secondary" className="w-full justify-center" disabled={pending} onClick={run(() => confirmPOAction(poId))}>
-            ✔ NCC xác nhận
+            Nhà cung cấp xác nhận
           </Button>
         )}
-        {canManage && ["Draft", "Approved", "Sent", "Confirmed"].includes(status) && (
-          <Button
-            variant="danger"
-            className="w-full justify-center"
-            disabled={pending}
-            onClick={() => {
-              const reason = window.prompt("Lý do hủy PO:");
-              if (!reason) return;
-              start(async () => {
-                await cancelPOAction(poId, reason);
-                router.refresh();
-              });
-            }}
-          >
-            ✕ Hủy PO
-          </Button>
+
+        {canCancel && (
+          <div className="border-t border-slate-100 pt-2">
+            <Button
+              variant="danger"
+              className="w-full justify-center"
+              disabled={pending}
+              onClick={() => {
+                const reason = window.prompt("Lý do hủy đơn hàng:");
+                if (!reason) return;
+                start(async () => {
+                  await cancelPOAction(poId, reason);
+                  router.refresh();
+                });
+              }}
+            >
+              Hủy đơn hàng
+            </Button>
+          </div>
         )}
       </div>
     </Card>

@@ -17,6 +17,13 @@ export default async function NewPRPage() {
   const businessUnits = await query<{ id: number; company_id: number; bu_code: string; bu_name: string }>(
     `SELECT id, company_id, bu_code, bu_name FROM business_units ORDER BY bu_name`
   );
+  // Khách hàng + dự án để gắn PR (liên kết mua↔bán, kiểm soát ngân sách dự án).
+  const customers = await query<{ id: number; customer_name: string }>(
+    `SELECT id, customer_name FROM customers WHERE status='Active' ORDER BY customer_name`
+  );
+  const projects = await query<{ id: number; project_code: string; project_name: string; customer_id: number | null }>(
+    `SELECT id, project_code, project_name, customer_id FROM projects WHERE status='Active' ORDER BY project_name`
+  );
 
   // NCC ĐỀ XUẤT theo lịch sử: các nhà cung cấp đã từng có PO chứa mã hàng này
   // (đếm số lần để xếp hạng), gộp theo item_code → truyền cho form gợi ý khi chọn hàng.
@@ -43,6 +50,8 @@ export default async function NewPRPage() {
         suppliers={suppliers}
         productSuppliers={productSuppliers}
         businessUnits={businessUnits}
+        customers={customers}
+        projects={projects}
         defaultCompanyId={user.company_id ?? companies[0]?.id ?? 0}
         department={user.department ?? ""}
         requesterName={user.name}

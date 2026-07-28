@@ -10,7 +10,7 @@ const META: Record<DocKind, { title: string; entity: string; btn: string; hint: 
   pr: {
     title: "Nhập Yêu cầu mua hàng từ Excel",
     entity: "yêu cầu",
-    btn: "⬆ Nhập Excel",
+    btn: "Nhập Excel",
     hint:
       "File .xlsx: mỗi DÒNG là một dòng hàng. Bắt buộc có cột Tên hàng hóa và Số lượng. " +
       "Tùy chọn: Mã hàng, ĐVT, Đơn giá dự kiến, Thuế suất, NCC gợi ý, Ghi chú, và các cột phần đầu " +
@@ -20,7 +20,7 @@ const META: Record<DocKind, { title: string; entity: string; btn: string; hint: 
   po: {
     title: "Nhập Đơn đặt hàng từ Excel",
     entity: "đơn",
-    btn: "⬆ Nhập Excel",
+    btn: "Nhập Excel",
     hint:
       "File .xlsx: mỗi DÒNG là một dòng hàng. Bắt buộc có cột Nhà cung cấp (mã / tên / MST), Tên hàng hóa và Số lượng. " +
       "Tùy chọn: Mã hàng, ĐVT, Đơn giá, Chiết khấu, Thuế suất, Ghi chú, và các cột phần đầu " +

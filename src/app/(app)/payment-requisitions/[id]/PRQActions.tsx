@@ -30,27 +30,29 @@ export function PRQActions({
       <div className="space-y-2">
         {canManage && status === "Draft" && (
           <Button className="w-full justify-center" disabled={pending} onClick={run(() => submitPRQAction(prqId))}>
-            → Gửi duyệt
+            Gửi duyệt
           </Button>
         )}
         {canApprove && status === "Submitted" && (
           <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePRQAction(prqId))}>
-            ✓ Duyệt thanh toán
+            Duyệt thanh toán
           </Button>
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (
-          <Button
-            variant="danger"
-            className="w-full justify-center"
-            disabled={pending}
-            onClick={() => {
-              const reason = window.prompt("Lý do hủy đề nghị thanh toán:");
-              if (reason === null) return;
-              start(async () => { await cancelPRQAction(prqId, reason); router.refresh(); });
-            }}
-          >
-            ✕ Hủy đề nghị
-          </Button>
+          <div className="border-t border-slate-100 pt-2">
+            <Button
+              variant="danger"
+              className="w-full justify-center"
+              disabled={pending}
+              onClick={() => {
+                const reason = window.prompt("Lý do hủy đề nghị thanh toán:");
+                if (reason === null) return;
+                start(async () => { await cancelPRQAction(prqId, reason); router.refresh(); });
+              }}
+            >
+              Hủy đề nghị
+            </Button>
+          </div>
         )}
       </div>
     </Card>

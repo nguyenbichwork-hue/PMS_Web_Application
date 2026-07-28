@@ -18,7 +18,7 @@ export function POEditor({
         Điều chỉnh PO <span className="text-xs font-normal text-slate-400">(supplier / ngày giao / điều khoản / số lượng / đơn giá — có lưu lịch sử)</span>
       </h3>
       <p className="mb-3 text-xs text-slate-500">
-        Dùng khi PO <b>sai lệch so với hóa đơn điện tử</b>: sửa số lượng/đơn giá cho khớp rồi vào hóa đơn bấm <b>“↻ Đối chiếu lại”</b>.
+        Dùng khi PO <b>sai lệch so với hóa đơn điện tử</b>: sửa số lượng/đơn giá cho khớp rồi vào hóa đơn bấm <b>“Đối chiếu lại”</b>.
       </p>
       <form action={updatePOAction} className="space-y-4">
         <input type="hidden" name="po_id" value={po.id} />

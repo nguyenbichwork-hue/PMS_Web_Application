@@ -44,6 +44,10 @@ export async function createPRAction(formData: FormData) {
     payment_method === "Ứng trước" && advRaw != null && String(advRaw).trim() !== ""
       ? Math.max(0, Math.min(100, Number(advRaw)))
       : null;
+  // Liên kết mua ↔ bán: khách hàng / dự án / số đơn bán.
+  const customer_id = formData.get("customer_id") ? Number(formData.get("customer_id")) : null;
+  const project_id = formData.get("project_id") ? Number(formData.get("project_id")) : null;
+  const sales_order_ref = String(formData.get("sales_order_ref") ?? "").trim() || null;
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
@@ -70,10 +74,12 @@ export async function createPRAction(formData: FormData) {
       exec,
       `INSERT INTO purchase_requests
          (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
-          project_code, delivery_location, requester_status, payment_method, advance_percent, buyer)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15) RETURNING id`,
+          project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
+          customer_id, project_id, sales_order_ref)
+       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18) RETURNING id`,
       [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
-       project_code, delivery_location, requester_status, payment_method, advance_percent, buyer]
+       project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
+       customer_id, project_id, sales_order_ref]
     );
     await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 

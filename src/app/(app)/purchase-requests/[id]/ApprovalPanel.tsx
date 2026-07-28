@@ -39,13 +39,13 @@ export function ApprovalPanel({ prId }: { prId: number }) {
       {err && <p className="mb-2 text-sm text-rose-600">{err}</p>}
       <div className="flex gap-2">
         <Button disabled={pending} onClick={run(() => approvePRAction(prId, comment))}>
-          ✓ Duyệt
+          Duyệt
         </Button>
         <Button variant="danger" disabled={pending} onClick={run(() => rejectPRAction(prId, comment))}>
-          ✕ Từ chối
+          Từ chối
         </Button>
       </div>
-      <p className="mt-2 text-[11px] text-amber-700/70">Trao đổi chung dùng phần 💬 Bình luận bên dưới (không đổi trạng thái).</p>
+      <p className="mt-2 text-[11px] text-amber-700/70">Trao đổi chung dùng phần Bình luận bên dưới (không đổi trạng thái).</p>
     </Card>
   );
 }
@@ -67,7 +67,7 @@ export function ReopenButton({ prId }: { prId: number }) {
       />
       {err && <p className="mb-2 text-sm text-rose-600">{err}</p>}
       <Button disabled={pending} onClick={run(() => reopenPRAction(prId, reason))}>
-        ↻ Mở lại PR
+        Mở lại PR
       </Button>
     </Card>
   );
