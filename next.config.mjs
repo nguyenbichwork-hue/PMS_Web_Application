@@ -51,4 +51,9 @@ const nextConfig = {
 
 export default nextConfig;
 
-import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
+// Chỉ nạp shim Cloudflare khi CHỦ ĐỘNG chạy trên Cloudflare (ENABLE_CF_DEV=1).
+// Mặc định TẮT để `next dev`/`next start` chạy Node bình thường — tránh shim can
+// thiệp filesystem/RSC gây lỗi khi lưu tệp đính kèm.
+if (process.env.ENABLE_CF_DEV === "1") {
+  import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
+}

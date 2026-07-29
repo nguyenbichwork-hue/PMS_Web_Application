@@ -5,6 +5,7 @@ import { Card, Field, inputCls, Button } from "@/components/ui";
 import { SearchSelect, type SSOption } from "@/components/SearchSelect";
 import { CatalogPicker } from "@/components/CatalogPicker";
 import { PaymentMethodSection } from "@/components/PaymentMethodSection";
+import { AttachmentUploadSection } from "@/components/AttachmentUploadSection";
 import { money } from "@/lib/format";
 import type { Company, Product, Supplier } from "@/lib/types";
 
@@ -65,8 +66,6 @@ export function PRForm({
   // Modal "Chọn từ danh mục": biết đang mở cho dòng nào & loại nào.
   const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
   const [companyId, setCompanyId] = useState<number>(defaultCompanyId);
-  // Tệp đính kèm (BẮT BUỘC, cho phép nhiều tệp). Lưu tên để hiển thị + kiểm tra.
-  const [fileNames, setFileNames] = useState<string[]>([]);
   // Liên kết mua↔bán: chọn dự án tự điền mã công trình + gợi ý khách hàng.
   const [projectId, setProjectId] = useState<string>("");
   const [customerId, setCustomerId] = useState<string>("");
@@ -129,10 +128,11 @@ export function PRForm({
   const submit = (mode: "draft" | "submit") => (e: React.MouseEvent) => {
     e.preventDefault();
     const form = (e.currentTarget as HTMLElement).closest("form") as HTMLFormElement;
-    // Tệp đính kèm BẮT BUỘC: không có tệp thì không cho tạo PR (kể cả lưu nháp).
-    const fileInput = form.querySelector('input[name="files"]') as HTMLInputElement | null;
-    if (!fileInput?.files || fileInput.files.length === 0) {
-      alert("Vui lòng đính kèm ít nhất một tệp (báo giá/hợp đồng/chứng từ) trước khi tạo PR.");
+    // Tệp đính kèm BẮT BUỘC: quét MỌI ô tệp theo loại; không có tệp nào thì chặn.
+    const fileInputs = Array.from(form.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
+    const totalFiles = fileInputs.reduce((s, inp) => s + (inp.files?.length ?? 0), 0);
+    if (totalFiles === 0) {
+      alert("Vui lòng đính kèm ít nhất một tệp (theo loại chứng từ) trước khi tạo PR.");
       return;
     }
     const fd = new FormData(form);
@@ -230,34 +230,11 @@ export function PRForm({
         </div>
       </Card>
 
-      {/* MODULE Hình thức thanh toán (tách riêng) — gồm số lần & số tiền từng lần. */}
+      {/* MODULE Hình thức thanh toán (tách riêng) — gồm số lần, số tiền & số ngày từng lần. */}
       <PaymentMethodSection grandTotal={grand} />
 
-      {/* Tệp đính kèm — BẮT BUỘC, cho phép nhiều tệp. */}
-      <Card className="mt-4 p-6">
-        <h3 className="mb-1 text-sm font-semibold text-slate-700">
-          Tệp đính kèm <span className="text-rose-500">*</span>
-        </h3>
-        <p className="mb-3 text-xs text-slate-500">
-          Bắt buộc đính kèm ít nhất một tệp (báo giá, hợp đồng, hình ảnh, chứng từ…). Có thể chọn nhiều tệp cùng lúc.
-        </p>
-        <input
-          type="file"
-          name="files"
-          multiple
-          onChange={(e) => setFileNames(Array.from(e.target.files ?? []).map((f) => f.name))}
-          className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
-        />
-        {fileNames.length > 0 ? (
-          <ul className="mt-3 space-y-1 text-xs text-slate-600">
-            {fileNames.map((n, i) => (
-              <li key={i} className="truncate rounded-md bg-slate-50 px-2 py-1">{n}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-xs text-amber-600">Chưa chọn tệp nào.</p>
-        )}
-      </Card>
+      {/* MODULE Tệp đính kèm theo LOẠI chứng từ — BẮT BUỘC ít nhất một tệp. */}
+      <AttachmentUploadSection />
 
       <Card className="mt-4 p-6">
         <div className="mb-3 flex items-center justify-between">

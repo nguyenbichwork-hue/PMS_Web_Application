@@ -9,7 +9,8 @@ import { docNumber } from "@/lib/numbering";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { generatePOFromPR } from "@/lib/po-generate";
 import { autoApprovePO } from "@/actions/po";
-import { saveBuffer } from "@/lib/storage";
+import { saveBuffer, removeFile } from "@/lib/storage";
+import { PR_ATTACHMENT_TYPES } from "@/lib/attachment-types";
 import { logAudit } from "@/lib/audit";
 
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024; // 10MB / tệp
@@ -53,26 +54,34 @@ export async function createPRAction(formData: FormData) {
   const customer_id = formData.get("customer_id") ? Number(formData.get("customer_id")) : null;
   const project_id = formData.get("project_id") ? Number(formData.get("project_id")) : null;
   const sales_order_ref = String(formData.get("sales_order_ref") ?? "").trim() || null;
-  // Hình thức thanh toán nhiều lần: số lần (số nguyên < 10) + số tiền mỗi lần.
+  // Hình thức thanh toán nhiều lần: số lần (số nguyên 1..9) + mỗi lần {số tiền, số ngày}.
   const rawCount = String(formData.get("payment_count") ?? "").trim();
   let payment_count: number | null = null;
-  let payment_installments: number[] | null = null;
+  let payment_installments: { amount: number; days: number }[] | null = null;
   if (rawCount !== "") {
     const n = Math.floor(Number(rawCount));
     if (!Number.isInteger(n) || n < 1 || n > 9) throw new Error("Số lần thanh toán phải là số nguyên từ 1 đến 9.");
     let arr: unknown = [];
     try { arr = JSON.parse(String(formData.get("payment_installments") ?? "[]")); } catch { arr = []; }
-    const amounts = (Array.isArray(arr) ? arr : []).map((v) => Math.max(0, Number(v) || 0)).slice(0, n);
-    while (amounts.length < n) amounts.push(0);
+    const rows = (Array.isArray(arr) ? arr : []).slice(0, n).map((v) => {
+      const o = (v && typeof v === "object" ? v : {}) as { amount?: unknown; days?: unknown };
+      return { amount: Math.max(0, Number(o.amount) || 0), days: Math.max(0, Math.floor(Number(o.days) || 0)) };
+    });
+    while (rows.length < n) rows.push({ amount: 0, days: 0 });
     payment_count = n;
-    payment_installments = amounts;
+    payment_installments = rows;
   }
-  // Tệp đính kèm BẮT BUỘC (cho phép nhiều). Không có tệp → không cho tạo PR.
-  // Lưu ý: KHÔNG dùng `instanceof File` — trong Server Action, tệp có thể không
-  // phải instance của global File → lọc theo "không phải chuỗi" cho chắc.
-  const files = formData.getAll("files").filter((f): f is File => typeof f !== "string" && !!f && (f as File).size > 0);
-  if (files.length === 0) throw new Error("Bắt buộc đính kèm ít nhất một tệp trước khi tạo PR.");
-  for (const f of files) if (f.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 10MB.`);
+  // Tệp đính kèm BẮT BUỘC, TÁCH THEO LOẠI (files_<key>). Không tệp nào → chặn tạo PR.
+  // KHÔNG dùng `instanceof File` — trong Server Action, tệp có thể không phải instance
+  // của global File → lọc theo "không phải chuỗi".
+  const pickedFiles: { file: File; kind: string }[] = [];
+  for (const t of PR_ATTACHMENT_TYPES) {
+    for (const f of formData.getAll(`files_${t.key}`)) {
+      if (typeof f !== "string" && f && (f as File).size > 0) pickedFiles.push({ file: f as File, kind: t.label });
+    }
+  }
+  if (pickedFiles.length === 0) throw new Error("Bắt buộc đính kèm ít nhất một tệp (theo loại chứng từ) trước khi tạo PR.");
+  for (const { file } of pickedFiles) if (file.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${file.name}" vượt quá 10MB.`);
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
@@ -93,58 +102,76 @@ export async function createPRAction(formData: FormData) {
   const vatTotal = validItems.reduce((s, i) => s + (Number(i.quantity) * Number(i.estimated_price) * vatOf(i)) / 100, 0);
   const status = submit ? "Pending Approval" : "Draft";
 
-  // Toàn bộ ghi trong MỘT transaction — nếu lỗi giữa chừng sẽ rollback sạch.
-  const prId = await withTransaction(async (exec) => {
-    const pr = await firstRow<{ id: number }>(
-      exec,
-      `INSERT INTO purchase_requests
-         (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
-          project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-          customer_id, project_id, sales_order_ref, payment_count, payment_installments)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18, $19,$20) RETURNING id`,
-      [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
-       project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-       customer_id, project_id, sales_order_ref,
-       payment_count, payment_installments ? JSON.stringify(payment_installments) : null]
-    );
-    await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
-
-    let line = 1;
-    for (const it of validItems) {
-      await exec(
-        `INSERT INTO purchase_request_items
-           (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, note, line_no)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, it.note || null, line++]
-      );
-    }
-    // Lưu tệp đính kèm (đã kiểm bắt buộc ở trên) — băm SHA-256 để chống trùng nội dung.
-    const seenHashes = new Set<string>();
-    for (const f of files) {
-      const buf = Buffer.from(await f.arrayBuffer());
+  // Lưu tệp ra kho TRƯỚC (ngoài transaction DB) — tránh gọi filesystem trong tx và
+  // để mọi lỗi ghi tệp lộ ra rõ ràng. Băm SHA-256 chống trùng nội dung trong cùng lần.
+  const savedFiles: { kind: string; storedName: string; originalName: string; hash: string }[] = [];
+  const seenHashes = new Set<string>();
+  try {
+    for (const { file, kind } of pickedFiles) {
+      const buf = Buffer.from(await file.arrayBuffer());
       const hash = createHash("sha256").update(buf).digest("hex");
       if (seenHashes.has(hash)) continue; // bỏ tệp trùng trong cùng lần tải
       seenHashes.add(hash);
-      const saved = await saveBuffer(buf, f.name || "file");
-      await exec(
-        `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
-         VALUES ('PR',$1,$2,$3,$4,$5,$6)`,
-        [pr!.id, "Khác", saved.originalName, saved.storedName, user.id, hash]
-      );
+      const saved = await saveBuffer(buf, file.name || "file");
+      savedFiles.push({ kind, storedName: saved.storedName, originalName: saved.originalName, hash });
     }
-    if (submit) {
-      await exec(
-        `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
-         VALUES ('PR',$1,$2,0,'Submitted','Submitted for approval')`,
-        [pr!.id, user.id]
+  } catch (e) {
+    for (const sf of savedFiles) await removeFile(sf.storedName); // dọn tệp đã ghi dở
+    throw new Error("Lỗi khi lưu tệp đính kèm: " + ((e as Error)?.message || "không rõ nguyên nhân"));
+  }
+
+  let prId: number;
+  try {
+    // Toàn bộ ghi DB trong MỘT transaction — lỗi giữa chừng sẽ rollback sạch.
+    prId = await withTransaction(async (exec) => {
+      const pr = await firstRow<{ id: number }>(
+        exec,
+        `INSERT INTO purchase_requests
+           (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
+            project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
+            customer_id, project_id, sales_order_ref, payment_count, payment_installments)
+         VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18, $19,$20) RETURNING id`,
+        [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
+         project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
+         customer_id, project_id, sales_order_ref,
+         payment_count, payment_installments ? JSON.stringify(payment_installments) : null]
       );
-    }
-    await logAudit(
-      { actorId: user.id, actorName: user.name, documentType: "PR", documentId: pr!.id, action: submit ? "Submit" : "Create", newValue: docNumber("PR", pr!.id) },
-      exec
-    );
-    return pr!.id;
-  });
+      await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
+
+      let line = 1;
+      for (const it of validItems) {
+        await exec(
+          `INSERT INTO purchase_request_items
+             (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, note, line_no)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, it.note || null, line++]
+        );
+      }
+      // Gắn tệp đã lưu vào PR (theo LOẠI chứng từ).
+      for (const sf of savedFiles) {
+        await exec(
+          `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
+           VALUES ('PR',$1,$2,$3,$4,$5,$6)`,
+          [pr!.id, sf.kind, sf.originalName, sf.storedName, user.id, sf.hash]
+        );
+      }
+      if (submit) {
+        await exec(
+          `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
+           VALUES ('PR',$1,$2,0,'Submitted','Submitted for approval')`,
+          [pr!.id, user.id]
+        );
+      }
+      await logAudit(
+        { actorId: user.id, actorName: user.name, documentType: "PR", documentId: pr!.id, action: submit ? "Submit" : "Create", newValue: docNumber("PR", pr!.id) },
+        exec
+      );
+      return pr!.id;
+    });
+  } catch (e) {
+    for (const sf of savedFiles) await removeFile(sf.storedName); // DB rollback → xóa tệp mồ côi
+    throw e;
+  }
 
   revalidatePath("/purchase-requests");
   redirect(`/purchase-requests/${prId}`);

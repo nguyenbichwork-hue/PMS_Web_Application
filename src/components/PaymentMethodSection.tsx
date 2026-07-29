@@ -21,24 +21,27 @@ export function PaymentMethodSection({ grandTotal }: { grandTotal: number }) {
   const [method, setMethod] = useState<string>(METHODS[0]);
   const [advance, setAdvance] = useState<string>("");
   const [count, setCount] = useState<number>(0);
-  const [amounts, setAmounts] = useState<number[]>([]);
+  // Mỗi lần thanh toán: số tiền + số ngày (kể từ ngày yêu cầu/đặt hàng).
+  const [rows, setRows] = useState<{ amount: number; days: number }[]>([]);
 
   const setCountSafe = (raw: string) => {
     // Chỉ số nguyên trong khoảng 0..9.
     const n = Math.max(0, Math.min(MAX_INSTALLMENTS, Math.floor(Number(raw) || 0)));
     setCount(n);
-    setAmounts((prev) => {
+    setRows((prev) => {
       const next = prev.slice(0, n);
-      while (next.length < n) next.push(0);
+      while (next.length < n) next.push({ amount: 0, days: 0 });
       return next;
     });
   };
   const setAmount = (i: number, raw: string) =>
-    setAmounts((prev) => prev.map((v, idx) => (idx === i ? Math.max(0, Number(raw) || 0) : v)));
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, amount: Math.max(0, Number(raw) || 0) } : r)));
+  const setDays = (i: number, raw: string) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, days: Math.max(0, Math.floor(Number(raw) || 0)) } : r)));
 
-  const sum = useMemo(() => amounts.reduce((s, v) => s + (Number(v) || 0), 0), [amounts]);
+  const sum = useMemo(() => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [rows]);
   const diff = grandTotal - sum;
-  const installmentsJson = count > 0 ? JSON.stringify(amounts) : "";
+  const installmentsJson = count > 0 ? JSON.stringify(rows) : "";
 
   return (
     <Card className="mt-4 p-6">
@@ -88,20 +91,36 @@ export function PaymentMethodSection({ grandTotal }: { grandTotal: number }) {
 
       {count > 0 && (
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="mb-2 text-xs font-medium text-slate-500">Số tiền từng lần thanh toán</div>
+          <div className="mb-2 text-xs font-medium text-slate-500">Số tiền & số ngày từng lần thanh toán</div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {amounts.map((v, i) => (
-              <Field key={i} label={`Lần ${i + 1}`}>
-                <input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={v || ""}
-                  onChange={(e) => setAmount(i, e.target.value)}
-                  className={yellowCls}
-                  placeholder="0"
-                />
-              </Field>
+            {rows.map((r, i) => (
+              <div key={i} className="rounded-lg border border-slate-200 p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-600">Lần {i + 1}</div>
+                <Field label="Số tiền">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={r.amount || ""}
+                    onChange={(e) => setAmount(i, e.target.value)}
+                    className={yellowCls}
+                    placeholder="0"
+                  />
+                </Field>
+                <div className="mt-2">
+                  <Field label="Số ngày (kể từ ngày đặt)">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={r.days || ""}
+                      onChange={(e) => setDays(i, e.target.value)}
+                      className={yellowCls}
+                      placeholder="VD: 30"
+                    />
+                  </Field>
+                </div>
+              </div>
             ))}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-500">

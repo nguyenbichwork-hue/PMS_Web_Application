@@ -52,12 +52,19 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
     `SELECT * FROM purchase_request_items WHERE pr_id = $1 ORDER BY line_no`,
     [prId]
   );
-  // Số tiền từng lần thanh toán: JSONB có thể về dạng mảng (pg) hoặc chuỗi (PGlite).
+  // Kế hoạch thanh toán từng lần: JSONB có thể về dạng mảng (pg) hoặc chuỗi (PGlite).
+  // Hỗ trợ cả định dạng mới {amount, days} lẫn định dạng cũ (chỉ số tiền).
   const rawInst = pr.payment_installments as unknown;
-  let installments: number[] = [];
+  let installments: { amount: number; days: number }[] = [];
   try {
     const parsed = typeof rawInst === "string" ? JSON.parse(rawInst) : rawInst;
-    if (Array.isArray(parsed)) installments = parsed.map((v) => Number(v) || 0);
+    if (Array.isArray(parsed)) {
+      installments = parsed.map((v) =>
+        v && typeof v === "object"
+          ? { amount: Number((v as { amount?: unknown }).amount) || 0, days: Number((v as { days?: unknown }).days) || 0 }
+          : { amount: Number(v) || 0, days: 0 }
+      );
+    }
   } catch { installments = []; }
   const history = await query<ApprovalRecord>(
     `SELECT ah.*, u.name AS approver_name
@@ -138,13 +145,14 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
             <div className="mt-4 rounded-lg border border-slate-200 p-3">
               <div className="mb-2 text-xs font-medium text-slate-500">Kế hoạch thanh toán {installments.length} lần</div>
               <div className="flex flex-wrap gap-2">
-                {installments.map((amt, i) => (
+                {installments.map((it, i) => (
                   <span key={i} className="rounded-md bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
-                    Lần {i + 1}: <b>{money(amt)}</b>
+                    Lần {i + 1}: <b>{money(it.amount)}</b>
+                    {it.days > 0 && <span className="text-slate-500"> · sau {it.days} ngày</span>}
                   </span>
                 ))}
                 <span className="rounded-md bg-brand-50 px-2.5 py-1 text-xs text-brand-700">
-                  Tổng: <b>{money(installments.reduce((s, v) => s + v, 0))}</b>
+                  Tổng: <b>{money(installments.reduce((s, v) => s + v.amount, 0))}</b>
                 </span>
               </div>
             </div>

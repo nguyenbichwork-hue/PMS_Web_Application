@@ -99,9 +99,9 @@ export interface PurchaseRequest {
   total_amount: number;   // tiền chưa thuế (net)
   vat_total: number;      // tổng thuế VAT
   current_level: number;
-  // Hình thức thanh toán nhiều lần (module riêng)
+  // Hình thức thanh toán nhiều lần (module riêng): mỗi lần {số tiền, số ngày}.
   payment_count?: number | null;
-  payment_installments?: number[] | null;
+  payment_installments?: { amount: number; days: number }[] | null;
   // joined
   requester_name?: string;
   company_name?: string;
