@@ -56,29 +56,41 @@ export async function uploadAttachmentAction(formData: FormData) {
   const documentType = String(formData.get("document_type") ?? "");
   const documentId = Number(formData.get("document_id"));
   const kind = String(formData.get("kind") ?? "") || null;
-  const file = formData.get("file") as File | null;
+  // Cho phép NHIỀU tệp cùng lúc (input multiple, name="file").
+  const files = formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
 
   if (!documentType || !documentId) throw new Error("Thiếu tham chiếu chứng từ.");
   await assertDocAccess(user, documentType, documentId);
-  if (!file || file.size === 0) throw new Error("Vui lòng chọn tệp.");
-  if (file.size > MAX_BYTES) throw new Error("Tệp vượt quá 10MB.");
+  if (files.length === 0) throw new Error("Vui lòng chọn tệp.");
+  for (const f of files) if (f.size > MAX_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 10MB.`);
 
-  // Băm SHA-256 nội dung tệp (UAT-17) — chặn đính kèm TRÙNG NỘI DUNG trên cùng
-  // chứng từ (vd tải nhầm cùng file hóa đơn 2 lần).
-  const hash = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
-  const dupFile = await queryOne<{ file_name: string }>(
-    `SELECT file_name FROM attachments WHERE document_type=$1 AND document_id=$2 AND file_hash=$3 LIMIT 1`,
-    [documentType, documentId, hash]
-  );
-  if (dupFile) throw new Error(`Tệp này đã được đính kèm (trùng nội dung với "${dupFile.file_name}").`);
+  let uploaded = 0;
+  const skipped: string[] = [];
+  const seen = new Set<string>();
+  for (const file of files) {
+    // Băm SHA-256 nội dung tệp (UAT-17) — chặn đính kèm TRÙNG NỘI DUNG trên cùng
+    // chứng từ (vd tải nhầm cùng file hóa đơn 2 lần).
+    const hash = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
+    if (seen.has(hash)) { skipped.push(file.name); continue; } // trùng trong cùng lần tải
+    seen.add(hash);
+    const dupFile = await queryOne<{ file_name: string }>(
+      `SELECT file_name FROM attachments WHERE document_type=$1 AND document_id=$2 AND file_hash=$3 LIMIT 1`,
+      [documentType, documentId, hash]
+    );
+    if (dupFile) { skipped.push(file.name); continue; }
 
-  const saved = await saveFile(file);
-  await query(
-    `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [documentType, documentId, kind, saved.originalName, saved.storedName, user.id, hash]
-  );
-  await logAudit({ actorId: user.id, actorName: user.name, documentType, documentId, action: "Attach", newValue: saved.originalName });
+    const saved = await saveFile(file);
+    await query(
+      `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [documentType, documentId, kind, saved.originalName, saved.storedName, user.id, hash]
+    );
+    await logAudit({ actorId: user.id, actorName: user.name, documentType, documentId, action: "Attach", newValue: saved.originalName });
+    uploaded++;
+  }
+  // Nếu KHÔNG tải được tệp nào (tất cả đều trùng) → báo lỗi để người dùng biết.
+  if (uploaded === 0 && skipped.length > 0)
+    throw new Error(`Các tệp đã đính kèm trước đó (trùng nội dung): ${skipped.join(", ")}.`);
 
   const base = PATHS[documentType];
   if (base) revalidatePath(`${base}/${documentId}`);

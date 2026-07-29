@@ -52,6 +52,13 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
     `SELECT * FROM purchase_request_items WHERE pr_id = $1 ORDER BY line_no`,
     [prId]
   );
+  // Số tiền từng lần thanh toán: JSONB có thể về dạng mảng (pg) hoặc chuỗi (PGlite).
+  const rawInst = pr.payment_installments as unknown;
+  let installments: number[] = [];
+  try {
+    const parsed = typeof rawInst === "string" ? JSON.parse(rawInst) : rawInst;
+    if (Array.isArray(parsed)) installments = parsed.map((v) => Number(v) || 0);
+  } catch { installments = []; }
   const history = await query<ApprovalRecord>(
     `SELECT ah.*, u.name AS approver_name
        FROM approval_history ah LEFT JOIN users u ON u.id = ah.approver_id
@@ -114,7 +121,9 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
               label="Hình thức thanh toán"
               value={
                 pr.payment_method
-                  ? pr.payment_method + (pr.payment_method === "Ứng trước" && pr.advance_percent ? ` (${Number(pr.advance_percent)}%)` : "")
+                  ? pr.payment_method +
+                    (pr.payment_method === "Ứng trước" && pr.advance_percent ? ` (${Number(pr.advance_percent)}%)` : "") +
+                    (pr.payment_count ? ` · ${pr.payment_count} lần` : "")
                   : "—"
               }
             />
@@ -124,6 +133,22 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
               <PriorityBadge priority={pr.priority} />
             </div>
           </div>
+
+          {installments.length > 0 && (
+            <div className="mt-4 rounded-lg border border-slate-200 p-3">
+              <div className="mb-2 text-xs font-medium text-slate-500">Kế hoạch thanh toán {installments.length} lần</div>
+              <div className="flex flex-wrap gap-2">
+                {installments.map((amt, i) => (
+                  <span key={i} className="rounded-md bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
+                    Lần {i + 1}: <b>{money(amt)}</b>
+                  </span>
+                ))}
+                <span className="rounded-md bg-brand-50 px-2.5 py-1 text-xs text-brand-700">
+                  Tổng: <b>{money(installments.reduce((s, v) => s + v, 0))}</b>
+                </span>
+              </div>
+            </div>
+          )}
 
           <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Chi tiết hàng hóa</h3>
           <div className="overflow-hidden rounded-lg border border-slate-200">

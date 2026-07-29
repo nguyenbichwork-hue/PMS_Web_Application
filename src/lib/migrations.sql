@@ -203,6 +203,10 @@ ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS requester_status  TEXT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_method    TEXT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS advance_percent   NUMERIC(6,2);
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS buyer             TEXT; -- Nhân viên mua hàng (ô vàng)
+-- Hình thức thanh toán: số lần thanh toán + số tiền từng lần (module riêng, spec 07/2026).
+-- payment_count = số lần trả (số nguyên, < 10); payment_installments = mảng JSON số tiền mỗi lần.
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_count        INT;
+ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_installments JSONB;
 
 -- ---------- PAYMENT REQUISITION (PRQ) — Đề nghị thanh toán (spec 07/2026) ----------
 -- Sinh tự động sau khi Manager DUYỆT PO. Một PRQ trả cho MỘT nhà cung cấp, gồm dòng

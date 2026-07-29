@@ -4,6 +4,7 @@ import { createPRAction } from "@/actions/pr";
 import { Card, Field, inputCls, Button } from "@/components/ui";
 import { SearchSelect, type SSOption } from "@/components/SearchSelect";
 import { CatalogPicker } from "@/components/CatalogPicker";
+import { PaymentMethodSection } from "@/components/PaymentMethodSection";
 import { money } from "@/lib/format";
 import type { Company, Product, Supplier } from "@/lib/types";
 
@@ -64,7 +65,8 @@ export function PRForm({
   // Modal "Chọn từ danh mục": biết đang mở cho dòng nào & loại nào.
   const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
   const [companyId, setCompanyId] = useState<number>(defaultCompanyId);
-  const [paymentMethod, setPaymentMethod] = useState<string>("Trả sau khi nhận hàng");
+  // Tệp đính kèm (BẮT BUỘC, cho phép nhiều tệp). Lưu tên để hiển thị + kiểm tra.
+  const [fileNames, setFileNames] = useState<string[]>([]);
   // Liên kết mua↔bán: chọn dự án tự điền mã công trình + gợi ý khách hàng.
   const [projectId, setProjectId] = useState<string>("");
   const [customerId, setCustomerId] = useState<string>("");
@@ -127,6 +129,12 @@ export function PRForm({
   const submit = (mode: "draft" | "submit") => (e: React.MouseEvent) => {
     e.preventDefault();
     const form = (e.currentTarget as HTMLElement).closest("form") as HTMLFormElement;
+    // Tệp đính kèm BẮT BUỘC: không có tệp thì không cho tạo PR (kể cả lưu nháp).
+    const fileInput = form.querySelector('input[name="files"]') as HTMLInputElement | null;
+    if (!fileInput?.files || fileInput.files.length === 0) {
+      alert("Vui lòng đính kèm ít nhất một tệp (báo giá/hợp đồng/chứng từ) trước khi tạo PR.");
+      return;
+    }
     const fd = new FormData(form);
     fd.set("items", JSON.stringify(lines.filter((l) => l.item_name.trim())));
     fd.set("submit", mode === "submit" ? "1" : "0");
@@ -214,24 +222,36 @@ export function PRForm({
               ))}
             </select>
           </Field>
-          <Field label="Hình thức thanh toán">
-            <select
-              name="payment_method"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className={yellowCls}
-            >
-              {["Trả sau khi nhận hàng", "Ứng trước", "Khác"].map((m) => (
-                <option key={m}>{m}</option>
-              ))}
-            </select>
-          </Field>
-          {paymentMethod === "Ứng trước" && (
-            <Field label="Tỷ lệ ứng trước (%)">
-              <input name="advance_percent" type="number" min={0} max={100} step={1} className={yellowCls} placeholder="VD: 30" />
-            </Field>
-          )}
         </div>
+      </Card>
+
+      {/* MODULE Hình thức thanh toán (tách riêng) — gồm số lần & số tiền từng lần. */}
+      <PaymentMethodSection grandTotal={grand} />
+
+      {/* Tệp đính kèm — BẮT BUỘC, cho phép nhiều tệp. */}
+      <Card className="mt-4 p-6">
+        <h3 className="mb-1 text-sm font-semibold text-slate-700">
+          Tệp đính kèm <span className="text-rose-500">*</span>
+        </h3>
+        <p className="mb-3 text-xs text-slate-500">
+          Bắt buộc đính kèm ít nhất một tệp (báo giá, hợp đồng, hình ảnh, chứng từ…). Có thể chọn nhiều tệp cùng lúc.
+        </p>
+        <input
+          type="file"
+          name="files"
+          multiple
+          onChange={(e) => setFileNames(Array.from(e.target.files ?? []).map((f) => f.name))}
+          className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+        />
+        {fileNames.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-xs text-slate-600">
+            {fileNames.map((n, i) => (
+              <li key={i} className="truncate rounded-md bg-slate-50 px-2 py-1">{n}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-xs text-amber-600">Chưa chọn tệp nào.</p>
+        )}
       </Card>
 
       <Card className="mt-4 p-6">
@@ -251,7 +271,7 @@ export function PRForm({
               <div className="grid gap-3 md:grid-cols-12">
                 <div className="md:col-span-4">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <label className="block text-xs font-medium text-slate-500">Sản phẩm (gõ mã/tên để tìm)</label>
+                    <label className="block text-xs font-medium text-slate-500">Chọn nhanh từ danh mục (tùy chọn)</label>
                     <button
                       type="button"
                       onClick={() => setPicker({ kind: "product", line: i })}
@@ -267,14 +287,17 @@ export function PRForm({
                     onChange={(code) => onPickProduct(i, code)}
                     placeholder="Tìm sản phẩm…"
                   />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Chỉ là gợi ý điền nhanh. Không có trong danh mục? Bỏ qua ô này và gõ trực tiếp vào “Tên hàng”.
+                  </p>
                 </div>
                 <div className="md:col-span-3">
-                  <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng (nhập tự do)</label>
                   <input
                     value={l.item_name}
                     onChange={(e) => setLine(i, { item_name: e.target.value })}
                     className={yellowCls}
-                    placeholder="Tên hàng hóa"
+                    placeholder="Nhập tên/mô tả hàng hóa cần mua"
                   />
                 </div>
                 <div className="md:col-span-1">

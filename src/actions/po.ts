@@ -162,33 +162,46 @@ export async function updatePOAction(formData: FormData) {
 }
 
 /**
- * MANAGER duyệt PO (quy trình 07/2026). PO Nháp → Đã duyệt, đồng thời SINH
- * Payment Requisition (PRQ) nháp từ PO rồi CHUYỂN sang PRQ để bổ sung thông tin
- * ngân hàng. Nguyên tử trong 1 transaction.
+ * Lõi DUYỆT PO trong MỘT transaction đang chạy (`exec`): chốt ngân sách dự án →
+ * chuyển PO 'Draft' → 'Approved' → ghi lịch sử/audit → sinh Đề nghị thanh toán
+ * (PRQ). Trả về prqId. Dùng chung cho:
+ *  - Duyệt PO thủ công (approvePOAction), và
+ *  - Auto-duyệt PO ngay khi PR được duyệt (spec 07/2026: PO không cần duyệt riêng).
+ */
+export async function autoApprovePO(
+  exec: Executor,
+  poId: number,
+  userId: number,
+  userName?: string | null
+): Promise<number> {
+  // Chốt ngân sách dự án TRƯỚC khi duyệt (nếu vượt → rollback, không duyệt).
+  await assertProjectBudget(exec, poId);
+  const upd = await firstRow<{ id: number }>(
+    exec,
+    `UPDATE purchase_orders SET status = 'Approved', updated_at = now()
+      WHERE id = $1 AND status = 'Draft' RETURNING id`,
+    [poId]
+  );
+  if (!upd) throw new Error("PO không ở trạng thái Nháp để duyệt (có thể đã được duyệt).");
+  await exec(
+    `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
+     VALUES ('PO',$1,$2,1,'Approved','PO approved')`,
+    [poId, userId]
+  );
+  await logAudit({ actorId: userId, actorName: userName ?? null, documentType: "PO", documentId: poId, action: "Approve" }, exec);
+  return generatePRQFromPO(poId, exec, userId);
+}
+
+/**
+ * MANAGER duyệt PO thủ công (dự phòng cho các PO Nháp còn sót). Quy trình chuẩn
+ * hiện auto-duyệt PO ngay khi PR được duyệt, nên nút này thường không cần dùng.
  */
 export async function approvePOAction(poId: number) {
   const user = await requireUser();
   if (!can(user.role, "po.approve")) throw new Error("FORBIDDEN");
   await assertPOAccess(user, poId);
 
-  const prqId = await withTransaction(async (exec) => {
-    // Chốt ngân sách dự án TRƯỚC khi duyệt (nếu vượt → rollback, không duyệt).
-    await assertProjectBudget(exec, poId);
-    const upd = await firstRow<{ id: number }>(
-      exec,
-      `UPDATE purchase_orders SET status = 'Approved', updated_at = now()
-        WHERE id = $1 AND status = 'Draft' RETURNING id`,
-      [poId]
-    );
-    if (!upd) throw new Error("PO không ở trạng thái Nháp để duyệt (có thể đã được duyệt).");
-    await exec(
-      `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
-       VALUES ('PO',$1,$2,1,'Approved','PO approved')`,
-      [poId, user.id]
-    );
-    await logAudit({ actorId: user.id, actorName: user.name, documentType: "PO", documentId: poId, action: "Approve" }, exec);
-    return generatePRQFromPO(poId, exec, user.id);
-  });
+  const prqId = await withTransaction((exec) => autoApprovePO(exec, poId, user.id, user.name));
 
   revalidatePath(`/purchase-orders/${poId}`);
   revalidatePath("/payment-requisitions");

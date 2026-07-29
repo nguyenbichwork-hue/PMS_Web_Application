@@ -31,7 +31,7 @@ export function AttachmentPanel({
 
   return (
     <Card className="p-5">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">📎 Tài liệu đính kèm</h3>
+      <h3 className="mb-3 text-sm font-semibold text-slate-700">Tài liệu đính kèm</h3>
 
       <ul className="mb-3 space-y-2">
         {attachments.map((a) => (
@@ -78,9 +78,10 @@ export function AttachmentPanel({
               <option key={k}>{k}</option>
             ))}
           </select>
-          <input type="file" name="file" required className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700" />
+          <input type="file" name="file" multiple required className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700" />
+          <p className="text-[11px] text-slate-400">Có thể chọn nhiều tệp cùng lúc.</p>
           <Button type="submit" disabled={pending} className="w-full justify-center">
-            {pending ? "Đang tải lên…" : "⬆ Tải lên"}
+            {pending ? "Đang tải lên…" : "Tải lên"}
           </Button>
         </form>
       )}

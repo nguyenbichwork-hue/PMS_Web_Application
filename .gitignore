@@ -16,3 +16,13 @@ cookies.txt
 scripts/gen-comparison-doc.mjs
 scripts/gen-update-doc.mjs
 scripts/gen-import-doc.mjs
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+
+!.env.example

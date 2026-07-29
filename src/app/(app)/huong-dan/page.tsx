@@ -22,19 +22,13 @@ const FLOW: FlowStep[] = [
   {
     role: "Nhân viên / Mua hàng",
     title: "Lập Yêu cầu mua (PR)",
-    detail: "Chọn công ty, dự án/công trình, khách hàng phục vụ, hình thức thanh toán (ứng trước %/trả sau); thêm dòng hàng + nhà cung cấp đề xuất; gửi phê duyệt.",
+    detail: "Chọn công ty, dự án/công trình, khách hàng phục vụ (nếu mua để bán lại — không bắt buộc), số đơn bán/HĐ bán; chọn hình thức thanh toán (module riêng: ứng trước %/trả sau + số lần thanh toán & số tiền mỗi lần); thêm dòng hàng (chọn danh mục chỉ là gợi ý, gõ tự do được) + nhà cung cấp đề xuất. BẮT BUỘC đính kèm ít nhất một tệp; gửi phê duyệt.",
   },
   {
     role: "Mua hàng",
     title: "Duyệt Yêu cầu mua",
     detail: "Kiểm tra nhu cầu, duyệt hoặc từ chối. Không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).",
-    auto: "Duyệt xong hệ thống tự sinh Đơn đặt hàng (PO) ở trạng thái Nháp — không phải gõ lại.",
-  },
-  {
-    role: "Quản lý",
-    title: "Duyệt Đơn đặt hàng (PO)",
-    detail: "Rà soát nhà cung cấp, số lượng, đơn giá. Nếu PO gắn dự án có ngân sách và tổng cam kết vượt ngân sách → hệ thống chặn duyệt.",
-    auto: "Duyệt xong hệ thống tự sinh Đề nghị thanh toán (PRQ) từ PO và mở luôn màn PRQ.",
+    auto: "Duyệt xong hệ thống tự sinh Đơn đặt hàng (PO) VÀ DUYỆT LUÔN PO (không cần bước duyệt PO riêng) — đồng thời chốt ngân sách dự án (vượt ngân sách sẽ chặn duyệt) và tự sinh Đề nghị thanh toán (PRQ).",
   },
   {
     role: "Kế toán",
@@ -98,9 +92,10 @@ export default async function GuidePage() {
         <>
           <Step n={1}>Vào <b>Yêu cầu mua → “+ Tạo yêu cầu”</b>.</Step>
           <Step n={2}>Chọn <b>công ty</b>, <b>dự án/công trình</b> (tự điền mã công trình + gợi ý khách hàng), <b>khách hàng</b> đơn phục vụ, <b>số đơn bán/HĐ bán</b>, mục đích, ưu tiên, ngày cần hàng.</Step>
-          <Step n={3}>Chọn <b>hình thức thanh toán</b> (trả sau / ứng trước — nếu ứng trước nhập tỷ lệ %).</Step>
-          <Step n={4}>Thêm từng dòng hàng: <b>gõ mã/tên</b> để tìm sản phẩm (tự điền tên/ĐVT/VAT), nhập số lượng & đơn giá dự kiến; hệ thống <b>gợi ý nhà cung cấp</b> theo lịch sử.</Step>
-          <Step n={5}>Bấm <b>“Lưu nháp”</b> hoặc <b>“Gửi phê duyệt”</b>. Có thể đính kèm báo giá ở trang chi tiết. Ô tô <b>vàng</b> là phần người yêu cầu điền.</Step>
+          <Step n={3}>Ở module <b>Hình thức thanh toán</b>: chọn trả sau / ứng trước (ứng trước nhập tỷ lệ %); có thể nhập <b>số lần thanh toán</b> (số nguyên, tối đa 9) rồi nhập <b>số tiền từng lần</b> — hệ thống đối chiếu tổng với giá trị đơn.</Step>
+          <Step n={4}>Thêm từng dòng hàng: ô <b>“Chọn nhanh từ danh mục”</b> chỉ là <b>gợi ý điền nhanh</b>; hàng không có trong danh mục thì <b>gõ trực tiếp vào “Tên hàng”</b>. Nhập số lượng & đơn giá dự kiến; hệ thống <b>gợi ý nhà cung cấp</b> theo lịch sử.</Step>
+          <Step n={5}><b>Bắt buộc đính kèm ít nhất một tệp</b> (báo giá/hợp đồng/hình ảnh/chứng từ — chọn nhiều tệp được) ngay trên form; không có tệp thì không tạo được PR.</Step>
+          <Step n={6}>Bấm <b>“Lưu nháp”</b> hoặc <b>“Gửi phê duyệt”</b>. Ô tô <b>vàng</b> là phần người yêu cầu điền.</Step>
         </>
       ),
     });
@@ -108,11 +103,11 @@ export default async function GuidePage() {
   if (has("pr.approve"))
     items.push({
       id: "approve", icon: "tasks", tone: "amber", title: "Phê duyệt yêu cầu mua (Mua hàng)",
-      summary: "Duyệt / từ chối — duyệt xong tự sinh PO",
+      summary: "Duyệt / từ chối — duyệt xong tự sinh & tự duyệt PO",
       content: (
         <>
           <p>Mở yêu cầu đang <b>Chờ duyệt</b>, xem chi tiết hàng hóa & giá trị.</p>
-          <p>Bấm <b>Duyệt</b> (kèm lý do) hoặc <b>Từ chối</b>. Khi duyệt, hệ thống <b>tự tạo Đơn đặt hàng (PO) nháp</b> chuyển sang bộ phận Quản lý.</p>
+          <p>Bấm <b>Duyệt</b> (kèm lý do) hoặc <b>Từ chối</b>. Khi duyệt, hệ thống <b>tự tạo Đơn đặt hàng (PO) và duyệt luôn PO</b> (không cần bước duyệt PO riêng), chốt <b>ngân sách dự án</b> rồi <b>tự sinh Đề nghị thanh toán (PRQ)</b>. Nếu tổng cam kết <b>vượt ngân sách</b> dự án → hệ thống <b>chặn duyệt</b> kèm số tiền.</p>
           <p>PR bị <b>Từ chối</b> có thể bấm <b>“Mở lại PR”</b> để trình duyệt lại từ đầu.</p>
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-700 ring-1 ring-inset ring-amber-100 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">
             <b>Phân tách nhiệm vụ:</b> bạn <b>không thể tự duyệt PR do chính mình tạo</b> — phải người khác duyệt.
@@ -124,13 +119,12 @@ export default async function GuidePage() {
   if (has("po.manage") || has("po.approve"))
     items.push({
       id: "po", icon: "po", tone: "indigo", title: "Đơn đặt hàng (PO)",
-      summary: "Duyệt, điều chỉnh khớp hóa đơn, xuất PDF/Excel",
+      summary: "Tự duyệt khi PR duyệt; điều chỉnh khớp hóa đơn, xuất PDF/Excel",
       content: (
         <>
-          <Step n={1}>Mở PO vừa được tạo tự động (trạng thái <b>Nháp</b>).</Step>
-          <Step n={2}><b>Quản lý</b> bấm <b>“Duyệt đơn hàng”</b>. Nếu PO gắn dự án có ngân sách và tổng cam kết <b>vượt ngân sách</b> → hệ thống <b>chặn duyệt</b> kèm số tiền. Duyệt xong hệ thống <b>tự sinh Đề nghị thanh toán</b>.</Step>
-          <Step n={3}>Có thể <b>“Xuất PDF / In”</b>, <b>Xuất Excel (mẫu MISA)</b>, <b>“Gửi cho nhà cung cấp”</b>, hoặc <b>“Nhà cung cấp xác nhận”</b>.</Step>
-          <Step n={4}>Cần hủy thì <b>“Hủy đơn hàng”</b> (ghi lý do).</Step>
+          <Step n={1}>PO được <b>tạo và duyệt tự động</b> ngay khi PR được duyệt — không cần bước duyệt PO thủ công. (Nút “Duyệt đơn hàng” chỉ còn là dự phòng cho PO Nháp còn sót.)</Step>
+          <Step n={2}>Có thể <b>“Xuất PDF / In”</b>, <b>Xuất Excel (mẫu MISA)</b>, <b>“Gửi cho nhà cung cấp”</b>, hoặc <b>“Nhà cung cấp xác nhận”</b>.</Step>
+          <Step n={3}>Cần hủy thì <b>“Hủy đơn hàng”</b> (ghi lý do).</Step>
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-white/[0.04] dark:ring-white/10">
             Có thể <b>sửa nội dung PO cho khớp hóa đơn điện tử</b> (số lượng/đơn giá) ở mọi trạng thái, <b>trừ khi đã Đóng/Hủy</b>. Mọi thay đổi được ghi lịch sử; sửa xong vào hóa đơn bấm <b>“Đối chiếu lại”</b>.
           </p>
@@ -248,7 +242,7 @@ export default async function GuidePage() {
         <ul className="ml-4 list-disc space-y-1">
           <li><b>Khách hàng</b> (Danh mục → Khách hàng): thêm/sửa khách; khi tạo PR chọn khách hàng + số đơn bán để biết <b>đơn mua phục vụ khách nào</b> — theo suốt sang PO.</li>
           <li><b>Dự án/Công trình</b> (Danh mục → Dự án): đặt <b>ngân sách</b> cho dự án. Trang dự án hiện <b>Ngân sách · Đã cam kết (PO) · Còn lại</b>.</li>
-          <li><b>Kiểm soát ngân sách:</b> khi duyệt PO thuộc dự án, nếu tổng cam kết <b>vượt ngân sách</b> → hệ thống <b>chặn duyệt</b>. Đặt ngân sách = 0 nghĩa là không kiểm soát.</li>
+          <li><b>Kiểm soát ngân sách:</b> khi duyệt PR (kéo theo tự duyệt PO) thuộc dự án, nếu tổng cam kết <b>vượt ngân sách</b> → hệ thống <b>chặn duyệt</b>. Đặt ngân sách = 0 nghĩa là không kiểm soát.</li>
           <li><b>Nhập/Xuất Excel:</b> cả Khách hàng và Dự án đều có nút <b>“Nhập Excel”</b> và <b>“Xuất Excel”</b> (giống Nhà cung cấp/Hàng hóa) — xuất ra rồi nhập lại được; trùng mã sẽ cập nhật.</li>
         </ul>
       ),
@@ -321,7 +315,7 @@ export default async function GuidePage() {
           Hệ thống số hóa toàn bộ chuỗi mua hàng theo nguyên tắc <b>“nhập một lần”</b> — dữ liệu chảy tự động xuống các bước sau, không phải gõ lại:
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] font-semibold">
-          {["Yêu cầu mua", "Duyệt (Mua hàng)", "Đơn đặt hàng (tự sinh)", "Duyệt (Quản lý)", "Đề nghị thanh toán (tự sinh)", "Nhận hàng", "Hóa đơn & đối chiếu", "Thanh toán"].map((s, i, arr) => (
+          {["Yêu cầu mua", "Duyệt (Mua hàng)", "Đơn đặt hàng (tự sinh + tự duyệt)", "Đề nghị thanh toán (tự sinh)", "Nhận hàng", "Hóa đơn & đối chiếu", "Thanh toán"].map((s, i, arr) => (
             <span key={s} className="flex items-center gap-2">
               <span className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 ring-1 ring-inset ring-brand-100 dark:bg-brand-500/12 dark:text-brand-300 dark:ring-brand-500/20">{s}</span>
               {i < arr.length - 1 && <span className="text-slate-300">→</span>}

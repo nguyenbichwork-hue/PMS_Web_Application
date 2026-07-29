@@ -1,13 +1,18 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createHash } from "node:crypto";
 import { query, queryOne, withTransaction, firstRow } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany, isCrossCompanyApprover } from "@/lib/access";
 import { docNumber } from "@/lib/numbering";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { generatePOFromPR } from "@/lib/po-generate";
+import { autoApprovePO } from "@/actions/po";
+import { saveFile } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
+
+const MAX_ATTACH_BYTES = 10 * 1024 * 1024; // 10MB / tệp
 
 interface ItemInput {
   item_code?: string;
@@ -48,6 +53,24 @@ export async function createPRAction(formData: FormData) {
   const customer_id = formData.get("customer_id") ? Number(formData.get("customer_id")) : null;
   const project_id = formData.get("project_id") ? Number(formData.get("project_id")) : null;
   const sales_order_ref = String(formData.get("sales_order_ref") ?? "").trim() || null;
+  // Hình thức thanh toán nhiều lần: số lần (số nguyên < 10) + số tiền mỗi lần.
+  const rawCount = String(formData.get("payment_count") ?? "").trim();
+  let payment_count: number | null = null;
+  let payment_installments: number[] | null = null;
+  if (rawCount !== "") {
+    const n = Math.floor(Number(rawCount));
+    if (!Number.isInteger(n) || n < 1 || n > 9) throw new Error("Số lần thanh toán phải là số nguyên từ 1 đến 9.");
+    let arr: unknown = [];
+    try { arr = JSON.parse(String(formData.get("payment_installments") ?? "[]")); } catch { arr = []; }
+    const amounts = (Array.isArray(arr) ? arr : []).map((v) => Math.max(0, Number(v) || 0)).slice(0, n);
+    while (amounts.length < n) amounts.push(0);
+    payment_count = n;
+    payment_installments = amounts;
+  }
+  // Tệp đính kèm BẮT BUỘC (cho phép nhiều). Không có tệp → không cho tạo PR.
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) throw new Error("Bắt buộc đính kèm ít nhất một tệp trước khi tạo PR.");
+  for (const f of files) if (f.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 10MB.`);
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
@@ -75,11 +98,12 @@ export async function createPRAction(formData: FormData) {
       `INSERT INTO purchase_requests
          (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
           project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-          customer_id, project_id, sales_order_ref)
-       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18) RETURNING id`,
+          customer_id, project_id, sales_order_ref, payment_count, payment_installments)
+       VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18, $19,$20) RETURNING id`,
       [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
        project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-       customer_id, project_id, sales_order_ref]
+       customer_id, project_id, sales_order_ref,
+       payment_count, payment_installments ? JSON.stringify(payment_installments) : null]
     );
     await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 
@@ -90,6 +114,20 @@ export async function createPRAction(formData: FormData) {
            (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, note, line_no)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, it.note || null, line++]
+      );
+    }
+    // Lưu tệp đính kèm (đã kiểm bắt buộc ở trên) — băm SHA-256 để chống trùng nội dung.
+    const seenHashes = new Set<string>();
+    for (const f of files) {
+      const buf = Buffer.from(await f.arrayBuffer());
+      const hash = createHash("sha256").update(buf).digest("hex");
+      if (seenHashes.has(hash)) continue; // bỏ tệp trùng trong cùng lần tải
+      seenHashes.add(hash);
+      const saved = await saveFile(f);
+      await exec(
+        `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
+         VALUES ('PR',$1,$2,$3,$4,$5,$6)`,
+        [pr!.id, "Khác", saved.originalName, saved.storedName, user.id, hash]
       );
     }
     if (submit) {
@@ -177,13 +215,18 @@ export async function approvePRAction(prId: number, comment: string) {
     );
 
     if (newLevel >= chain.length) {
-      // Fully approved → auto-generate the PO draft (cùng transaction).
-      await generatePOFromPR(prId, exec);
+      // Duyệt xong PR → sinh PO rồi DUYỆT LUÔN PO (không cần bước duyệt PO riêng,
+      // spec 07/2026). Auto-approve kèm chốt ngân sách dự án + sinh Đề nghị thanh
+      // toán (PRQ). Tất cả trong CÙNG transaction — vượt ngân sách sẽ rollback cả
+      // bước duyệt PR.
+      const poId = await generatePOFromPR(prId, exec);
+      await autoApprovePO(exec, poId, user.id, user.name);
     }
   });
 
   revalidatePath(`/purchase-requests/${prId}`);
   revalidatePath("/purchase-orders");
+  revalidatePath("/payment-requisitions");
 }
 
 export async function rejectPRAction(prId: number, comment: string) {
