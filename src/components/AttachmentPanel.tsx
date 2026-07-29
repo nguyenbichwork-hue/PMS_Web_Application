@@ -64,9 +64,13 @@ export function AttachmentPanel({
           ref={formRef}
           action={(fd) =>
             start(async () => {
-              await uploadAttachmentAction(fd);
-              formRef.current?.reset();
-              router.refresh();
+              try {
+                await uploadAttachmentAction(fd);
+                formRef.current?.reset();
+                router.refresh();
+              } catch (e) {
+                alert((e as Error)?.message || "Lỗi khi tải lên tài liệu. Vui lòng thử lại.");
+              }
             })
           }
           className="space-y-2 border-t border-slate-100 pt-3"

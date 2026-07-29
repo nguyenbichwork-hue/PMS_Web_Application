@@ -138,7 +138,12 @@ export function PRForm({
     const fd = new FormData(form);
     fd.set("items", JSON.stringify(lines.filter((l) => l.item_name.trim())));
     fd.set("submit", mode === "submit" ? "1" : "0");
-    createPRAction(fd);
+    createPRAction(fd).catch((err: unknown) => {
+      // Thành công thì action tự redirect (ném NEXT_REDIRECT) — bỏ qua tín hiệu đó.
+      const digest = (err as { digest?: string })?.digest;
+      if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return;
+      alert((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.");
+    });
   };
 
   return (

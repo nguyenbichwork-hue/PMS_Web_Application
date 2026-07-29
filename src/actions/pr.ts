@@ -9,7 +9,7 @@ import { docNumber } from "@/lib/numbering";
 import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { generatePOFromPR } from "@/lib/po-generate";
 import { autoApprovePO } from "@/actions/po";
-import { saveFile } from "@/lib/storage";
+import { saveBuffer } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
 
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024; // 10MB / tệp
@@ -68,7 +68,9 @@ export async function createPRAction(formData: FormData) {
     payment_installments = amounts;
   }
   // Tệp đính kèm BẮT BUỘC (cho phép nhiều). Không có tệp → không cho tạo PR.
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  // Lưu ý: KHÔNG dùng `instanceof File` — trong Server Action, tệp có thể không
+  // phải instance của global File → lọc theo "không phải chuỗi" cho chắc.
+  const files = formData.getAll("files").filter((f): f is File => typeof f !== "string" && !!f && (f as File).size > 0);
   if (files.length === 0) throw new Error("Bắt buộc đính kèm ít nhất một tệp trước khi tạo PR.");
   for (const f of files) if (f.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 10MB.`);
 
@@ -123,7 +125,7 @@ export async function createPRAction(formData: FormData) {
       const hash = createHash("sha256").update(buf).digest("hex");
       if (seenHashes.has(hash)) continue; // bỏ tệp trùng trong cùng lần tải
       seenHashes.add(hash);
-      const saved = await saveFile(f);
+      const saved = await saveBuffer(buf, f.name || "file");
       await exec(
         `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
          VALUES ('PR',$1,$2,$3,$4,$5,$6)`,

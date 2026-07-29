@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { query, queryOne } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
-import { saveFile, removeFile } from "@/lib/storage";
+import { saveBuffer, removeFile } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
 
 const PATHS: Record<string, string> = {
@@ -57,7 +57,9 @@ export async function uploadAttachmentAction(formData: FormData) {
   const documentId = Number(formData.get("document_id"));
   const kind = String(formData.get("kind") ?? "") || null;
   // Cho phép NHIỀU tệp cùng lúc (input multiple, name="file").
-  const files = formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+  // KHÔNG dùng `instanceof File` — trong Server Action tệp có thể không phải
+  // instance của global File; lọc theo "không phải chuỗi" cho chắc chắn.
+  const files = formData.getAll("file").filter((f): f is File => typeof f !== "string" && !!f && (f as File).size > 0);
 
   if (!documentType || !documentId) throw new Error("Thiếu tham chiếu chứng từ.");
   await assertDocAccess(user, documentType, documentId);
@@ -70,7 +72,8 @@ export async function uploadAttachmentAction(formData: FormData) {
   for (const file of files) {
     // Băm SHA-256 nội dung tệp (UAT-17) — chặn đính kèm TRÙNG NỘI DUNG trên cùng
     // chứng từ (vd tải nhầm cùng file hóa đơn 2 lần).
-    const hash = createHash("sha256").update(Buffer.from(await file.arrayBuffer())).digest("hex");
+    const buf = Buffer.from(await file.arrayBuffer());
+    const hash = createHash("sha256").update(buf).digest("hex");
     if (seen.has(hash)) { skipped.push(file.name); continue; } // trùng trong cùng lần tải
     seen.add(hash);
     const dupFile = await queryOne<{ file_name: string }>(
@@ -79,7 +82,7 @@ export async function uploadAttachmentAction(formData: FormData) {
     );
     if (dupFile) { skipped.push(file.name); continue; }
 
-    const saved = await saveFile(file);
+    const saved = await saveBuffer(buf, file.name || "file");
     await query(
       `INSERT INTO attachments (document_type, document_id, kind, file_name, file_url, uploaded_by, file_hash)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,

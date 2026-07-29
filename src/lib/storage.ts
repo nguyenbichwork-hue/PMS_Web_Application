@@ -12,13 +12,23 @@ export interface SavedFile {
   size: number;
 }
 
+/** Sinh tên lưu duy nhất (chống trùng khi lưu NHIỀU tệp trong cùng mili-giây). */
+function uniqueName(originalName: string): string {
+  const safe = (originalName || "file").replace(/[^\w.\- ]/g, "_").slice(0, 80);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${Date.now()}-${rand}-${safe}`;
+}
+
 export async function saveFile(file: File): Promise<SavedFile> {
+  return saveBuffer(Buffer.from(await file.arrayBuffer()), file.name || "file");
+}
+
+/** Lưu từ Buffer đã đọc sẵn — tránh đọc `File.arrayBuffer()` hai lần (hash + ghi). */
+export async function saveBuffer(buf: Buffer, originalName: string): Promise<SavedFile> {
   await fs.mkdir(DIR, { recursive: true });
-  const buf = Buffer.from(await file.arrayBuffer());
-  const safe = (file.name || "file").replace(/[^\w.\- ]/g, "_").slice(0, 80);
-  const storedName = `${Date.now()}-${safe}`;
+  const storedName = uniqueName(originalName);
   await fs.writeFile(path.join(DIR, storedName), buf);
-  return { storedName, originalName: file.name || safe, size: buf.length };
+  return { storedName, originalName: originalName || "file", size: buf.length };
 }
 
 export async function readFile(storedName: string): Promise<Buffer> {
