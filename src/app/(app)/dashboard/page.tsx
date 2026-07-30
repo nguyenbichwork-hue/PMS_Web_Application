@@ -125,35 +125,10 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Thẻ số liệu — phẳng, icon line trong ô tint */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        {CARDS_META.map((c) => (
-          <Link
-            key={c.key}
-            href={c.href}
-            className="lift rounded-2xl border border-slate-200/70 bg-white p-4 hover:border-slate-300"
-          >
-            <div className="flex items-center justify-between">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${TILE[c.tone]}`}>
-                <Icon name={c.icon} size={20} />
-              </span>
-            </div>
-            <div className="mt-3 text-3xl font-bold tracking-tight text-slate-900">{values[c.key]}</div>
-            <div className="mt-0.5 text-[13px] font-medium text-slate-500">{c.label}</div>
-          </Link>
-        ))}
-      </div>
-
-      <DashboardCharts
-        byMonth={byMonth.map((r) => ({ m: r.m, total: Number(r.total) }))}
-        bySupplier={bySupplier.map((r) => ({ name: r.name, total: Number(r.total) }))}
-        byCompany={byCompany.map((r) => ({ name: r.name, total: Number(r.total) }))}
-      />
-
-      {/* Bình luận gần đây — theo dõi ai đã bình luận chứng từ nào, cần làm gì */}
-      <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white p-6">
+      {/* Bình luận gần đây — ĐƯA LÊN ĐẦU để theo dõi ngay ai bình luận chứng từ nào, cần làm gì */}
+      <div className="mb-6 rounded-2xl border border-slate-200/70 bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">💬 Bình luận gần đây</h2>
+          <h2 className="text-base font-semibold text-slate-800">Bình luận gần đây</h2>
           <span className="text-xs text-slate-400">{comments.length ? `${comments.length} mới nhất` : ""}</span>
         </div>
         {comments.length === 0 ? (
@@ -189,6 +164,31 @@ export default async function DashboardPage() {
           </ul>
         )}
       </div>
+
+      {/* Thẻ số liệu — phẳng, icon line trong ô tint */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        {CARDS_META.map((c) => (
+          <Link
+            key={c.key}
+            href={c.href}
+            className="lift rounded-2xl border border-slate-200/70 bg-white p-4 hover:border-slate-300"
+          >
+            <div className="flex items-center justify-between">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${TILE[c.tone]}`}>
+                <Icon name={c.icon} size={20} />
+              </span>
+            </div>
+            <div className="mt-3 text-3xl font-bold tracking-tight text-slate-900">{values[c.key]}</div>
+            <div className="mt-0.5 text-[13px] font-medium text-slate-500">{c.label}</div>
+          </Link>
+        ))}
+      </div>
+
+      <DashboardCharts
+        byMonth={byMonth.map((r) => ({ m: r.m, total: Number(r.total) }))}
+        bySupplier={bySupplier.map((r) => ({ name: r.name, total: Number(r.total) }))}
+        byCompany={byCompany.map((r) => ({ name: r.name, total: Number(r.total) }))}
+      />
     </div>
   );
 }
