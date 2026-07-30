@@ -57,13 +57,16 @@ export async function writeInvoiceAllocations(
     if (!po && inv.description) po = byDesc.get(matchKey(inv.description));
 
     const priceStatus = po ? (near(inv.unitPrice, po.unitPrice, priceTol) ? "PASS" : "FAIL") : "FAIL";
+    // SL chỉ để CÂN NHẮC (không chặn): mọi sai lệch → WARNING. NHẬN HÀNG (GR) là
+    // TÙY CHỌN — chỉ đối chiếu SL đã nhận khi thực sự có dữ liệu GR (recv > 0).
     let qtyStatus = "PASS";
     if (po) {
       const recv = po.receivedQty;
-      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "FAIL";
-      else if (recv != null && inv.quantity > recv + 1e-9) qtyStatus = "FAIL";
-      else if (recv != null && inv.quantity < recv - 1e-9) qtyStatus = "WARNING";
-      else if (recv == null && inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING";
+      const hasGR = recv != null && recv > 1e-9;
+      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "WARNING";           // nhiều hơn SL đặt → cân nhắc
+      else if (hasGR && inv.quantity > recv! + 1e-9) qtyStatus = "WARNING";   // nhiều hơn SL đã nhận → cân nhắc
+      else if (hasGR && inv.quantity < recv! - 1e-9) qtyStatus = "WARNING";   // ít hơn SL đã nhận
+      else if (!hasGR && inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING"; // hóa đơn từng phần (chưa có GR)
     }
     let vatStatus = "PASS";
     if (po && inv.vatRate != null && po.vatRate != null) vatStatus = Math.abs(inv.vatRate - po.vatRate) <= 0.01 ? "PASS" : "WARNING";

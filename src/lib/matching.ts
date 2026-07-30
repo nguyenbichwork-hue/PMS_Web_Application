@@ -2,7 +2,9 @@
 // ĐỘNG CƠ ĐỐI CHIẾU Hóa đơn ↔ PO (logic thuần, KHÔNG chạm DB).
 // 4 phép kiểm, mỗi phép trả PASS / WARNING / FAIL:
 //   1) NHÀ CUNG CẤP : NCC hóa đơn == NCC trên PO
-//   2) SỐ LƯỢNG     : SL hóa đơn ≤ SL đã nhận (GR) và ≤ SL đặt trên PO
+//   2) SỐ LƯỢNG     : chỉ CÂN NHẮC (WARNING, không FAIL) — bên mình không trực tiếp
+//                     quản lý kho; NHẬN HÀNG (GR) là TÙY CHỌN, chỉ đối chiếu SL đã
+//                     nhận khi có dữ liệu GR (receivedQty > 0).
 //   3) ĐƠN GIÁ      : giá TỪNG DÒNG (map hóa đơn→PO theo mã/tên) == giá PO
 //   4) TỔNG TIỀN    : tổng hóa đơn == tổng kỳ vọng (chia tỷ lệ nếu từng phần)
 // (kèm kiểm VAT khi có dữ liệu VAT).
@@ -134,15 +136,16 @@ export function reconcileLines(
     if (po) { matchedLines++; usedPo.add(po); }
 
     const priceStatus: CheckResult = po ? cmp(inv.unitPrice, po.unitPrice, priceTol) : "FAIL";
-    // SL: đúng đặc tả §11.4 — so với SL ĐÃ NHẬN (GRN) chưa xuất HĐ nếu biết, đồng
-    // thời không vượt SL ĐẶT trên PO. Chưa có dữ liệu GRN → tạm so với SL đặt.
+    // SL chỉ để CÂN NHẮC (không chặn): mọi sai lệch → WARNING. NHẬN HÀNG (GR) là
+    // TÙY CHỌN — chỉ đối chiếu SL đã nhận khi thực sự có dữ liệu GR (recv > 0).
     let qtyStatus: CheckResult = "PASS";
     if (po) {
       const recv = po.receivedQty;
-      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "FAIL";              // vượt SL đặt
-      else if (recv != null && inv.quantity > recv + 1e-9) qtyStatus = "FAIL"; // vượt SL đã nhận
-      else if (recv != null && inv.quantity < recv - 1e-9) qtyStatus = "WARNING"; // nhận nhiều hơn HĐ (từng phần)
-      else if (recv == null && inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING";
+      const hasGR = recv != null && recv > 1e-9;
+      if (inv.quantity > po.quantity + 1e-9) qtyStatus = "WARNING";            // nhiều hơn SL đặt → cân nhắc
+      else if (hasGR && inv.quantity > recv! + 1e-9) qtyStatus = "WARNING";    // nhiều hơn SL đã nhận → cân nhắc
+      else if (hasGR && inv.quantity < recv! - 1e-9) qtyStatus = "WARNING";    // ít hơn SL đã nhận (từng phần)
+      else if (!hasGR && inv.quantity < po.quantity - 1e-9) qtyStatus = "WARNING"; // hóa đơn từng phần (chưa có GR)
     }
     let vatStatus: CheckResult = "PASS";
     if (po && inv.vatRate != null && po.vatRate != null) {
@@ -234,21 +237,24 @@ export function evaluateMatch(input: MatchInput): {
     });
   }
 
-  // CHECK 2 — Số lượng: không vượt SL trên PO và không vượt SL đã thực nhận (GR).
-  // Áp NGƯỠNG số lượng (qtyTol) nếu được cấu hình.
+  // CHECK 2 — Số lượng (CHỈ CÂN NHẮC, KHÔNG chặn cứng). Bên mình KHÔNG trực tiếp
+  // quản lý kho nên: (a) mọi sai lệch SL để mức CẢNH BÁO (WARNING) để người dùng
+  // cân nhắc, không đánh FAIL; (b) NHẬN HÀNG (GR) là TÙY CHỌN — chỉ đối chiếu với
+  // SL đã nhận KHI có dữ liệu GR (receivedQty > 0). Áp ngưỡng qtyTol nếu cấu hình.
+  const hasGR = input.receivedQty > 1e-9;
   if (input.invoiceQty > input.poQty * (1 + qtyTol) + 1e-9) {
     checks.push({
       check_name: "Quantity",
-      result: "FAIL",
-      reason: `SL hóa đơn (${input.invoiceQty}) vượt SL đặt trên PO (${input.poQty}).`,
+      result: "WARNING",
+      reason: `Cân nhắc: SL hóa đơn (${input.invoiceQty}) nhiều hơn SL đặt trên PO (${input.poQty}).`,
     });
-  } else if (input.invoiceQty > input.receivedQty * (1 + qtyTol) + 1e-9) {
+  } else if (hasGR && input.invoiceQty > input.receivedQty * (1 + qtyTol) + 1e-9) {
     checks.push({
       check_name: "Quantity",
-      result: "FAIL",
-      reason: `SL hóa đơn (${input.invoiceQty}) vượt SL đã nhận (${input.receivedQty}).`,
+      result: "WARNING",
+      reason: `Cân nhắc: SL hóa đơn (${input.invoiceQty}) nhiều hơn SL đã nhận (${input.receivedQty}).`,
     });
-  } else if (input.invoiceQty < input.receivedQty - 1e-9) {
+  } else if (hasGR && input.invoiceQty < input.receivedQty - 1e-9) {
     checks.push({
       check_name: "Quantity",
       result: "WARNING",
@@ -258,7 +264,9 @@ export function evaluateMatch(input: MatchInput): {
     checks.push({
       check_name: "Quantity",
       result: "PASS",
-      reason: `SL hóa đơn khớp SL đã nhận (${input.receivedQty}).`,
+      reason: hasGR
+        ? `SL hóa đơn khớp SL đã nhận (${input.receivedQty}).`
+        : `SL hóa đơn không vượt SL đặt trên PO (chưa có phiếu nhận hàng để đối chiếu — không bắt buộc).`,
     });
   }
 
