@@ -6,19 +6,21 @@ import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { saveBuffer, removeFile } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
+import { runAction, type ActionResult } from "@/lib/action-result";
 
 const PATHS: Record<string, string> = {
   PR: "/purchase-requests",
   PO: "/purchase-orders",
   Invoice: "/invoices",
+  PRQ: "/payment-requisitions",
 };
 
 // Quyền tối thiểu để đính kèm/xóa theo từng loại chứng từ.
-const MANAGE_PERM: Record<string, string> = { PR: "pr.create", PO: "po.manage", Invoice: "invoice.manage" };
+const MANAGE_PERM: Record<string, string> = { PR: "pr.create", PO: "po.manage", Invoice: "invoice.manage", PRQ: "prq.manage" };
 // Bảng chứa company_id của chứng từ (whitelist cố định — an toàn để nội suy tên bảng).
-const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices" };
+const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices", PRQ: "payment_requisitions" };
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_BYTES = 30 * 1024 * 1024; // 30MB / tệp
 
 /** Kiểm quyền + scope công ty cho chứng từ mà file đính kèm trỏ tới (chống việc
  *  bất kỳ user đăng nhập nào cũng đính kèm/xóa file trên chứng từ công ty khác). */
@@ -51,7 +53,8 @@ async function assertDocAccess(
   if (companyId != null && !canAccessCompany(user as never, companyId)) throw new Error("FORBIDDEN");
 }
 
-export async function uploadAttachmentAction(formData: FormData) {
+export async function uploadAttachmentAction(formData: FormData): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   const documentType = String(formData.get("document_type") ?? "");
   const documentId = Number(formData.get("document_id"));
@@ -64,7 +67,7 @@ export async function uploadAttachmentAction(formData: FormData) {
   if (!documentType || !documentId) throw new Error("Thiếu tham chiếu chứng từ.");
   await assertDocAccess(user, documentType, documentId);
   if (files.length === 0) throw new Error("Vui lòng chọn tệp.");
-  for (const f of files) if (f.size > MAX_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 10MB.`);
+  for (const f of files) if (f.size > MAX_BYTES) throw new Error(`Tệp "${f.name}" vượt quá 30MB.`);
 
   let uploaded = 0;
   const skipped: string[] = [];
@@ -97,15 +100,17 @@ export async function uploadAttachmentAction(formData: FormData) {
 
   const base = PATHS[documentType];
   if (base) revalidatePath(`${base}/${documentId}`);
+ });
 }
 
-export async function deleteAttachmentAction(attachmentId: number) {
+export async function deleteAttachmentAction(attachmentId: number): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   const att = await queryOne<{ document_type: string; document_id: number; file_url: string; file_name: string }>(
     `SELECT document_type, document_id, file_url, file_name FROM attachments WHERE id = $1`,
     [attachmentId]
   );
-  if (!att) return;
+  if (!att) return; // đã bị xóa trước đó — coi như thành công
   await assertDocAccess(user, att.document_type, att.document_id);
   await query(`DELETE FROM attachments WHERE id = $1`, [attachmentId]);
   await removeFile(att.file_url);
@@ -113,4 +118,5 @@ export async function deleteAttachmentAction(attachmentId: number) {
 
   const base = PATHS[att.document_type];
   if (base) revalidatePath(`${base}/${att.document_id}`);
+ });
 }

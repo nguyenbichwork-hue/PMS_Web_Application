@@ -978,7 +978,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
 
   // ⚠️ TẠM (demo): xóa TOÀN BỘ lịch sử chứng từ, giữ tài khoản + danh mục.
   const clearHistory = () => {
-    if (!confirm("⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt.\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo.")) return;
+    if (!confirm("⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Đề nghị thanh toán · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm (kể cả tệp trên kho) · Thông báo · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt, dự án, khách hàng.\nSố chứng từ sẽ chạy LẠI TỪ ĐẦU (PR-2026-00001…).\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo.")) return;
     if (!confirm("Xác nhận LẦN 2: xóa sạch toàn bộ chứng từ để làm lại demo?")) return;
     setAuto(false);
     start(async () => {
@@ -1060,8 +1060,8 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
           <div>
             <h4 className="text-sm font-semibold text-rose-700">⚠️ Khu vực nguy hiểm · reset demo</h4>
             <p className="mt-0.5 text-xs text-rose-600/80">
-              Xóa TOÀN BỘ chứng từ (PR/PO/Nhận hàng/Hóa đơn/Thanh toán/Lịch sử/Bình luận/Nhật ký).
-              Giữ tài khoản + danh mục. Dùng để làm lại demo từ đầu — <b>không hoàn tác được</b>.
+              Xóa TOÀN BỘ chứng từ (PR/PO/Nhận hàng/Hóa đơn/Đề nghị thanh toán/Thanh toán/Lịch sử/Bình luận/Đính kèm/Thông báo/Nhật ký)
+              và <b>reset số về đầu</b> (PR-2026-00001…). Giữ tài khoản + danh mục. Làm lại demo từ đầu — <b>không hoàn tác được</b>.
             </p>
           </div>
           <button

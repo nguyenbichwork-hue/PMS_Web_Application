@@ -40,8 +40,10 @@ const nextConfig = {
     "/**": ["./src/lib/schema.sql", "./src/lib/migrations.sql"],
   },
   experimental: {
-    // Cho phép upload file Excel qua Server Action (mặc định chỉ 1MB).
-    serverActions: { bodySizeLimit: "15mb" },
+    // Cho phép upload tệp qua Server Action (mặc định chỉ 1MB). Giới hạn MỖI tệp
+    // là 30MB (kiểm ở attachment.ts/pr.ts); đặt cap request ở 60MB để một tệp 30MB
+    // (kèm dữ liệu form / vài tệp nhỏ) luôn qua được lớp framework trước khi kiểm.
+    serverActions: { bodySizeLimit: "60mb" },
   },
   // Đặt security headers cho MỌI route.
   async headers() {

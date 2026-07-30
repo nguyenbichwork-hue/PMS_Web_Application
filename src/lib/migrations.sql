@@ -137,6 +137,9 @@ ALTER TABLE approval_history ADD  CONSTRAINT ah_status_check_v2
 -- ---------- FILE HASH chống trùng tệp đính kèm (UAT-17) ----------
 ALTER TABLE attachments ADD COLUMN IF NOT EXISTS file_hash TEXT;
 CREATE INDEX IF NOT EXISTS idx_attachments_hash ON attachments(file_hash);
+-- Tệp đính kèm được map theo (loại chứng từ, id chứng từ) — index để trang chi tiết
+-- PR/PO/PRQ/Hóa đơn lấy đúng tệp của mình nhanh (thay vì quét toàn bảng).
+CREATE INDEX IF NOT EXISTS idx_attachments_doc ON attachments(document_type, document_id);
 
 -- ---------- CREDIT NOTE (§14): giảm nghĩa vụ của hóa đơn ----------
 CREATE TABLE IF NOT EXISTS credit_notes (

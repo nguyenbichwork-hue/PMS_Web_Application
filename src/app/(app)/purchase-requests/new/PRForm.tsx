@@ -140,12 +140,17 @@ export function PRForm({
     const fd = new FormData(form);
     fd.set("items", JSON.stringify(lines.filter((l) => l.item_name.trim())));
     fd.set("submit", mode === "submit" ? "1" : "0");
-    createPRAction(fd).catch((err: unknown) => {
-      // Thành công thì action tự redirect (ném NEXT_REDIRECT) — bỏ qua tín hiệu đó.
-      const digest = (err as { digest?: string })?.digest;
-      if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return;
-      alert((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.");
-    });
+    // Thành công → action tự redirect (ném NEXT_REDIRECT, bỏ qua). Lỗi nghiệp vụ
+    // được TRẢ VỀ { ok:false, error } (không throw) nên hiển thị được ở production.
+    createPRAction(fd)
+      .then((res) => {
+        if (res && !res.ok) alert(res.error);
+      })
+      .catch((err: unknown) => {
+        const digest = (err as { digest?: string })?.digest;
+        if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return;
+        alert((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.");
+      });
   };
 
   return (
@@ -232,15 +237,9 @@ export function PRForm({
         </div>
       </Card>
 
-      {/* MODULE Hình thức thanh toán (tách riêng) — gồm số lần, số tiền & số ngày từng lần. */}
-      <PaymentMethodSection grandTotal={grand} />
-
-      {/* MODULE Tệp đính kèm theo LOẠI chứng từ — BẮT BUỘC ít nhất một tệp. */}
-      <AttachmentUploadSection />
-
       <Card className="mt-4 p-6">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">Chi tiết hàng hóa</h3>
+          <h3 className="text-base font-semibold text-slate-800">Chi tiết hàng hóa</h3>
           <Button variant="secondary" onClick={() => setLines((p) => [...p, { ...emptyLine }])}>
             + Thêm dòng
           </Button>
@@ -405,16 +404,25 @@ export function PRForm({
           })}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-4">
-          <div className="mr-auto text-sm text-slate-500">
-            <div>Tiền hàng: <b className="text-slate-800">{money(subtotal)}</b> · VAT: <b className="text-slate-800">{money(vatTotal)}</b></div>
-            <div>Tổng gồm thuế: <b className="text-lg text-slate-900">{money(grand)}</b></div>
-          </div>
-          <Button variant="secondary" onClick={submit("draft")}>
-            Lưu nháp
-          </Button>
-          <Button onClick={submit("submit")}>Gửi phê duyệt</Button>
+        <div className="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-500">
+          <div>Tiền hàng: <b className="text-slate-800">{money(subtotal)}</b> · VAT: <b className="text-slate-800">{money(vatTotal)}</b></div>
+          <div>Tổng gồm thuế: <b className="text-lg text-slate-900">{money(grand)}</b></div>
         </div>
+      </Card>
+
+      {/* MODULE Hình thức thanh toán — đặt SAU chi tiết hàng để đã có tổng tiền khi đối chiếu số lần/số tiền từng lần. */}
+      <PaymentMethodSection grandTotal={grand} />
+
+      {/* MODULE Tệp đính kèm theo LOẠI chứng từ — BẮT BUỘC ít nhất một tệp. */}
+      <AttachmentUploadSection />
+
+      {/* Thanh GỬI — luôn ở CUỐI, sau khi đã nhập hàng → thanh toán → đính kèm. */}
+      <Card className="mt-4 flex flex-wrap items-center justify-end gap-3 p-6">
+        <div className="mr-auto text-sm text-slate-600">
+          Tổng gồm thuế: <b className="text-lg text-slate-900">{money(grand)}</b>
+        </div>
+        <Button variant="secondary" onClick={submit("draft")}>Lưu nháp</Button>
+        <Button onClick={submit("submit")}>Gửi phê duyệt</Button>
       </Card>
 
       {/* Bảng chọn HÀNG HÓA đầy đủ chi tiết */}

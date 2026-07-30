@@ -29,7 +29,7 @@ export function POActions({
 
   return (
     <Card className="p-5">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">Thao tác</h3>
+      <h3 className="mb-3 text-base font-semibold text-slate-800">Thao tác</h3>
       <div className="space-y-2">
         {/* Hành động chính: duyệt đơn hàng */}
         {canApprove && status === "Draft" && (

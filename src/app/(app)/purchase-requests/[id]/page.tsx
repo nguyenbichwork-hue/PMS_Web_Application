@@ -158,7 +158,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
             </div>
           )}
 
-          <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Chi tiết hàng hóa</h3>
+          <h3 className="mb-2 mt-6 text-base font-semibold text-slate-800">Chi tiết hàng hóa</h3>
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full">
               <thead className="bg-slate-50">
@@ -214,7 +214,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
 
           {linkedPO && (
             <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-              ✅ PO đã được tự động tạo:{" "}
+              PO đã được tự động tạo:{" "}
               <Link href={`/purchase-orders/${linkedPO.id}`} className="font-semibold underline">
                 {linkedPO.po_number}
               </Link>
@@ -227,7 +227,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
             Xem chuỗi chứng từ
           </Link>
           <Card className="p-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">Luồng phê duyệt</h3>
+            <h3 className="mb-3 text-base font-semibold text-slate-800">Luồng phê duyệt</h3>
             <ol className="space-y-2">
               {chain.map((role, i) => {
                 const done = i < pr.current_level;
@@ -276,7 +276,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
 
 
           <Card className="p-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">Lịch sử phê duyệt</h3>
+            <h3 className="mb-3 text-base font-semibold text-slate-800">Lịch sử phê duyệt</h3>
             <ul className="space-y-3">
               {history.map((h) => (
                 <li key={h.id} className="border-l-2 border-slate-200 pl-3 text-sm">
@@ -302,8 +302,8 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="font-medium text-slate-800">{value ?? "—"}</div>
+      <div className="text-[13px] text-slate-500">{label}</div>
+      <div className="text-[15px] font-medium text-slate-800">{value ?? "—"}</div>
     </div>
   );
 }

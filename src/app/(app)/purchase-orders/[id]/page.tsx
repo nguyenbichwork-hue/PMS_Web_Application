@@ -99,7 +99,7 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
               <Info label="Số đơn bán / HĐ bán" value={po.sales_order_ref} />
             </div>
 
-            <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-700">Chi tiết đơn hàng</h3>
+            <h3 className="mb-2 mt-6 text-base font-semibold text-slate-800">Chi tiết đơn hàng</h3>
             <div className="overflow-hidden rounded-lg border border-slate-200">
               <table className="w-full">
                 <thead className="bg-slate-50">
@@ -141,7 +141,7 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
 
           {changes.length > 0 && (
             <Card className="p-5">
-              <h3 className="mb-3 text-sm font-semibold text-slate-700">Lịch sử điều chỉnh</h3>
+              <h3 className="mb-3 text-base font-semibold text-slate-800">Lịch sử điều chỉnh</h3>
               <ul className="space-y-2 text-sm">
                 {changes.map((c) => (
                   <li key={c.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -162,8 +162,12 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
 
         <div className="space-y-4">
           <Card className="p-5">
-            <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
-            <p className="mb-3 text-xs text-slate-400">Mẫu MISA (34 cột) — 🟡 người tạo điền · 🟢 kế toán bổ sung sau.</p>
+            <h3 className="mb-1 text-base font-semibold text-slate-800">Xuất chứng từ</h3>
+            <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
+              <span>Mẫu MISA (34 cột).</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> người tạo điền</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> kế toán bổ sung sau</span>
+            </p>
             <ExportButton href={`/export/po-misa/${poId}`} label="Xuất Excel (mẫu MISA)" />
             <Link href={`/document-chain?doc=PO&id=${poId}`} className="mt-2 block text-center text-sm font-medium text-brand-600 hover:underline">
               Xem chuỗi chứng từ
@@ -174,9 +178,9 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
 
           {prq && (
             <Card className="p-5">
-              <h3 className="mb-1 text-sm font-semibold text-slate-700">Đề nghị thanh toán</h3>
+              <h3 className="mb-1 text-base font-semibold text-slate-800">Đề nghị thanh toán</h3>
               <Link href={`/payment-requisitions/${prq.id}`} className="text-sm font-medium text-teal-600 hover:underline">
-                💸 {prq.prq_number ?? `PRQ-${prq.id}`} →
+                {prq.prq_number ?? `PRQ-${prq.id}`} →
               </Link>
             </Card>
           )}
@@ -221,8 +225,8 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="font-medium text-slate-800">{value ?? "—"}</div>
+      <div className="text-[13px] text-slate-500">{label}</div>
+      <div className="text-[15px] font-medium text-slate-800">{value ?? "—"}</div>
     </div>
   );
 }

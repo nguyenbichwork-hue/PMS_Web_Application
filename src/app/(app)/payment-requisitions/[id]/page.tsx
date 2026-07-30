@@ -8,6 +8,7 @@ import { money, date } from "@/lib/format";
 import { amountInWordsVi } from "@/lib/num-to-words-vi";
 import { PRQEditor, type PRQLine } from "./PRQEditor";
 import { PRQActions } from "./PRQActions";
+import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
 
 interface PRQHead {
   id: number;
@@ -70,6 +71,13 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
       )
     : [];
 
+  const attachments = await query<AttachmentItem>(
+    `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+       FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+      WHERE a.document_type='PRQ' AND a.document_id=$1 ORDER BY a.id DESC`,
+    [prqId]
+  );
+
   const canManage = !!(user && can(user.role, "prq.manage"));
   const canApprove = !!(user && can(user.role, "prq.approve"));
   const editable = canManage && prq.status === "Draft";
@@ -111,7 +119,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
             <PRQEditor key={lines.map((l) => `${l.id}:${l.amount}:${l.vat_rate ?? ""}`).join("|")} prq={prq} lines={lines} addablePOs={addablePOs} />
           ) : (
             <Card className="p-5">
-              <h3 className="mb-3 text-sm font-semibold text-slate-700">Chi tiết dòng thanh toán</h3>
+              <h3 className="mb-3 text-base font-semibold text-slate-800">Chi tiết dòng thanh toán</h3>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50">
@@ -144,12 +152,14 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
 
         <div className="space-y-4">
           <Card className="p-5">
-            <h3 className="mb-1 text-sm font-semibold text-slate-700">Xuất chứng từ</h3>
+            <h3 className="mb-1 text-base font-semibold text-slate-800">Xuất chứng từ</h3>
             <p className="mb-3 text-xs text-slate-400">Điền vào mẫu Payment Requisition của công ty (.xlsx) để ký.</p>
             <ExportButton href={`/export/prq/${prqId}`} label="Xuất Excel (mẫu PRQ)" />
           </Card>
 
           <PRQActions prqId={prqId} status={prq.status} canManage={canManage} canApprove={canApprove} />
+
+          <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />
 
           <Card className="p-5 text-xs text-slate-500">
             <p>PRQ được sinh tự động khi Manager duyệt PO. Có thể gộp nhiều PO cùng nhà cung cấp, sửa số tiền để thanh toán từng phần, rồi xuất Excel để ký & nộp cùng hồ sơ (hợp đồng, hóa đơn, PO, biên bản…).</p>
@@ -163,8 +173,8 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="font-medium text-slate-800">{value ?? "—"}</div>
+      <div className="text-[13px] text-slate-500">{label}</div>
+      <div className="text-[15px] font-medium text-slate-800">{value ?? "—"}</div>
     </div>
   );
 }

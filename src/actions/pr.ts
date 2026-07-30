@@ -12,8 +12,9 @@ import { autoApprovePO } from "@/actions/po";
 import { saveBuffer, removeFile } from "@/lib/storage";
 import { PR_ATTACHMENT_TYPES } from "@/lib/attachment-types";
 import { logAudit } from "@/lib/audit";
+import { runAction, type ActionResult } from "@/lib/action-result";
 
-const MAX_ATTACH_BYTES = 10 * 1024 * 1024; // 10MB / tệp
+const MAX_ATTACH_BYTES = 30 * 1024 * 1024; // 30MB / tệp
 
 interface ItemInput {
   item_code?: string;
@@ -28,7 +29,12 @@ interface ItemInput {
   note?: string;
 }
 
-export async function createPRAction(formData: FormData) {
+export async function createPRAction(formData: FormData): Promise<ActionResult> {
+  // Lỗi nghiệp vụ (validation, lưu tệp, DB) được TRẢ VỀ để production không xóa
+  // message. Chỉ redirect() ở cuối được phép throw (NEXT_REDIRECT) — nó nằm
+  // NGOÀI try nên propagate bình thường để điều hướng.
+  let prId: number | undefined;
+  try {
   const user = await requireUser();
   if (!can(user.role, "pr.create")) throw new Error("FORBIDDEN");
 
@@ -82,7 +88,7 @@ export async function createPRAction(formData: FormData) {
     }
   }
   if (pickedFiles.length === 0) throw new Error("Bắt buộc đính kèm ít nhất một tệp (theo loại chứng từ) trước khi tạo PR.");
-  for (const { file } of pickedFiles) if (file.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${file.name}" vượt quá 10MB.`);
+  for (const { file } of pickedFiles) if (file.size > MAX_ATTACH_BYTES) throw new Error(`Tệp "${file.name}" vượt quá 30MB.`);
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
@@ -121,7 +127,6 @@ export async function createPRAction(formData: FormData) {
     throw new Error("Lỗi khi lưu tệp đính kèm: " + ((e as Error)?.message || "không rõ nguyên nhân"));
   }
 
-  let prId: number;
   try {
     // Toàn bộ ghi DB trong MỘT transaction — lỗi giữa chừng sẽ rollback sạch.
     prId = await withTransaction(async (exec) => {
@@ -175,10 +180,16 @@ export async function createPRAction(formData: FormData) {
   }
 
   revalidatePath("/purchase-requests");
-  redirect(`/purchase-requests/${prId}`);
+  } catch (e) {
+    console.error("[createPRAction]", e);
+    const raw = e instanceof Error ? e.message : "";
+    return { ok: false, error: raw === "FORBIDDEN" ? "Bạn không có quyền tạo PR." : raw || "Không tạo được PR." };
+  }
+  redirect(`/purchase-requests/${prId!}`);
 }
 
-export async function submitPRAction(prId: number) {
+export async function submitPRAction(prId: number): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   const pr = await queryOne<{ requester_id: number; status: string; company_id: number | null }>(
     `SELECT requester_id, status, company_id FROM purchase_requests WHERE id = $1`,
@@ -194,9 +205,11 @@ export async function submitPRAction(prId: number) {
   );
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PR", documentId: prId, action: "Submit" });
   revalidatePath(`/purchase-requests/${prId}`);
+ });
 }
 
-export async function approvePRAction(prId: number, comment: string) {
+export async function approvePRAction(prId: number, comment: string): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
 
@@ -257,9 +270,11 @@ export async function approvePRAction(prId: number, comment: string) {
   revalidatePath(`/purchase-requests/${prId}`);
   revalidatePath("/purchase-orders");
   revalidatePath("/payment-requisitions");
+ });
 }
 
-export async function rejectPRAction(prId: number, comment: string) {
+export async function rejectPRAction(prId: number, comment: string): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
   const pr = await queryOne<{ current_level: number; status: string; company_id: number | null }>(
@@ -276,12 +291,14 @@ export async function rejectPRAction(prId: number, comment: string) {
   );
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PR", documentId: prId, action: "Reject", newValue: comment || "Rejected" });
   revalidatePath(`/purchase-requests/${prId}`);
+ });
 }
 
 /** Mở lại PR đã BỊ TỪ CHỐI → đưa về 'Pending Approval', duyệt lại từ đầu
  *  (current_level = 0). Chỉ vai trò có quyền duyệt (Manager/Finance/Admin) và
  *  cùng công ty. Ghi 1 dòng lịch sử 'Reopened' + audit; KHÔNG đụng bình luận. */
-export async function reopenPRAction(prId: number, comment: string) {
+export async function reopenPRAction(prId: number, comment: string): Promise<ActionResult> {
+ return runAction(async () => {
   const user = await requireUser();
   if (!can(user.role, "pr.approve")) throw new Error("FORBIDDEN");
   const pr = await queryOne<{ status: string; company_id: number | null }>(
@@ -308,4 +325,5 @@ export async function reopenPRAction(prId: number, comment: string) {
     );
   });
   revalidatePath(`/purchase-requests/${prId}`);
+ });
 }

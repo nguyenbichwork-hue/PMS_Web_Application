@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { query, withTransaction, type Executor } from "@/lib/db";
+import { removeFile } from "@/lib/storage";
 import { pushLocalRealUsers, deleteRemoteUser } from "@/lib/accounts";
 import { requireUser, can } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
@@ -467,35 +468,48 @@ export async function clearAuditLogAction(): Promise<{ ok: boolean; deleted: num
   return { ok: true, deleted: rows.length };
 }
 
-// ⚠️ TẠM THỜI (tiện làm demo) — Xóa TOÀN BỘ lịch sử chứng từ: PR/PO/GR/Hóa đơn/
-// thanh toán/lịch sử duyệt/điều chỉnh/bình luận/đính kèm/nhật ký. GIỮ NGUYÊN tài
-// khoản + danh mục (công ty, NCC, hàng hóa, ngưỡng duyệt). Chỉ ADMIN. Khi hết cần
-// demo có thể bỏ action này + nút trong Cấu hình → Nhật ký.
+// ⚠️ TẠM THỜI (tiện làm demo) — Xóa TOÀN BỘ lịch sử chứng từ: PR/PO/Nhận hàng/
+// Hóa đơn/Đề nghị thanh toán/Thanh toán/lịch sử duyệt/điều chỉnh/bình luận/đính kèm/
+// thông báo/nhật ký. GIỮ NGUYÊN tài khoản + danh mục (công ty, NCC, hàng hóa, ngưỡng
+// duyệt, dự án, khách hàng). Chỉ ADMIN. Khi hết cần demo có thể bỏ action này + nút.
 export async function clearAllHistoryAction(): Promise<{ ok: boolean; error?: string }> {
   const admin = await requireUser();
   if (!can(admin.role, "settings.manage")) return { ok: false, error: "Chỉ Quản trị được dùng chức năng này." };
-  // Danh sách bảng CỐ ĐỊNH (whitelist) — xóa theo thứ tự con → cha, trong 1 transaction.
+  // Danh sách bảng NGHIỆP VỤ (whitelist cố định) cần reset. GIỮ tài khoản + danh mục.
   const TABLES = [
-    "invoice_matching", "invoice_items", "payments", "invoices",
+    "invoice_matching", "invoice_line_allocation", "invoice_items", "credit_notes", "payments", "invoices",
+    "payment_requisition_items", "payment_requisitions",
     "goods_receipt_items", "goods_receipts",
     "po_change_history", "purchase_order_items", "purchase_orders",
     "purchase_request_items", "purchase_requests",
-    "approval_history", "comments", "attachments", "audit_log",
+    "approval_history", "comments", "attachments", "notifications", "audit_log",
   ];
   try {
-    // Chỉ xóa bảng THỰC SỰ tồn tại (vd bảng `comments` có thể chưa migrate nếu
-    // server chưa restart) — tránh cả transaction hỏng vì 1 bảng chưa có.
+    // Chỉ đụng bảng THỰC SỰ tồn tại (vd bảng mới có thể chưa migrate nếu server
+    // chưa restart) — tránh TRUNCATE hỏng vì một bảng chưa có.
     const present = await query<{ tablename: string }>(
       `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename = ANY($1::text[])`,
       [TABLES]
     );
-    const existing = new Set(present.map((r) => r.tablename));
-    await withTransaction(async (exec) => {
-      for (const t of TABLES) if (existing.has(t)) await exec(`DELETE FROM ${t}`);
-    });
+    const existing = TABLES.filter((t) => present.some((r) => r.tablename === t));
+    if (existing.length === 0) return { ok: true };
+
+    // Dọn TỆP vật lý trên kho (Supabase/ổ đĩa) trước — best-effort, không chặn reset
+    // nếu một vài tệp xóa lỗi (mạng/đã mất). Làm trước khi bảng attachments bị xóa.
+    if (existing.includes("attachments")) {
+      try {
+        const files = await query<{ file_url: string }>(`SELECT file_url FROM attachments`);
+        await Promise.allSettled(files.map((f) => removeFile(f.file_url)));
+      } catch (e) { console.error("[clearAllHistory] dọn tệp kho lỗi (bỏ qua):", e); }
+    }
+
+    // TRUNCATE ... RESTART IDENTITY: vừa xóa sạch, vừa RESET bộ đếm id → số chứng từ
+    // (PR-2026-00001, PO-2026-00001…) chạy lại từ đầu cho demo trông sạch. CASCADE để
+    // không phải lo thứ tự khóa ngoại giữa các bảng con/cha trong danh sách.
+    await query(`TRUNCATE TABLE ${existing.join(", ")} RESTART IDENTITY CASCADE`);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Xóa thất bại." };
   }
-  for (const p of ["/dashboard", "/purchase-requests", "/purchase-orders", "/goods-receipts", "/invoices", "/settings", "/my-tasks"]) revalidatePath(p);
+  for (const p of ["/dashboard", "/purchase-requests", "/purchase-orders", "/goods-receipts", "/invoices", "/payment-requisitions", "/reconciliation", "/settings", "/my-tasks"]) revalidatePath(p);
   return { ok: true };
 }

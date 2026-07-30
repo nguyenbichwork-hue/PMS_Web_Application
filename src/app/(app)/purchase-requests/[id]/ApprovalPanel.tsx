@@ -2,20 +2,23 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { approvePRAction, rejectPRAction, reopenPRAction } from "@/actions/pr";
+import type { ActionResult } from "@/lib/action-result";
 import { Card, Button, inputCls } from "@/components/ui";
 
-/** Hook nhỏ: chạy 1 action, refresh khi xong, hiện lỗi nếu có. */
+/** Hook nhỏ: chạy 1 action (trả ActionResult), refresh khi xong, hiện lỗi nếu có. */
 function useAction() {
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
-  const run = (fn: () => Promise<void>) => () => {
+  const run = (fn: () => Promise<ActionResult>) => () => {
     setErr(null);
     start(async () => {
       try {
-        await fn();
+        const res = await fn();
+        if (res && !res.ok) { setErr(res.error); return; }
         router.refresh();
       } catch (e) {
+        // Dự phòng (vd lỗi mạng) — lỗi nghiệp vụ đã đi qua nhánh res.error ở trên.
         setErr(e instanceof Error ? e.message : "Có lỗi xảy ra");
       }
     });
@@ -29,7 +32,7 @@ export function ApprovalPanel({ prId }: { prId: number }) {
 
   return (
     <Card className="border-amber-200 bg-amber-50 p-5">
-      <h3 className="mb-2 text-sm font-semibold text-amber-800">Bạn cần phê duyệt PR này</h3>
+      <h3 className="mb-2 text-base font-semibold text-amber-800">Bạn cần phê duyệt PR này</h3>
       <textarea
         value={comment}
         onChange={(e) => setComment(e.target.value)}
@@ -57,7 +60,7 @@ export function ReopenButton({ prId }: { prId: number }) {
 
   return (
     <Card className="border-sky-200 bg-sky-50 p-5">
-      <h3 className="mb-2 text-sm font-semibold text-sky-800">PR đã bị từ chối</h3>
+      <h3 className="mb-2 text-base font-semibold text-sky-800">PR đã bị từ chối</h3>
       <p className="mb-2 text-xs text-sky-700/80">Mở lại để trình duyệt lại từ đầu (trạng thái → Chờ duyệt).</p>
       <textarea
         value={reason}
