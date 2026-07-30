@@ -21,6 +21,7 @@ interface Line {
   estimated_price: number;
   vat_rate: number;
   supplier_suggestion: number | "";
+  supplier_text: string; // NCC nhập tay khi chưa có trong danh mục
   note: string;
 }
 
@@ -33,6 +34,7 @@ const emptyLine: Line = {
   estimated_price: 0,
   vat_rate: 10,
   supplier_suggestion: "",
+  supplier_text: "",
   note: "",
 };
 
@@ -249,11 +251,11 @@ export function PRForm({
             const sugg = suggFor(l.item_code);
             return (
             <div key={i} className="rounded-xl border border-slate-200 p-4">
-              {/* Hàng 1: sản phẩm + tên rộng rãi, các ô số gọn bên phải */}
+              {/* Hàng 1: Mã hàng hóa/dịch vụ + TÊN HÀNG (rộng, hiển thị hết nội dung) */}
               <div className="grid gap-3 md:grid-cols-12">
                 <div className="md:col-span-4">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <label className="block text-xs font-medium text-slate-500">Chọn nhanh từ danh mục (tùy chọn)</label>
+                    <label className="block text-xs font-medium text-slate-500">Mã hàng hóa, dịch vụ</label>
                     <button
                       type="button"
                       onClick={() => setPicker({ kind: "product", line: i })}
@@ -267,23 +269,27 @@ export function PRForm({
                     options={productOpts}
                     value={l.item_code}
                     onChange={(code) => onPickProduct(i, code)}
-                    placeholder="Tìm sản phẩm…"
+                    placeholder="Chọn mã hàng hóa/dịch vụ…"
                   />
                   <p className="mt-1 text-[11px] text-slate-400">
-                    Chỉ là gợi ý điền nhanh. Không có trong danh mục? Bỏ qua ô này và gõ trực tiếp vào “Tên hàng”.
+                    Không có trong danh mục? Bỏ qua ô này và gõ trực tiếp vào “Tên hàng”.
                   </p>
                 </div>
-                <div className="md:col-span-3">
-                  <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng (nhập tự do)</label>
+                <div className="md:col-span-8">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Tên hàng hóa / dịch vụ (nhập tự do)</label>
                   <input
                     value={l.item_name}
                     onChange={(e) => setLine(i, { item_name: e.target.value })}
                     className={yellowCls}
-                    placeholder="Nhập tên/mô tả hàng hóa cần mua"
+                    placeholder="Nhập đầy đủ tên/mô tả hàng hóa, dịch vụ cần mua"
                   />
                 </div>
-                <div className="md:col-span-1">
-                  <label className="mb-1 block text-xs font-medium text-slate-500">SL</label>
+              </div>
+
+              {/* Hàng 2: các ô số */}
+              <div className="mt-3 grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Số lượng</label>
                   <input
                     type="number"
                     min={0}
@@ -292,7 +298,7 @@ export function PRForm({
                     className={yellowCls}
                   />
                 </div>
-                <div className="md:col-span-1">
+                <div className="md:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-slate-500">ĐVT</label>
                   <input
                     value={l.unit}
@@ -300,7 +306,7 @@ export function PRForm({
                     className={yellowCls}
                   />
                 </div>
-                <div className="md:col-span-1">
+                <div className="md:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-slate-500">VAT %</label>
                   <input
                     type="number"
@@ -312,7 +318,7 @@ export function PRForm({
                     className={yellowCls}
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="md:col-span-3">
                   <label className="mb-1 block text-xs font-medium text-slate-500">Đơn giá dự kiến</label>
                   <input
                     type="number"
@@ -342,7 +348,13 @@ export function PRForm({
                     options={supplierOpts}
                     value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
                     onChange={(v) => setLine(i, { supplier_suggestion: v ? Number(v) : "" })}
-                    placeholder="Tìm NCC…"
+                    placeholder="Tìm NCC trong danh mục…"
+                  />
+                  <input
+                    value={l.supplier_text}
+                    onChange={(e) => setLine(i, { supplier_text: e.target.value })}
+                    className={yellowCls + " mt-2"}
+                    placeholder="Hoặc nhập tên NCC khác (chưa có trong danh mục)"
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 md:col-span-8 md:pt-6">

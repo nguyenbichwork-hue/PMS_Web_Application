@@ -112,7 +112,7 @@ export default async function ReconciliationPage() {
           { label: "Chưa ghép PO", value: noPo, tone: "rose" },
         ]}
       />
-      <ReconClient rows={rows} />
+      <ReconClient rows={rows} currentUserId={user?.id ?? null} isAdmin={user?.role === "Admin"} />
     </div>
   );
 }

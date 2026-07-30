@@ -36,6 +36,20 @@ async function assertDocAccess(
   return companyId;
 }
 
+/** Lấy danh sách bình luận của một chứng từ (kiểm quyền theo công ty). */
+export async function listCommentsAction(
+  documentType: string,
+  documentId: number
+): Promise<{ id: number; author_id: number | null; author_name: string | null; body: string; created_at: string }[]> {
+  const user = await requireUser();
+  await assertDocAccess(user, documentType, documentId);
+  return query(
+    `SELECT id, author_id, author_name, body, created_at
+       FROM comments WHERE document_type = $1 AND document_id = $2 ORDER BY id`,
+    [documentType, documentId]
+  );
+}
+
 export async function addCommentAction(formData: FormData) {
   const user = await requireUser();
   const documentType = String(formData.get("document_type") ?? "");

@@ -176,7 +176,12 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
                 {items.map((it) => (
                   <tr key={it.id}>
                     <Td>{it.item_code ?? "—"}</Td>
-                    <Td>{it.item_name}</Td>
+                    <Td>
+                      {it.item_name}
+                      {it.supplier_text && (
+                        <span className="mt-0.5 block text-[11px] text-slate-400">NCC (nhập tay): {it.supplier_text}</span>
+                      )}
+                    </Td>
                     <Td className="text-right">{Number(it.quantity)}</Td>
                     <Td>{it.unit}</Td>
                     <Td className="text-right">{money(it.estimated_price)}</Td>

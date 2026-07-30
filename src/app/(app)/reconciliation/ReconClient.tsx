@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, Th, Td, EmptyState } from "@/components/ui";
 import { money } from "@/lib/format";
 import { reconcileLines, MATCH_CODE_LABEL, matchCodeTone, type MatchCode, type CheckResult, type ReconLine } from "@/lib/matching";
+import { ReconCommentBox } from "./ReconCommentBox";
 
 export interface ReconRowData {
   invoiceId: number;
@@ -86,7 +87,15 @@ function DetailTable({ row }: { row: ReconRowData }) {
   );
 }
 
-export function ReconClient({ rows }: { rows: ReconRowData[] }) {
+export function ReconClient({
+  rows,
+  currentUserId,
+  isAdmin,
+}: {
+  rows: ReconRowData[];
+  currentUserId?: number | null;
+  isAdmin?: boolean;
+}) {
   const [filter, setFilter] = useState<MatchCode | "ALL" | "ISSUES">("ALL");
   const [open, setOpen] = useState<Record<number, boolean>>({});
 
@@ -139,19 +148,15 @@ export function ReconClient({ rows }: { rows: ReconRowData[] }) {
                   <Fragment key={r.invoiceId}>
                     <tr className="border-b border-slate-100 align-top hover:bg-slate-50/60">
                       <Td className="text-center">
-                        {hasPo ? (
-                          <button
-                            type="button"
-                            onClick={() => setOpen((o) => ({ ...o, [r.invoiceId]: !o[r.invoiceId] }))}
-                            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100"
-                            title="Xem đối chiếu từng dòng"
-                            aria-expanded={isOpen}
-                          >
-                            {isOpen ? "−" : "+"}
-                          </button>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setOpen((o) => ({ ...o, [r.invoiceId]: !o[r.invoiceId] }))}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100"
+                          title="Xem đối chiếu từng dòng & bình luận"
+                          aria-expanded={isOpen}
+                        >
+                          {isOpen ? "−" : "+"}
+                        </button>
                       </Td>
                       <Td>
                         <Link href={`/invoices/${r.invoiceId}`} className="font-medium text-brand-600 hover:underline">{r.invoiceNumber}</Link>
@@ -172,10 +177,15 @@ export function ReconClient({ rows }: { rows: ReconRowData[] }) {
                       <Td className="text-right tabular-nums text-slate-500">{hasPo ? money(r.poTotal) : "—"}</Td>
                       <Td><CodeBadge code={r.code} /></Td>
                     </tr>
-                    {isOpen && hasPo && (
+                    {isOpen && (
                       <tr className="border-b border-slate-100 bg-slate-50/50">
                         <Td colSpan={7}>
-                          <div className="p-2"><DetailTable row={r} /></div>
+                          <div className="p-2">
+                            {hasPo ? <DetailTable row={r} /> : (
+                              <p className="text-xs text-slate-400">Hóa đơn chưa ghép PO — chưa có đối chiếu từng dòng.</p>
+                            )}
+                            <ReconCommentBox invoiceId={r.invoiceId} currentUserId={currentUserId} isAdmin={isAdmin} />
+                          </div>
                         </Td>
                       </tr>
                     )}

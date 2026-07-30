@@ -118,6 +118,7 @@ export interface PRItem {
   estimated_price: number;
   vat_rate: number;
   supplier_suggestion: number | null;
+  supplier_text: string | null; // NCC nhập tay (khi chưa có trong danh mục)
   note: string | null;
   line_no: number;
 }

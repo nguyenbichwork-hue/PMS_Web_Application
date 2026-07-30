@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { queryOne } from "@/lib/db";
-import { readFile } from "@/lib/storage";
+import { readFile, guessMime } from "@/lib/storage";
 
 // Phục vụ tải file đính kèm (chỉ cho người đã đăng nhập).
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +19,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const encoded = encodeURIComponent(att.file_name);
     return new Response(new Uint8Array(data), {
       headers: {
-        "Content-Type": "application/octet-stream",
+        // Đúng Content-Type để xem trước PDF/ảnh ngay trên trình duyệt.
+        "Content-Type": guessMime(att.file_name),
         "Content-Disposition": `inline; filename*=UTF-8''${encoded}`,
       },
     });
