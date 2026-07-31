@@ -146,6 +146,19 @@ export async function approvePRQAction(prqId: number) {
   revalidatePath("/payment-requisitions");
 }
 
+/** Người duyệt TỪ CHỐI đề nghị đã gửi. Excel đã xuất/gửi NCC nên quyết định chỉ
+ *  có 2 nhánh: Duyệt hoặc Từ chối. Ghi lý do để người lập biết mà xử lý. */
+export async function rejectPRQAction(prqId: number, reason: string) {
+  const user = await requireUser();
+  if (!can(user.role, "prq.approve")) throw new Error("FORBIDDEN");
+  const prq = await loadPRQ(user, prqId);
+  if (prq.status !== "Submitted") throw new Error("Chỉ từ chối được đề nghị đã gửi.");
+  await query(`UPDATE payment_requisitions SET status='Rejected', updated_at=now() WHERE id=$1`, [prqId]);
+  await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Reject", newValue: reason || null });
+  revalidatePath(`/payment-requisitions/${prqId}`);
+  revalidatePath("/payment-requisitions");
+}
+
 export async function cancelPRQAction(prqId: number, reason: string) {
   const user = await requireUser();
   if (!can(user.role, "prq.manage")) throw new Error("FORBIDDEN");

@@ -84,6 +84,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
               { value: "Submitted", label: "Đã gửi" },
               { value: "Approved", label: "Đã duyệt" },
               { value: "Paid", label: "Đã thanh toán" },
+              { value: "Rejected", label: "Từ chối" },
               { value: "Cancelled", label: "Đã hủy" },
             ],
           },

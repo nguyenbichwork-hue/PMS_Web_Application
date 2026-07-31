@@ -1,7 +1,7 @@
 "use client";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitPRQAction, approvePRQAction, cancelPRQAction } from "@/actions/prq";
+import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } from "@/actions/prq";
 import { Card, Button } from "@/components/ui";
 
 export function PRQActions({
@@ -34,9 +34,23 @@ export function PRQActions({
           </Button>
         )}
         {canApprove && status === "Submitted" && (
-          <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePRQAction(prqId))}>
-            Duyệt thanh toán
-          </Button>
+          <>
+            <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePRQAction(prqId))}>
+              Duyệt thanh toán
+            </Button>
+            <Button
+              variant="danger"
+              className="w-full justify-center"
+              disabled={pending}
+              onClick={() => {
+                const reason = window.prompt("Lý do từ chối đề nghị thanh toán:");
+                if (reason === null) return;
+                start(async () => { await rejectPRQAction(prqId, reason); router.refresh(); });
+              }}
+            >
+              Từ chối
+            </Button>
+          </>
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (
           <div className="border-t border-slate-100 pt-2">
