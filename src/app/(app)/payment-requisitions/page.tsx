@@ -27,7 +27,18 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   const where: string[] = [];
   const params: unknown[] = [];
   if (sp.status) { params.push(sp.status); where.push(`prq.status = $${params.length}`); }
-  if (sp.q) { params.push(`%${sp.q}%`); where.push(`(prq.prq_number ILIKE $${params.length} OR s.supplier_name ILIKE $${params.length})`); }
+  if (sp.q) {
+    // Tìm từ khóa rộng: số đề nghị, NCC (tên/mã/MST), hoặc trong dòng (diễn giải, số HĐ).
+    params.push(`%${sp.q}%`);
+    const p = params.length;
+    where.push(`(
+      prq.prq_number ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p} OR s.tax_code ILIKE $${p}
+      OR EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = prq.id AND (it.description ILIKE $${p} OR it.inv_no ILIKE $${p}))
+    )`);
+  }
+  // Lọc theo KHOẢNG NGÀY lập đề nghị.
+  if (sp.df) { params.push(sp.df); where.push(`prq.created_at::date >= $${params.length}`); }
+  if (sp.dt) { params.push(sp.dt); where.push(`prq.created_at::date <= $${params.length}`); }
   if (user) pushCompanyScope(user, "prq.company_id", where, params);
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -83,7 +94,8 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
       />
 
       <Filters
-        searchPlaceholder="Tìm theo số đề nghị / nhà cung cấp…"
+        searchPlaceholder="Tìm từ khóa (số đề nghị, NCC, diễn giải, số HĐ…)"
+        dateRange={{}}
         filters={[
           {
             key: "status",

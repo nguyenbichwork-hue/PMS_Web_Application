@@ -12,10 +12,15 @@ interface FilterDef {
 export function Filters({
   filters,
   searchPlaceholder = "Tìm kiếm…",
+  dateRange,
 }: {
   filters: FilterDef[];
   searchPlaceholder?: string;
+  // Bật lọc theo KHOẢNG NGÀY: 2 ô "từ ngày"/"đến ngày" đẩy vào query fromKey/toKey.
+  dateRange?: { fromKey?: string; toKey?: string; label?: string };
 }) {
+  const fromKey = dateRange?.fromKey ?? "df";
+  const toKey = dateRange?.toKey ?? "dt";
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -54,6 +59,27 @@ export function Filters({
         placeholder={searchPlaceholder}
         className={`${inputCls} w-full sm:w-auto sm:max-w-xs`}
       />
+      {dateRange && (
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            aria-label="Từ ngày"
+            defaultValue={params.get(fromKey) ?? ""}
+            onChange={(e) => update(fromKey, e.target.value)}
+            className={`${inputCls} w-auto`}
+            title="Từ ngày"
+          />
+          <span className="text-slate-400">→</span>
+          <input
+            type="date"
+            aria-label="Đến ngày"
+            defaultValue={params.get(toKey) ?? ""}
+            onChange={(e) => update(toKey, e.target.value)}
+            className={`${inputCls} w-auto`}
+            title="Đến ngày"
+          />
+        </div>
+      )}
       {filters.map((f) => (
         <select
           key={f.key}

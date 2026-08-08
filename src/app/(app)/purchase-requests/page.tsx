@@ -28,12 +28,35 @@ export default async function PRListPage({
     where.push(`pr.status = $${params.length}`);
   }
   if (sp.q) {
+    // Tìm kiếm TỪ KHÓA rộng: khớp bất kỳ PR nào CHỨA từ khóa ở số phiếu, mục đích,
+    // mã công trình, tên người yêu cầu, HOẶC trong các dòng hàng (tên/mã hàng, NCC
+    // nhập tay hoặc NCC trong danh mục).
     params.push(`%${sp.q}%`);
-    where.push(`(pr.pr_number ILIKE $${params.length} OR pr.purpose ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(
+      pr.pr_number ILIKE $${p} OR pr.purpose ILIKE $${p} OR pr.project_code ILIKE $${p}
+      OR EXISTS (SELECT 1 FROM users u WHERE u.id = pr.requester_id AND u.name ILIKE $${p})
+      OR EXISTS (
+        SELECT 1 FROM purchase_request_items it
+        LEFT JOIN suppliers s ON s.id = it.supplier_suggestion
+        WHERE it.pr_id = pr.id AND (
+          it.item_name ILIKE $${p} OR it.item_code ILIKE $${p}
+          OR it.supplier_text ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}
+        )
+      )
+    )`);
   }
   if (sp.priority) {
     params.push(sp.priority);
     where.push(`pr.priority = $${params.length}`);
+  }
+  // Lọc theo KHOẢNG NGÀY yêu cầu.
+  if (sp.df) { params.push(sp.df); where.push(`pr.request_date >= $${params.length}`); }
+  if (sp.dt) { params.push(sp.dt); where.push(`pr.request_date <= $${params.length}`); }
+  // Lọc theo NHÀ CUNG CẤP (PR có ít nhất một dòng đề xuất NCC này).
+  if (sp.sup) {
+    params.push(Number(sp.sup));
+    where.push(`EXISTS (SELECT 1 FROM purchase_request_items it WHERE it.pr_id = pr.id AND it.supplier_suggestion = $${params.length})`);
   }
   // Phân quyền dữ liệu (chống IDOR): non-admin chỉ thấy công ty mình;
   // Employee chỉ thấy PR của chính mình.
@@ -82,6 +105,11 @@ export default async function PRListPage({
     sParams
   );
 
+  // Danh mục NCC cho ô lọc.
+  const suppliers = await query<{ id: number; supplier_name: string }>(
+    `SELECT id, supplier_name FROM suppliers ORDER BY supplier_name`
+  );
+
   return (
     <div>
       <ModuleBanner
@@ -109,7 +137,8 @@ export default async function PRListPage({
       />
 
       <Filters
-        searchPlaceholder="Tìm theo số PR / mục đích…"
+        searchPlaceholder="Tìm từ khóa trong phiếu (số PR, mục đích, tên hàng, NCC…)"
+        dateRange={{}}
         filters={[
           {
             key: "status",
@@ -131,6 +160,11 @@ export default async function PRListPage({
               { value: "High", label: "Cao" },
               { value: "Urgent", label: "Khẩn" },
             ],
+          },
+          {
+            key: "sup",
+            label: "Nhà cung cấp",
+            options: suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name })),
           },
         ]}
       />

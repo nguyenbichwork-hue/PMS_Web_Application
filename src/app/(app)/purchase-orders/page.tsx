@@ -31,9 +31,20 @@ export default async function POListPage({
     where.push(`po.status = $${params.length}`);
   }
   if (sp.q) {
+    // Tìm từ khóa rộng: số đơn, NCC, số YC gốc, hoặc tên/mã hàng trong các dòng.
     params.push(`%${sp.q}%`);
-    where.push(`(po.po_number ILIKE $${params.length} OR s.supplier_name ILIKE $${params.length})`);
+    const p = params.length;
+    // Dùng EXISTS tự chứa để chạy đúng cả ở câu ĐẾM (không join s/pr) lẫn câu lấy dòng.
+    where.push(`(
+      po.po_number ILIKE $${p}
+      OR EXISTS (SELECT 1 FROM suppliers s WHERE s.id = po.supplier_id AND (s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))
+      OR EXISTS (SELECT 1 FROM purchase_requests pr WHERE pr.id = po.pr_id AND pr.pr_number ILIKE $${p})
+      OR EXISTS (SELECT 1 FROM purchase_order_items it WHERE it.po_id = po.id AND (it.description ILIKE $${p} OR it.item_code ILIKE $${p}))
+    )`);
   }
+  // Lọc theo KHOẢNG NGÀY đặt hàng.
+  if (sp.df) { params.push(sp.df); where.push(`po.order_date >= $${params.length}`); }
+  if (sp.dt) { params.push(sp.dt); where.push(`po.order_date <= $${params.length}`); }
   if (user) pushCompanyScope(user, "po.company_id", where, params);
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -92,7 +103,8 @@ export default async function POListPage({
       />
 
       <Filters
-        searchPlaceholder="Tìm theo số đơn / nhà cung cấp…"
+        searchPlaceholder="Tìm từ khóa (số đơn, NCC, số YC, tên hàng…)"
+        dateRange={{}}
         filters={[
           {
             key: "status",

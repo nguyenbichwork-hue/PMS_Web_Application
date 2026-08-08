@@ -48,8 +48,11 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
   const allowed = !user || user.id === pr.requester_id || canAccessCompany(user, pr.company_id) || isCrossCompanyApprover(user);
   if (!allowed) notFound();
 
-  const items = await query<PRItem>(
-    `SELECT * FROM purchase_request_items WHERE pr_id = $1 ORDER BY line_no`,
+  const items = await query<PRItem & { sup_name: string | null; sup_tax: string | null; supplier_tax_text: string | null }>(
+    `SELECT it.*, s.supplier_name AS sup_name, s.tax_code AS sup_tax
+       FROM purchase_request_items it
+       LEFT JOIN suppliers s ON s.id = it.supplier_suggestion
+      WHERE it.pr_id = $1 ORDER BY it.line_no`,
     [prId]
   );
   // Kế hoạch thanh toán từng lần: JSONB có thể về dạng mảng (pg) hoặc chuỗi (PGlite).
@@ -178,8 +181,12 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
                     <Td>{it.item_code ?? "—"}</Td>
                     <Td>
                       {it.item_name}
-                      {it.supplier_text && (
-                        <span className="mt-0.5 block text-[11px] text-slate-400">NCC (nhập tay): {it.supplier_text}</span>
+                      {(it.sup_name || it.supplier_text) && (
+                        <span className="mt-0.5 block text-[11px] text-slate-400">
+                          NCC: {it.sup_name ?? it.supplier_text}
+                          {(it.sup_tax ?? it.supplier_tax_text) && ` · MST ${it.sup_tax ?? it.supplier_tax_text}`}
+                          {!it.sup_name && it.supplier_text && " (nhập tay)"}
+                        </span>
                       )}
                     </Td>
                     <Td className="text-right">{Number(it.quantity)}</Td>
