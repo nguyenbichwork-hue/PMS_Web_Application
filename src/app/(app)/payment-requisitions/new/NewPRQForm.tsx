@@ -2,7 +2,8 @@
 import { useMemo, useState } from "react";
 import { createPRQAction } from "@/actions/prq";
 import { PaymentMethodSection } from "@/components/PaymentMethodSection";
-import { Card, Field, Button, inputCls } from "@/components/ui";
+import { Card, Field, inputCls } from "@/components/ui";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { money } from "@/lib/format";
 
 export interface EligibleLine {
@@ -177,7 +178,7 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
 
       <div className="flex items-center justify-end gap-3">
         <span className="text-xs text-slate-400">{checked.size > 0 ? `Đã chọn ${checked.size} dòng` : "Chưa chọn dòng nào"}</span>
-        <Button type="submit" disabled={!canSubmit}>Tạo đề nghị thanh toán</Button>
+        <FormSubmitButton disabled={!canSubmit} pendingText="Đang tạo…">Tạo đề nghị thanh toán</FormSubmitButton>
       </div>
     </form>
   );

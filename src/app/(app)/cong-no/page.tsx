@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isCrossCompany } from "@/lib/access";
 import { Card, Th, Td, EmptyState } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { money } from "@/lib/format";
+import { PayablesFilters } from "./PayablesFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,8 @@ interface SupRow {
   b4: number;   // >90
 }
 
-export default async function PayablesPage() {
+export default async function PayablesPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+  const sp = await searchParams;
   const user = await getCurrentUser();
 
   const where: string[] = [];
@@ -50,6 +52,11 @@ export default async function PayablesPage() {
     params.push(user.company_id);
     where.push(`po.company_id = $${params.length}`);
   }
+  // Bộ lọc: khoảng ngày (ngày hóa đơn) + nhà cung cấp + mức độ ưu tiên (PR gốc).
+  if (sp.df) { params.push(sp.df); where.push(`i.invoice_date >= $${params.length}`); }
+  if (sp.dt) { params.push(sp.dt); where.push(`i.invoice_date <= $${params.length}`); }
+  if (sp.sup) { params.push(Number(sp.sup)); where.push(`i.supplier_id = $${params.length}`); }
+  if (sp.pri) { params.push(sp.pri); where.push(`pr.priority = $${params.length}`); }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const rows = await query<OpenInv>(
@@ -60,15 +67,43 @@ export default async function PayablesPage() {
        FROM invoices i
        LEFT JOIN suppliers s ON s.id = i.supplier_id
        LEFT JOIN purchase_orders po ON po.id = i.po_id
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
        LEFT JOIN (SELECT invoice_id, sum(amount) paid     FROM payments      GROUP BY 1) p  ON p.invoice_id  = i.id
        LEFT JOIN (SELECT invoice_id, sum(amount) credited FROM credit_notes  GROUP BY 1) cn ON cn.invoice_id = i.id
        ${clause}`,
     params
   );
 
+  // Danh mục NCC cho ô lọc.
+  const suppliers = await query<{ id: number; name: string }>(
+    `SELECT id, supplier_name AS name FROM suppliers ORDER BY supplier_name`
+  );
+
+  // Cảnh báo VƯỢT NGÂN SÁCH dự án (PO đã duyệt > ngân sách).
+  const budgetWhere: string[] = ["p.budget > 0"];
+  const budgetParams: unknown[] = [];
+  if (user && !isCrossCompany(user)) {
+    budgetParams.push(user.company_id);
+    budgetWhere.push(`po.company_id = $${budgetParams.length}`);
+  }
+  const overBudget = await queryOne<{ n: number; over_total: string }>(
+    `SELECT count(*)::int n, COALESCE(sum(over_amt),0) AS over_total FROM (
+       SELECT p.id, (COALESCE(sum(po.grand_total),0) - p.budget) AS over_amt
+         FROM projects p
+         JOIN purchase_orders po ON po.project_id = p.id AND po.status NOT IN ('Draft','Cancelled')
+        WHERE ${budgetWhere.join(" AND ")}
+        GROUP BY p.id, p.budget
+       HAVING COALESCE(sum(po.grand_total),0) > p.budget
+     ) t`,
+    budgetParams
+  );
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const bySup = new Map<number, SupRow>();
+  let overdueCount = 0;
+  let dueSoonAmount = 0;
+  let dueSoonCount = 0;
 
   for (const r of rows) {
     const outstanding = Math.round((Number(r.total_amount) || 0) - Number(r.paid) - Number(r.credited));
@@ -86,17 +121,25 @@ export default async function PayablesPage() {
     const due = new Date(inv);
     due.setDate(due.getDate() + termDays(r.payment_term));
     const overdue = Math.round((today.getTime() - due.getTime()) / 86400000);
-    if (overdue <= 0) row.notDue += outstanding;
-    else if (overdue <= 30) row.b1 += outstanding;
-    else if (overdue <= 60) row.b2 += outstanding;
-    else if (overdue <= 90) row.b3 += outstanding;
-    else row.b4 += outstanding;
+    if (overdue <= 0) {
+      row.notDue += outstanding;
+      // Sắp đến hạn: đến hạn trong vòng 7 ngày tới (kể cả hôm nay).
+      if (-overdue <= 7) { dueSoonAmount += outstanding; dueSoonCount += 1; }
+    } else {
+      overdueCount += 1;
+      if (overdue <= 30) row.b1 += outstanding;
+      else if (overdue <= 60) row.b2 += outstanding;
+      else if (overdue <= 90) row.b3 += outstanding;
+      else row.b4 += outstanding;
+    }
   }
 
   const list = [...bySup.values()].sort((a, b) => b.total - a.total);
   const sum = (k: keyof SupRow) => list.reduce((s, r) => s + (r[k] as number), 0);
   const grand = sum("total");
   const overdueTotal = sum("b1") + sum("b2") + sum("b3") + sum("b4");
+  const overBudgetN = overBudget?.n ?? 0;
+  const overBudgetAmt = Number(overBudget?.over_total ?? 0);
 
   return (
     <div>
@@ -105,6 +148,21 @@ export default async function PayablesPage() {
         title="Công nợ nhà cung cấp"
         subtitle="Số tiền còn phải trả (hóa đơn − đã trả − giảm trừ) theo tuổi nợ"
       />
+
+      {/* THẺ CẢNH BÁO: quá hạn · sắp đến hạn · vượt ngân sách */}
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <AlertCard tone="rose" label="Quá hạn" amount={overdueTotal} sub={`${overdueCount} hóa đơn quá hạn`} />
+        <AlertCard tone="amber" label="Sắp đến hạn (≤7 ngày)" amount={dueSoonAmount} sub={`${dueSoonCount} hóa đơn sắp tới hạn`} />
+        <AlertCard
+          tone="orange"
+          label="Vượt ngân sách dự án"
+          amount={overBudgetAmt}
+          sub={overBudgetN > 0 ? `${overBudgetN} dự án vượt ngân sách` : "Không có dự án vượt ngân sách"}
+          muted={overBudgetN === 0}
+        />
+      </div>
+
+      <PayablesFilters suppliers={suppliers} />
 
       <StatStrip
         items={[
@@ -167,13 +225,46 @@ export default async function PayablesPage() {
             </tfoot>
           )}
         </table>
-        {list.length === 0 && <EmptyState message="Không có công nợ nào — mọi hóa đơn đã thanh toán đủ." />}
+        {list.length === 0 && <EmptyState message="Không có công nợ nào khớp bộ lọc — hoặc mọi hóa đơn đã thanh toán đủ." />}
       </Card>
 
       <p className="mt-3 text-xs text-slate-400">
         Công nợ tính tự động từ hóa đơn đã nhập trừ các khoản đã thanh toán (bảng thanh toán) và giảm trừ (credit note).
         Ngày đến hạn = ngày hóa đơn + điều khoản thanh toán của NCC.
       </p>
+    </div>
+  );
+}
+
+/** Thẻ cảnh báo có tô màu theo mức độ. */
+function AlertCard({
+  tone,
+  label,
+  amount,
+  sub,
+  muted,
+}: {
+  tone: "rose" | "amber" | "orange";
+  label: string;
+  amount: number;
+  sub: string;
+  muted?: boolean;
+}) {
+  const toneCls = muted
+    ? "border-slate-200 bg-slate-50"
+    : {
+        rose: "border-rose-200 bg-rose-50",
+        amber: "border-amber-200 bg-amber-50",
+        orange: "border-orange-200 bg-orange-50",
+      }[tone];
+  const textCls = muted
+    ? "text-slate-500"
+    : { rose: "text-rose-700", amber: "text-amber-700", orange: "text-orange-700" }[tone];
+  return (
+    <div className={`rounded-2xl border p-4 ${toneCls}`}>
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className={`mt-1 text-xl font-bold ${textCls}`}>{money(amount)}</div>
+      <div className="mt-0.5 text-xs text-slate-500">{sub}</div>
     </div>
   );
 }

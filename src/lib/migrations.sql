@@ -210,8 +210,9 @@ ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS buyer             TEXT; -
 -- payment_count = số lần trả (số nguyên, < 10); payment_installments = mảng JSON số tiền mỗi lần.
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_count        INT;
 ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS payment_installments JSONB;
--- NCC nhập tay ngay ở PR (khi chưa có trong danh mục NCC) — lưu tên tự do theo dòng.
-ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS supplier_text TEXT;
+-- NCC nhập tay ngay ở PR (khi chưa có trong danh mục NCC) — lưu tên + MST tự do theo dòng.
+ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS supplier_text     TEXT;
+ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS supplier_tax_text TEXT;
 
 -- ---------- PAYMENT REQUISITION (PRQ) — Đề nghị thanh toán (spec 07/2026) ----------
 -- Sinh tự động sau khi Manager DUYỆT PO. Một PRQ trả cho MỘT nhà cung cấp, gồm dòng

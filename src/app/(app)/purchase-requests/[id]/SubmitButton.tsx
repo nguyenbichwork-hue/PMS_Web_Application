@@ -13,7 +13,7 @@ export function SubmitButton({ prId }: { prId: number }) {
       <h3 className="mb-2 text-base font-semibold text-slate-800">PR đang ở trạng thái nháp</h3>
       {err && <p className="mb-2 text-sm text-rose-600">{err}</p>}
       <Button
-        disabled={pending}
+        loading={pending}
         onClick={() => {
           setErr(null);
           start(async () => {

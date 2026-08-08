@@ -20,7 +20,8 @@ interface Line {
   estimated_price: number;
   vat_rate: number;
   supplier_suggestion: number | "";
-  supplier_text: string; // NCC nhập tay khi chưa có trong danh mục
+  supplier_text: string;      // Tên NCC nhập tay khi chưa có trong danh mục
+  supplier_tax_text: string;  // MST NCC nhập tay khi chưa có trong danh mục
   note: string;
 }
 
@@ -34,6 +35,7 @@ const emptyLine: Line = {
   vat_rate: 10,
   supplier_suggestion: "",
   supplier_text: "",
+  supplier_tax_text: "",
   note: "",
 };
 
@@ -46,7 +48,6 @@ export function PRForm({
   suppliers,
   productSuppliers,
   businessUnits,
-  customers,
   projects,
   defaultCompanyId,
   department,
@@ -67,15 +68,10 @@ export function PRForm({
   // Modal "Chọn từ danh mục": biết đang mở cho dòng nào & loại nào.
   const [picker, setPicker] = useState<{ kind: "product" | "supplier"; line: number } | null>(null);
   const [companyId, setCompanyId] = useState<number>(defaultCompanyId);
-  // Liên kết mua↔bán: chọn dự án tự điền mã công trình + gợi ý khách hàng.
+  // Liên kết mua↔bán: chọn dự án tự điền mã công trình.
   const [projectId, setProjectId] = useState<string>("");
-  const [customerId, setCustomerId] = useState<string>("");
   const selectedProject = projects.find((p) => String(p.id) === projectId);
-  const onPickProject = (val: string) => {
-    setProjectId(val);
-    const p = projects.find((x) => String(x.id) === val);
-    if (p?.customer_id) setCustomerId(String(p.customer_id));
-  };
+  const onPickProject = (val: string) => setProjectId(val);
   // BU lọc theo công ty đang chọn (không tự điền — người yêu cầu tự chọn).
   const buOptions = businessUnits.filter((b) => b.company_id === companyId);
 
@@ -84,8 +80,13 @@ export function PRForm({
     () => products.map((p) => ({ value: p.item_code, label: p.item_name, hint: p.item_code })),
     [products]
   );
-  const supplierOpts: SSOption[] = useMemo(
-    () => suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name, hint: s.supplier_code })),
+  // Hai danh sách để tách ô "Mã số thuế" và ô "Tên" — cùng trỏ về id NCC.
+  const supplierTaxOpts: SSOption[] = useMemo(
+    () => suppliers.map((s) => ({ value: String(s.id), label: s.tax_code || s.supplier_code || `NCC #${s.id}`, hint: s.supplier_name })),
+    [suppliers]
+  );
+  const supplierNameOpts: SSOption[] = useMemo(
+    () => suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name, hint: s.tax_code || s.supplier_code })),
     [suppliers]
   );
   const supplierName = useMemo(() => new Map(suppliers.map((s) => [s.id, s.supplier_name])), [suppliers]);
@@ -126,8 +127,12 @@ export function PRForm({
   const vatTotal = lines.reduce((s, l) => s + (Number(l.quantity) * Number(l.estimated_price) * Number(l.vat_rate)) / 100, 0);
   const grand = subtotal + vatTotal;
 
+  // Trạng thái đang gửi để hiện spinner trên đúng nút được bấm ("đã nhận lệnh").
+  const [pendingMode, setPendingMode] = useState<null | "draft" | "submit">(null);
+
   const submit = (mode: "draft" | "submit") => (e: React.MouseEvent) => {
     e.preventDefault();
+    if (pendingMode) return; // chặn bấm kép khi đang xử lý
     const form = (e.currentTarget as HTMLElement).closest("form") as HTMLFormElement;
     // Tệp đính kèm BẮT BUỘC: quét MỌI ô tệp theo loại; không có tệp nào thì chặn.
     const fileInputs = Array.from(form.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
@@ -139,16 +144,19 @@ export function PRForm({
     const fd = new FormData(form);
     fd.set("items", JSON.stringify(lines.filter((l) => l.item_name.trim())));
     fd.set("submit", mode === "submit" ? "1" : "0");
+    setPendingMode(mode);
     // Thành công → action tự redirect (ném NEXT_REDIRECT, bỏ qua). Lỗi nghiệp vụ
     // được TRẢ VỀ { ok:false, error } (không throw) nên hiển thị được ở production.
     createPRAction(fd)
       .then((res) => {
-        if (res && !res.ok) alert(res.error);
+        if (res && !res.ok) { alert(res.error); setPendingMode(null); }
+        // thành công → redirect, giữ spinner cho tới khi chuyển trang.
       })
       .catch((err: unknown) => {
         const digest = (err as { digest?: string })?.digest;
         if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return;
         alert((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.");
+        setPendingMode(null);
       });
   };
 
@@ -191,14 +199,6 @@ export function PRForm({
             {/* Giữ mã công trình dạng text để tương thích & xuất chứng từ. */}
             <input type="hidden" name="project_code" value={selectedProject?.project_code ?? ""} />
           </Field>
-          <Field label="Khách hàng (đơn phục vụ khách nào)">
-            <select name="customer_id" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={yellowCls}>
-              <option value="">— Chọn khách hàng —</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.customer_name}</option>
-              ))}
-            </select>
-          </Field>
           <Field label="Số đơn bán / Hợp đồng bán">
             <input name="sales_order_ref" className={yellowCls} placeholder="VD: SO-2026-014" />
           </Field>
@@ -220,9 +220,6 @@ export function PRForm({
           <Field label="Ngày giao hàng dự kiến">
             <input name="required_date" type="date" className={yellowCls} />
           </Field>
-          <Field label="Tình trạng">
-            <input name="requester_status" className={yellowCls} placeholder="VD: Gấp / Chờ vật tư…" />
-          </Field>
           <Field label="Mục đích mua" required>
             <input name="purpose" className={inputCls} required placeholder="VD: Mua thiết bị cho dự án…" />
           </Field>
@@ -239,7 +236,24 @@ export function PRForm({
       <Card className="mt-4 p-6">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-800">Chi tiết hàng hóa</h3>
-          <Button variant="secondary" onClick={() => setLines((p) => [...p, { ...emptyLine }])}>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              setLines((p) => {
+                // Mang NHÀ CUNG CẤP của dòng cuối xuống dòng mới (thường mua cùng NCC).
+                const last = p[p.length - 1];
+                return [
+                  ...p,
+                  {
+                    ...emptyLine,
+                    supplier_suggestion: last?.supplier_suggestion ?? "",
+                    supplier_text: last?.supplier_text ?? "",
+                    supplier_tax_text: last?.supplier_tax_text ?? "",
+                  },
+                ];
+              })
+            }
+          >
             + Thêm dòng
           </Button>
         </div>
@@ -328,58 +342,80 @@ export function PRForm({
                 </div>
               </div>
 
-              {/* Hàng 2: Nhà cung cấp — ô tìm RIÊNG cho rộng + chip gợi ý bên cạnh */}
-              <div className="mt-3 grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-4">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <label className="block text-xs font-medium text-slate-500">Nhà cung cấp đề xuất</label>
-                    <button
-                      type="button"
-                      onClick={() => setPicker({ kind: "supplier", line: i })}
-                      className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
-                      title="Xem toàn bộ danh mục nhà cung cấp dạng bảng"
-                    >
-                      Danh mục
-                    </button>
-                  </div>
-                  <SearchSelect
-                    options={supplierOpts}
-                    value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
-                    onChange={(v) => setLine(i, { supplier_suggestion: v ? Number(v) : "" })}
-                    placeholder="Tìm NCC trong danh mục…"
-                  />
-                  <input
-                    value={l.supplier_text}
-                    onChange={(e) => setLine(i, { supplier_text: e.target.value })}
-                    className={yellowCls + " mt-2"}
-                    placeholder="Hoặc nhập tên NCC khác (chưa có trong danh mục)"
-                  />
+              {/* Nhà cung cấp: TÁCH 2 Ô — Mã số thuế + Tên (lấy từ danh mục NCC). */}
+              <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-600">Nhà cung cấp đề xuất</label>
+                  <button
+                    type="button"
+                    onClick={() => setPicker({ kind: "supplier", line: i })}
+                    className="shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+                    title="Xem toàn bộ danh mục nhà cung cấp dạng bảng"
+                  >
+                    Danh mục
+                  </button>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 md:col-span-8 md:pt-6">
-                  {!l.item_code ? (
-                    <span className="text-xs text-slate-400">Chọn sản phẩm để xem gợi ý NCC.</span>
-                  ) : sugg.length === 0 ? (
-                    <span className="text-xs text-slate-400">Chưa có gợi ý cho hàng này — tìm ở ô bên trái.</span>
-                  ) : (
-                    <>
-                      <span className="text-xs font-medium text-slate-500">Gợi ý:</span>
-                      {sugg.map((s) => (
-                        <button
-                          type="button"
-                          key={s.id}
-                          onClick={() => setLine(i, { supplier_suggestion: s.id })}
-                          className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
-                            l.supplier_suggestion === s.id
-                              ? "border-brand-500 bg-brand-500 text-white"
-                              : "border-slate-300 bg-white text-slate-600 hover:bg-brand-50"
-                          }`}
-                          title="Chọn nhà cung cấp này"
-                        >
-                          {s.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
+                {/* 2 ô chọn từ danh mục — cùng trỏ về một NCC (chọn ô nào cũng đồng bộ) */}
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-400">Mã số thuế (chọn từ danh mục)</label>
+                    <SearchSelect
+                      options={supplierTaxOpts}
+                      value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
+                      onChange={(v) => setLine(i, { supplier_suggestion: v ? Number(v) : "" })}
+                      placeholder="Tìm theo MST / mã NCC…"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-400">Tên nhà cung cấp</label>
+                    <SearchSelect
+                      options={supplierNameOpts}
+                      value={l.supplier_suggestion ? String(l.supplier_suggestion) : ""}
+                      onChange={(v) => setLine(i, { supplier_suggestion: v ? Number(v) : "" })}
+                      placeholder="Tìm theo tên NCC…"
+                    />
+                  </div>
+                </div>
+
+                {/* Gợi ý NCC theo lịch sử mua mã hàng này */}
+                {l.item_code && sugg.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-medium text-slate-500">Gợi ý:</span>
+                    {sugg.map((s) => (
+                      <button
+                        type="button"
+                        key={s.id}
+                        onClick={() => setLine(i, { supplier_suggestion: s.id })}
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                          l.supplier_suggestion === s.id
+                            ? "border-brand-500 bg-brand-500 text-white"
+                            : "border-slate-300 bg-white text-slate-600 hover:bg-brand-50"
+                        }`}
+                        title="Chọn nhà cung cấp này"
+                      >
+                        {s.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* NCC MỚI (chưa có trong danh mục) — nhập tay, cũng tách 2 ô */}
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <div className="mb-1.5 text-[11px] font-medium text-slate-500">NCC mới (chưa có trong danh mục) — nhập tay:</div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      value={l.supplier_tax_text}
+                      onChange={(e) => setLine(i, { supplier_tax_text: e.target.value })}
+                      className={yellowCls}
+                      placeholder="Mã số thuế NCC mới"
+                    />
+                    <input
+                      value={l.supplier_text}
+                      onChange={(e) => setLine(i, { supplier_text: e.target.value })}
+                      className={yellowCls}
+                      placeholder="Tên NCC mới"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -419,8 +455,12 @@ export function PRForm({
         <div className="mr-auto text-sm text-slate-600">
           Tổng gồm thuế: <b className="text-lg text-slate-900">{money(grand)}</b>
         </div>
-        <Button variant="secondary" onClick={submit("draft")}>Lưu nháp</Button>
-        <Button onClick={submit("submit")}>Gửi phê duyệt</Button>
+        <Button variant="secondary" loading={pendingMode === "draft"} disabled={pendingMode !== null} onClick={submit("draft")}>
+          {pendingMode === "draft" ? "Đang lưu…" : "Lưu nháp"}
+        </Button>
+        <Button loading={pendingMode === "submit"} disabled={pendingMode !== null} onClick={submit("submit")}>
+          {pendingMode === "submit" ? "Đang gửi…" : "Gửi phê duyệt"}
+        </Button>
       </Card>
 
       {/* Bảng chọn HÀNG HÓA đầy đủ chi tiết */}

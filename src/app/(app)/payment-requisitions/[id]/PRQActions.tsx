@@ -29,19 +29,19 @@ export function PRQActions({
       <h3 className="mb-3 text-base font-semibold text-slate-800">Thao tác</h3>
       <div className="space-y-2">
         {canManage && status === "Draft" && (
-          <Button className="w-full justify-center" disabled={pending} onClick={run(() => submitPRQAction(prqId))}>
+          <Button className="w-full justify-center" loading={pending} onClick={run(() => submitPRQAction(prqId))}>
             Gửi duyệt
           </Button>
         )}
         {canApprove && status === "Submitted" && (
           <>
-            <Button className="w-full justify-center" disabled={pending} onClick={run(() => approvePRQAction(prqId))}>
+            <Button className="w-full justify-center" loading={pending} onClick={run(() => approvePRQAction(prqId))}>
               Duyệt thanh toán
             </Button>
             <Button
               variant="danger"
               className="w-full justify-center"
-              disabled={pending}
+              loading={pending}
               onClick={() => {
                 const reason = window.prompt("Lý do từ chối đề nghị thanh toán:");
                 if (reason === null) return;
@@ -57,7 +57,7 @@ export function PRQActions({
             <Button
               variant="danger"
               className="w-full justify-center"
-              disabled={pending}
+              loading={pending}
               onClick={() => {
                 const reason = window.prompt("Lý do hủy đề nghị thanh toán:");
                 if (reason === null) return;

@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updatePRQAction, addPOToPRQAction, removePRQLineAction } from "@/actions/prq";
 import { Card, Button, Field, inputCls } from "@/components/ui";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { money } from "@/lib/format";
 
 export interface PRQLine {
@@ -182,7 +183,7 @@ export function PRQEditor({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Button type="submit" disabled={pending}>Lưu đề nghị</Button>
+          <FormSubmitButton disabled={pending} pendingText="Đang lưu…">Lưu đề nghị</FormSubmitButton>
         </div>
       </form>
     </Card>

@@ -111,14 +111,27 @@ export function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
+/** Vòng xoay tải — hiện khi nút/biểu mẫu đang xử lý để người dùng biết đã nhận lệnh. */
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <svg className={clsx("h-4 w-4 animate-spin", className)} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
 export function Button({
   children,
   variant = "primary",
   className,
   type = "button",
+  loading = false,
+  disabled,
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "danger" | "ghost" | "success";
+  loading?: boolean;
 }) {
   const styles = {
     primary: "bg-brand-500 text-white shadow-sm shadow-brand-500/20 hover:bg-brand-600",
@@ -130,13 +143,16 @@ export function Button({
   return (
     <button
       type={type}
+      disabled={disabled || loading}
       className={clsx(
         "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50",
+        loading && "cursor-progress",
         styles,
         className
       )}
       {...rest}
     >
+      {loading && <Spinner />}
       {children}
     </button>
   );

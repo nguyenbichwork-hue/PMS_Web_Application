@@ -26,6 +26,7 @@ interface ItemInput {
   vat_rate?: number;
   supplier_suggestion?: number | null;
   supplier_text?: string | null;
+  supplier_tax_text?: string | null;
   note?: string;
 }
 
@@ -125,9 +126,9 @@ export async function createPRAction(formData: FormData): Promise<ActionResult> 
       for (const it of validItems) {
         await exec(
           `INSERT INTO purchase_request_items
-             (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, supplier_text, note, line_no)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, (it.supplier_text || "").trim() || null, it.note || null, line++]
+             (pr_id, item_code, item_name, description, quantity, unit, estimated_price, vat_rate, supplier_suggestion, supplier_text, supplier_tax_text, note, line_no)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [pr!.id, it.item_code || null, it.item_name, it.description || null, it.quantity, it.unit || "PCS", it.estimated_price, vatOf(it), it.supplier_suggestion || null, (it.supplier_text || "").trim() || null, (it.supplier_tax_text || "").trim() || null, it.note || null, line++]
         );
       }
       // Gắn tệp đã lưu vào PR (theo LOẠI chứng từ).
