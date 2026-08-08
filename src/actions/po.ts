@@ -5,7 +5,6 @@ import { query, queryOne, withTransaction, firstRow, type Executor } from "@/lib
 import { requireUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
-import { generatePRQFromPO } from "@/lib/prq-generate";
 import { money } from "@/lib/format";
 import type { POItem } from "@/lib/types";
 
@@ -163,17 +162,18 @@ export async function updatePOAction(formData: FormData) {
 
 /**
  * Lõi DUYỆT PO trong MỘT transaction đang chạy (`exec`): chốt ngân sách dự án →
- * chuyển PO 'Draft' → 'Approved' → ghi lịch sử/audit → sinh Đề nghị thanh toán
- * (PRQ). Trả về prqId. Dùng chung cho:
+ * chuyển PO 'Draft' → 'Approved' → ghi lịch sử/audit. Dùng chung cho:
  *  - Duyệt PO thủ công (approvePOAction), và
  *  - Auto-duyệt PO ngay khi PR được duyệt (spec 07/2026: PO không cần duyệt riêng).
+ * KHÔNG còn sinh Đề nghị thanh toán (PRQ) — từ spec 08/2026 PRQ được TẠO TAY,
+ * độc lập, chọn dòng PO cần trả (xem createPRQAction).
  */
 export async function autoApprovePO(
   exec: Executor,
   poId: number,
   userId: number,
   userName?: string | null
-): Promise<number> {
+): Promise<void> {
   // Chốt ngân sách dự án TRƯỚC khi duyệt (nếu vượt → rollback, không duyệt).
   await assertProjectBudget(exec, poId);
   const upd = await firstRow<{ id: number }>(
@@ -189,7 +189,6 @@ export async function autoApprovePO(
     [poId, userId]
   );
   await logAudit({ actorId: userId, actorName: userName ?? null, documentType: "PO", documentId: poId, action: "Approve" }, exec);
-  return generatePRQFromPO(poId, exec, userId);
 }
 
 /**
@@ -201,11 +200,10 @@ export async function approvePOAction(poId: number) {
   if (!can(user.role, "po.approve")) throw new Error("FORBIDDEN");
   await assertPOAccess(user, poId);
 
-  const prqId = await withTransaction((exec) => autoApprovePO(exec, poId, user.id, user.name));
+  await withTransaction((exec) => autoApprovePO(exec, poId, user.id, user.name));
 
   revalidatePath(`/purchase-orders/${poId}`);
-  revalidatePath("/payment-requisitions");
-  redirect(`/payment-requisitions/${prqId}`);
+  redirect(`/purchase-orders/${poId}`);
 }
 
 export async function sendPOAction(poId: number) {

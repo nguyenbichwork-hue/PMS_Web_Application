@@ -3,7 +3,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { uploadAttachmentAction, deleteAttachmentAction } from "@/actions/attachment";
 import { Card, Button } from "@/components/ui";
-import { PR_ATTACHMENT_TYPES } from "@/lib/attachment-types";
+import { attachmentTypesFor } from "@/lib/attachment-types";
 
 export interface AttachmentItem {
   id: number;
@@ -38,8 +38,11 @@ export function AttachmentPanel({
   const [picked, setPicked] = useState<Record<string, number>>({});
   const router = useRouter();
 
+  // Danh mục loại tệp theo loại chứng từ (PRQ có thêm "PRQ đã ký").
+  const TYPES = attachmentTypesFor(documentType);
+
   // Gom tệp hiện có theo loại. Loại lạ (không nằm trong danh mục) gom vào "Khác".
-  const KNOWN = new Set<string>(PR_ATTACHMENT_TYPES.map((t) => t.label));
+  const KNOWN = new Set<string>(TYPES.map((t) => t.label));
   const byKind: Record<string, AttachmentItem[]> = {};
   for (const a of attachments) {
     const label = a.kind && KNOWN.has(a.kind) ? a.kind : "Khác";
@@ -58,7 +61,7 @@ export function AttachmentPanel({
     if (!form) return;
     start(async () => {
       let uploaded = 0;
-      for (const t of PR_ATTACHMENT_TYPES) {
+      for (const t of TYPES) {
         const input = form.elements.namedItem(`files_${t.key}`) as HTMLInputElement | null;
         const files = input?.files;
         if (!files || files.length === 0) continue;
@@ -81,8 +84,8 @@ export function AttachmentPanel({
   const totalPicked = Object.values(picked).reduce((s, n) => s + n, 0);
   // Chế độ chỉ đọc: chỉ hiện những loại đang có tệp.
   const typesToShow = canManage
-    ? PR_ATTACHMENT_TYPES
-    : PR_ATTACHMENT_TYPES.filter((t) => byKind[t.label]?.length);
+    ? TYPES
+    : TYPES.filter((t) => byKind[t.label]?.length);
 
   return (
     <Card className="p-5">

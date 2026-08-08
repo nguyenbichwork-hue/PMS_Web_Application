@@ -31,6 +31,10 @@ interface PRQHead {
   vat_total: string;
   grand_total: string;
   status: string;
+  payment_method: string | null;
+  advance_percent: string | null;
+  payment_count: number | null;
+  payment_installments: unknown;
 }
 
 export default async function PRQDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -82,6 +86,20 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   const canApprove = !!(user && can(user.role, "prq.approve"));
   const editable = canManage && prq.status === "Draft";
 
+  // Kế hoạch thanh toán từng lần: JSONB có thể về mảng (pg) hoặc chuỗi (PGlite).
+  let prqInstallments: { amount: number; days: number }[] = [];
+  try {
+    const raw = prq.payment_installments;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) {
+      prqInstallments = parsed.map((v) =>
+        v && typeof v === "object"
+          ? { amount: Number((v as { amount?: unknown }).amount) || 0, days: Number((v as { days?: unknown }).days) || 0 }
+          : { amount: Number(v) || 0, days: 0 }
+      );
+    }
+  } catch { prqInstallments = []; }
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
@@ -103,7 +121,30 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
               <Info label="Số TK ngân hàng" value={prq.bank_account} />
               <Info label="Tên ngân hàng" value={prq.bank_name} />
               <Info label="Swift" value={prq.swift_code} />
+              <Info
+                label="Hình thức thanh toán"
+                value={
+                  prq.payment_method
+                    ? prq.payment_method +
+                      (prq.payment_method === "Ứng trước" && prq.advance_percent ? ` (${Number(prq.advance_percent)}%)` : "") +
+                      (prq.payment_count ? ` · ${prq.payment_count} lần` : "")
+                    : "—"
+                }
+              />
             </div>
+            {prqInstallments.length > 0 && (
+              <div className="mt-4 rounded-lg border border-slate-200 p-3">
+                <div className="mb-2 text-xs font-medium text-slate-500">Kế hoạch thanh toán {prqInstallments.length} lần</div>
+                <div className="flex flex-wrap gap-2">
+                  {prqInstallments.map((it, i) => (
+                    <span key={i} className="rounded-md bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
+                      Lần {i + 1}: <b>{money(it.amount)}</b>
+                      {it.days > 0 && <span className="text-slate-500"> · sau {it.days} ngày</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-4 ml-auto w-72 space-y-1 text-sm">
               <Row label="Tạm tính (chưa thuế)" value={money(prq.subtotal)} />
               <Row label="VAT" value={money(prq.vat_total)} />
@@ -153,8 +194,18 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
         <div className="space-y-4">
           <Card className="p-5">
             <h3 className="mb-1 text-base font-semibold text-slate-800">Xuất chứng từ</h3>
-            <p className="mb-3 text-xs text-slate-400">Điền vào mẫu Payment Requisition của công ty (.xlsx) để ký.</p>
-            <ExportButton href={`/export/prq/${prqId}`} label="Xuất Excel (mẫu PRQ)" />
+            <p className="mb-3 text-xs text-slate-400">In bản PDF có 4 ô ký để lưu trữ, hoặc xuất mẫu Excel của công ty.</p>
+            <div className="flex flex-col gap-2">
+              <a
+                href={`/print/payment-requisition/${prqId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+              >
+                🖨 In PDF (có ô ký)
+              </a>
+              <ExportButton href={`/export/prq/${prqId}`} label="Xuất Excel (mẫu PRQ)" />
+            </div>
           </Card>
 
           <PRQActions prqId={prqId} status={prq.status} canManage={canManage} canApprove={canApprove} />
@@ -162,7 +213,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />
 
           <Card className="p-5 text-xs text-slate-500">
-            <p>PRQ được sinh tự động khi Manager duyệt PO. Có thể gộp nhiều PO cùng nhà cung cấp, sửa số tiền để thanh toán từng phần, rồi xuất Excel để ký & nộp cùng hồ sơ (hợp đồng, hóa đơn, PO, biên bản…).</p>
+            <p>PRQ được lập tay từ các dòng PO đã duyệt (cùng một nhà cung cấp). Có thể gộp nhiều PO, sửa số tiền để thanh toán từng phần, rồi in PDF/xuất Excel để ký & nộp cùng hồ sơ (hợp đồng, hóa đơn, PO, biên bản…).</p>
           </Card>
         </div>
       </div>

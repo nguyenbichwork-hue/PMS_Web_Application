@@ -13,3 +13,18 @@ export const PR_ATTACHMENT_TYPES = [
 ] as const;
 
 export type PrAttachmentTypeKey = (typeof PR_ATTACHMENT_TYPES)[number]["key"];
+
+// Loại đính kèm RIÊNG cho Đề nghị thanh toán (PRQ): lưu bản PRQ đã ký (scan) để
+// lưu trữ hồ sơ. KHÔNG thêm vào PR_ATTACHMENT_TYPES để form tạo PR không bị lộ ô này.
+export const PRQ_EXTRA_ATTACHMENT_TYPES = [
+  { key: "prq_signed", label: "PRQ đã ký" },
+] as const;
+
+/** Danh mục loại tệp theo LOẠI chứng từ. PRQ có thêm mục "PRQ đã ký". */
+export function attachmentTypesFor(
+  documentType: string
+): readonly { key: string; label: string }[] {
+  return documentType === "PRQ"
+    ? [...PR_ATTACHMENT_TYPES, ...PRQ_EXTRA_ATTACHMENT_TYPES]
+    : PR_ATTACHMENT_TYPES;
+}

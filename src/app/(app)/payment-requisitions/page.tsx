@@ -62,7 +62,16 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
 
   return (
     <div>
-      <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — sinh tự động sau khi PO được duyệt" />
+      <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt" />
+
+      <div className="mb-4 flex justify-end">
+        <Link
+          href="/payment-requisitions/new"
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+        >
+          ＋ Tạo đề nghị thanh toán
+        </Link>
+      </div>
 
       <StatStrip
         items={[
@@ -122,7 +131,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && <EmptyState message="Chưa có đề nghị thanh toán nào. Duyệt một PO để tạo tự động." />}
+        {rows.length === 0 && <EmptyState message="Chưa có đề nghị thanh toán nào. Bấm “Tạo đề nghị thanh toán” để lập từ các dòng PO đã duyệt." />}
       </Card>
       <Pagination page={page} total={total} per={PER_PAGE} />
     </div>

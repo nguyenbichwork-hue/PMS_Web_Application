@@ -4,7 +4,6 @@ import { createPRAction } from "@/actions/pr";
 import { Card, Field, inputCls, Button } from "@/components/ui";
 import { SearchSelect, type SSOption } from "@/components/SearchSelect";
 import { CatalogPicker } from "@/components/CatalogPicker";
-import { PaymentMethodSection } from "@/components/PaymentMethodSection";
 import { AttachmentUploadSection } from "@/components/AttachmentUploadSection";
 import { money } from "@/lib/format";
 import type { Company, Product, Supplier } from "@/lib/types";
@@ -410,8 +409,7 @@ export function PRForm({
         </div>
       </Card>
 
-      {/* MODULE Hình thức thanh toán — đặt SAU chi tiết hàng để đã có tổng tiền khi đối chiếu số lần/số tiền từng lần. */}
-      <PaymentMethodSection grandTotal={grand} />
+      {/* Điều khoản thanh toán ĐÃ CHUYỂN sang Đề nghị thanh toán (PRQ) — spec 08/2026. */}
 
       {/* MODULE Tệp đính kèm theo LOẠI chứng từ — BẮT BUỘC ít nhất một tệp. */}
       <AttachmentUploadSection />

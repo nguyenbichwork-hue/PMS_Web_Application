@@ -241,6 +241,13 @@ CREATE TABLE IF NOT EXISTS payment_requisitions (
 );
 CREATE INDEX IF NOT EXISTS idx_prq_company  ON payment_requisitions(company_id);
 CREATE INDEX IF NOT EXISTS idx_prq_supplier ON payment_requisitions(supplier_id);
+-- Điều khoản thanh toán CHUYỂN từ PR sang PRQ (spec 08/2026): PRQ tạo tay, độc lập
+-- với PR/PO. payment_method = hình thức TT; advance_percent = % ứng trước (khi Ứng trước);
+-- payment_count = số lần trả (1..9); payment_installments = mảng JSON [{amount, days}].
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_method       TEXT;
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS advance_percent      NUMERIC(6,2);
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_count        INT;
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_installments JSONB;
 
 CREATE TABLE IF NOT EXISTS payment_requisition_items (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

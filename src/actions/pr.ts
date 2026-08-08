@@ -50,34 +50,12 @@ export async function createPRAction(formData: FormData): Promise<ActionResult> 
   const delivery_location = String(formData.get("delivery_location") ?? "").trim() || null;
   const requester_status = String(formData.get("requester_status") ?? "").trim() || null;
   const buyer = String(formData.get("buyer") ?? "").trim() || null;
-  const payment_method = String(formData.get("payment_method") ?? "").trim() || null;
-  const advRaw = formData.get("advance_percent");
-  // % ứng trước chỉ có nghĩa khi hình thức = Ứng trước.
-  const advance_percent =
-    payment_method === "Ứng trước" && advRaw != null && String(advRaw).trim() !== ""
-      ? Math.max(0, Math.min(100, Number(advRaw)))
-      : null;
+  // Điều khoản thanh toán (hình thức / % ứng trước / số lần) ĐÃ CHUYỂN sang PRQ
+  // (spec 08/2026) — form PR không còn nhập các trường này nữa.
   // Liên kết mua ↔ bán: khách hàng / dự án / số đơn bán.
   const customer_id = formData.get("customer_id") ? Number(formData.get("customer_id")) : null;
   const project_id = formData.get("project_id") ? Number(formData.get("project_id")) : null;
   const sales_order_ref = String(formData.get("sales_order_ref") ?? "").trim() || null;
-  // Hình thức thanh toán nhiều lần: số lần (số nguyên 1..9) + mỗi lần {số tiền, số ngày}.
-  const rawCount = String(formData.get("payment_count") ?? "").trim();
-  let payment_count: number | null = null;
-  let payment_installments: { amount: number; days: number }[] | null = null;
-  if (rawCount !== "") {
-    const n = Math.floor(Number(rawCount));
-    if (!Number.isInteger(n) || n < 1 || n > 9) throw new Error("Số lần thanh toán phải là số nguyên từ 1 đến 9.");
-    let arr: unknown = [];
-    try { arr = JSON.parse(String(formData.get("payment_installments") ?? "[]")); } catch { arr = []; }
-    const rows = (Array.isArray(arr) ? arr : []).slice(0, n).map((v) => {
-      const o = (v && typeof v === "object" ? v : {}) as { amount?: unknown; days?: unknown };
-      return { amount: Math.max(0, Number(o.amount) || 0), days: Math.max(0, Math.floor(Number(o.days) || 0)) };
-    });
-    while (rows.length < n) rows.push({ amount: 0, days: 0 });
-    payment_count = n;
-    payment_installments = rows;
-  }
   // Tệp đính kèm BẮT BUỘC, TÁCH THEO LOẠI (files_<key>). Không tệp nào → chặn tạo PR.
   // KHÔNG dùng `instanceof File` — trong Server Action, tệp có thể không phải instance
   // của global File → lọc theo "không phải chuỗi".
@@ -134,13 +112,12 @@ export async function createPRAction(formData: FormData): Promise<ActionResult> 
         exec,
         `INSERT INTO purchase_requests
            (request_date, requester_id, department, company_id, purpose, priority, required_date, status, total_amount, vat_total, current_level, created_by,
-            project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-            customer_id, project_id, sales_order_ref, payment_count, payment_installments)
-         VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13,$14,$15, $16,$17,$18, $19,$20) RETURNING id`,
+            project_code, delivery_location, requester_status, buyer,
+            customer_id, project_id, sales_order_ref)
+         VALUES (current_date, $1,$2,$3,$4,$5,$6,$7,$8,$9,0,$1, $10,$11,$12,$13, $14,$15,$16) RETURNING id`,
         [user.id, department, company_id, purpose, priority, required_date, status, total, vatTotal,
-         project_code, delivery_location, requester_status, payment_method, advance_percent, buyer,
-         customer_id, project_id, sales_order_ref,
-         payment_count, payment_installments ? JSON.stringify(payment_installments) : null]
+         project_code, delivery_location, requester_status, buyer,
+         customer_id, project_id, sales_order_ref]
       );
       await exec(`UPDATE purchase_requests SET pr_number = $1 WHERE id = $2`, [docNumber("PR", pr!.id), pr!.id]);
 
