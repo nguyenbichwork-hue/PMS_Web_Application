@@ -100,7 +100,7 @@ export function PaymentMethodSection({ grandTotal }: { grandTotal: number }) {
                   <input
                     type="number"
                     min={0}
-                    step={1000}
+                    step={1}
                     value={r.amount || ""}
                     onChange={(e) => setAmount(i, e.target.value)}
                     className={yellowCls}
