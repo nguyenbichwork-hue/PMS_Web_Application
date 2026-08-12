@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } from "@/actions/prq";
 import { Card, Button } from "@/components/ui";
 import { MarkPaidModal } from "@/components/MarkPaidModal";
+import { useToast } from "@/components/Toast";
 
 export function PRQActions({
   prqId,
@@ -18,6 +19,7 @@ export function PRQActions({
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const run = (fn: () => Promise<void>) => () => start(async () => { await fn(); router.refresh(); });
 
   const showAny =
@@ -35,7 +37,7 @@ export function PRQActions({
             loading={pending}
             onClick={() => start(async () => {
               const res = await submitPRQAction(prqId);
-              if (!res.ok) { alert(res.error ?? "Không gửi được đề nghị."); return; }
+              if (!res.ok) { toast(res.error ?? "Không gửi được đề nghị.", "error"); return; }
               router.refresh();
             })}
           >

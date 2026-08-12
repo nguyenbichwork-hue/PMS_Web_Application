@@ -6,6 +6,7 @@ import { SearchSelect, type SSOption } from "@/components/SearchSelect";
 import { CatalogPicker } from "@/components/CatalogPicker";
 import { AttachmentUploadSection } from "@/components/AttachmentUploadSection";
 import { money } from "@/lib/format";
+import { useToast } from "@/components/Toast";
 import type { Company, Product, Supplier } from "@/lib/types";
 
 interface ProjectOpt { id: number; project_code: string; project_name: string; customer_id: number | null }
@@ -129,6 +130,7 @@ export function PRForm({
 
   // Trạng thái đang gửi để hiện spinner trên đúng nút được bấm ("đã nhận lệnh").
   const [pendingMode, setPendingMode] = useState<null | "draft" | "submit">(null);
+  const toast = useToast();
 
   const submit = (mode: "draft" | "submit") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -138,7 +140,7 @@ export function PRForm({
     const fileInputs = Array.from(form.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
     const totalFiles = fileInputs.reduce((s, inp) => s + (inp.files?.length ?? 0), 0);
     if (totalFiles === 0) {
-      alert("Vui lòng đính kèm ít nhất một tệp (theo loại chứng từ) trước khi tạo PR.");
+      toast("Vui lòng đính kèm ít nhất một tệp (theo loại chứng từ) trước khi tạo PR.", "error");
       return;
     }
     const fd = new FormData(form);
@@ -149,13 +151,13 @@ export function PRForm({
     // được TRẢ VỀ { ok:false, error } (không throw) nên hiển thị được ở production.
     createPRAction(fd)
       .then((res) => {
-        if (res && !res.ok) { alert(res.error); setPendingMode(null); }
+        if (res && !res.ok) { toast(res.error ?? "Không tạo được yêu cầu mua.", "error"); setPendingMode(null); }
         // thành công → redirect, giữ spinner cho tới khi chuyển trang.
       })
       .catch((err: unknown) => {
         const digest = (err as { digest?: string })?.digest;
         if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return;
-        alert((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.");
+        toast((err as Error)?.message || "Có lỗi khi tạo yêu cầu mua. Vui lòng thử lại.", "error");
         setPendingMode(null);
       });
   };
