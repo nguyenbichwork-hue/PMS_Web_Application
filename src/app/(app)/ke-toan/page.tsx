@@ -6,7 +6,7 @@ import { Card, StatusBadge, Th, Td, EmptyState } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { money, date } from "@/lib/format";
-import { PayButton } from "./PayButton";
+import { MarkPaidModal } from "@/components/MarkPaidModal";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +132,14 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
                   </>
                 ) : (
                   <Td className="text-right">
-                    {canPay ? <PayButton prqId={r.id} /> : <StatusBadge status={r.status} />}
+                    {canPay ? (
+                      <MarkPaidModal
+                        prqId={r.id}
+                        summary={`${r.prq_number ?? `PRQ-${r.id}`} · ${r.supplier_name ?? "—"} · ${money(r.grand_total)}`}
+                      />
+                    ) : (
+                      <StatusBadge status={r.status} />
+                    )}
                   </Td>
                 )}
               </tr>

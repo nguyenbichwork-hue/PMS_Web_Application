@@ -1,8 +1,9 @@
 "use client";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction, markPRQPaidAction } from "@/actions/prq";
+import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } from "@/actions/prq";
 import { Card, Button } from "@/components/ui";
+import { MarkPaidModal } from "@/components/MarkPaidModal";
 
 export function PRQActions({
   prqId,
@@ -53,17 +54,7 @@ export function PRQActions({
           </>
         )}
         {canApprove && status === "Approved" && (
-          <Button
-            className="w-full justify-center"
-            loading={pending}
-            onClick={() => {
-              const ref = window.prompt("Số lệnh chi / ủy nhiệm chi (UNC) — có thể bỏ trống:");
-              if (ref === null) return; // Hủy
-              start(async () => { await markPRQPaidAction(prqId, ref); router.refresh(); });
-            }}
-          >
-            Đã chuyển tiền
-          </Button>
+          <MarkPaidModal prqId={prqId} fullWidth />
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (
           <div className="border-t border-slate-100 pt-2">
