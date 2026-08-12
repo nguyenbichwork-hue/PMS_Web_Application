@@ -87,16 +87,17 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   const editable = canManage && prq.status === "Draft";
 
   // Kế hoạch thanh toán từng lần: JSONB có thể về mảng (pg) hoặc chuỗi (PGlite).
-  let prqInstallments: { amount: number; days: number }[] = [];
+  let prqInstallments: { amount: number; days: number; due_date: string | null }[] = [];
   try {
     const raw = prq.payment_installments;
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (Array.isArray(parsed)) {
-      prqInstallments = parsed.map((v) =>
-        v && typeof v === "object"
-          ? { amount: Number((v as { amount?: unknown }).amount) || 0, days: Number((v as { days?: unknown }).days) || 0 }
-          : { amount: Number(v) || 0, days: 0 }
-      );
+      prqInstallments = parsed.map((v) => {
+        const o = (v && typeof v === "object" ? v : {}) as { amount?: unknown; days?: unknown; due_date?: unknown };
+        return v && typeof v === "object"
+          ? { amount: Number(o.amount) || 0, days: Number(o.days) || 0, due_date: typeof o.due_date === "string" ? o.due_date : null }
+          : { amount: Number(v) || 0, days: 0, due_date: null };
+      });
     }
   } catch { prqInstallments = []; }
 
@@ -139,7 +140,9 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
                   {prqInstallments.map((it, i) => (
                     <span key={i} className="rounded-md bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
                       Lần {i + 1}: <b>{money(it.amount)}</b>
-                      {it.days > 0 && <span className="text-slate-500"> · sau {it.days} ngày</span>}
+                      {it.due_date
+                        ? <span className="text-slate-500"> · {date(it.due_date)}</span>
+                        : it.days > 0 && <span className="text-slate-500"> · sau {it.days} ngày</span>}
                     </span>
                   ))}
                 </div>

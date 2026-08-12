@@ -36,11 +36,13 @@ function readPaymentTerms(formData: FormData) {
     if (!Number.isInteger(n) || n < 1 || n > 9) throw new Error("Số lần thanh toán phải là số nguyên từ 1 đến 9.");
     let arr: unknown = [];
     try { arr = JSON.parse(String(formData.get("payment_installments") ?? "[]")); } catch { arr = []; }
+    // Mỗi kỳ: {amount, due_date} — due_date là NGÀY thanh toán cố định (ISO 'YYYY-MM-DD').
+    const isISODate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
     const rows = (Array.isArray(arr) ? arr : []).slice(0, n).map((v) => {
-      const o = (v && typeof v === "object" ? v : {}) as { amount?: unknown; days?: unknown };
-      return { amount: Math.max(0, Number(o.amount) || 0), days: Math.max(0, Math.floor(Number(o.days) || 0)) };
+      const o = (v && typeof v === "object" ? v : {}) as { amount?: unknown; due_date?: unknown };
+      return { amount: Math.max(0, Number(o.amount) || 0), due_date: isISODate(o.due_date) ? o.due_date : null };
     });
-    while (rows.length < n) rows.push({ amount: 0, days: 0 });
+    while (rows.length < n) rows.push({ amount: 0, due_date: null });
     payment_count = n;
     payment_installments = JSON.stringify(rows);
   }

@@ -101,7 +101,9 @@ export interface PurchaseRequest {
   current_level: number;
   // Hình thức thanh toán nhiều lần (module riêng): mỗi lần {số tiền, số ngày}.
   payment_count?: number | null;
-  payment_installments?: { amount: number; days: number }[] | null;
+  // Mỗi kỳ: số tiền + NGÀY thanh toán cố định (due_date, ISO). PRQ cũ có thể còn
+  // lưu `days` (số ngày kể từ ngày đặt) — giữ optional để tương thích ngược khi đọc.
+  payment_installments?: { amount: number; due_date?: string | null; days?: number }[] | null;
   // joined
   requester_name?: string;
   company_name?: string;
