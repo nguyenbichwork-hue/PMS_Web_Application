@@ -56,6 +56,7 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
     items: [
       { href: "/suppliers", label: "Nhà cung cấp", icon: "supplier" },
       { href: "/products", label: "Hàng hóa", icon: "product" },
+      { href: "/business-units", label: "BU (Business Unit)", icon: "users" },
       { href: "/du-an", label: "Dự án / Công trình", icon: "po" },
     ],
   },
