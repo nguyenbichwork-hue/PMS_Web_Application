@@ -1,7 +1,7 @@
 "use client";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } from "@/actions/prq";
+import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction, markPRQPaidAction } from "@/actions/prq";
 import { Card, Button } from "@/components/ui";
 
 export function PRQActions({
@@ -21,7 +21,7 @@ export function PRQActions({
 
   const showAny =
     (canManage && ["Draft", "Submitted", "Approved"].includes(status)) ||
-    (canApprove && status === "Submitted");
+    (canApprove && ["Submitted", "Approved"].includes(status));
   if (!showAny) return null;
 
   return (
@@ -51,6 +51,19 @@ export function PRQActions({
               Từ chối
             </Button>
           </>
+        )}
+        {canApprove && status === "Approved" && (
+          <Button
+            className="w-full justify-center"
+            loading={pending}
+            onClick={() => {
+              const ref = window.prompt("Số lệnh chi / ủy nhiệm chi (UNC) — có thể bỏ trống:");
+              if (ref === null) return; // Hủy
+              start(async () => { await markPRQPaidAction(prqId, ref); router.refresh(); });
+            }}
+          >
+            Đã chuyển tiền
+          </Button>
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (
           <div className="border-t border-slate-100 pt-2">

@@ -47,6 +47,7 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
   {
     title: "Tài chính",
     items: [
+      { href: "/ke-toan", label: "Chi tiền (Kế toán)", icon: "invoice" },
       { href: "/cong-no", label: "Công nợ NCC", icon: "invoice" },
       { href: "/thue", label: "Dashboard thuế", icon: "dashboard" },
     ],

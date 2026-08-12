@@ -280,6 +280,26 @@ export async function approvePRQAction(prqId: number) {
   revalidatePath("/payment-requisitions");
 }
 
+/** Kế toán ĐÁNH DẤU ĐÃ CHUYỂN TIỀN: Approved → Paid. Ghi ngày chi + người chi +
+ *  số lệnh chi/UNC (tùy chọn) để đối chiếu sao kê. Đây là bước KẾT của vòng đời PRQ. */
+export async function markPRQPaidAction(prqId: number, paidRef?: string) {
+  const user = await requireUser();
+  if (!can(user.role, "prq.approve")) throw new Error("FORBIDDEN");
+  const prq = await loadPRQ(user, prqId);
+  if (prq.status !== "Approved") throw new Error("Chỉ đánh dấu đã chi cho đề nghị đã DUYỆT.");
+  const ref = (paidRef ?? "").trim() || null;
+  await query(
+    `UPDATE payment_requisitions
+        SET status='Paid', paid_date=now()::date, paid_by=$2, paid_ref=$3, updated_at=now()
+      WHERE id=$1`,
+    [prqId, user.id, ref]
+  );
+  await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Pay", newValue: ref });
+  revalidatePath(`/payment-requisitions/${prqId}`);
+  revalidatePath("/payment-requisitions");
+  revalidatePath("/ke-toan");
+}
+
 /** Người duyệt TỪ CHỐI đề nghị đã gửi. Excel đã xuất/gửi NCC nên quyết định chỉ
  *  có 2 nhánh: Duyệt hoặc Từ chối. Ghi lý do để người lập biết mà xử lý. */
 export async function rejectPRQAction(prqId: number, reason: string) {

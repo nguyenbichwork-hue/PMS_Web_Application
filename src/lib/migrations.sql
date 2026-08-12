@@ -249,6 +249,11 @@ ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_method       T
 ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS advance_percent      NUMERIC(6,2);
 ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_count        INT;
 ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS payment_installments JSONB;
+-- Ghi nhận CHI TIỀN (kế toán đánh dấu "đã chuyển tiền"): Approved → Paid (spec 08/2026).
+-- paid_ref = số lệnh chi / ủy nhiệm chi (UNC) để đối chiếu sao kê.
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS paid_date DATE;
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS paid_by   BIGINT REFERENCES users(id);
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS paid_ref  TEXT;
 
 CREATE TABLE IF NOT EXISTS payment_requisition_items (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
