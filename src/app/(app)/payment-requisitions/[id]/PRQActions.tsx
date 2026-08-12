@@ -5,6 +5,7 @@ import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } f
 import { Card, Button } from "@/components/ui";
 import { MarkPaidModal } from "@/components/MarkPaidModal";
 import { useToast } from "@/components/Toast";
+import { usePrqDirty } from "./DirtyContext";
 
 export function PRQActions({
   prqId,
@@ -20,6 +21,7 @@ export function PRQActions({
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const { dirty } = usePrqDirty();
   const run = (fn: () => Promise<void>) => () => start(async () => { await fn(); router.refresh(); });
 
   const showAny =
@@ -35,11 +37,14 @@ export function PRQActions({
           <Button
             className="w-full justify-center"
             loading={pending}
-            onClick={() => start(async () => {
-              const res = await submitPRQAction(prqId);
-              if (!res.ok) { toast(res.error ?? "Không gửi được đề nghị.", "error"); return; }
-              router.refresh();
-            })}
+            onClick={() => {
+              if (dirty) { toast("Bạn còn thay đổi chưa lưu. Vui lòng bấm 'Lưu' ở khối Thông tin thanh toán trước khi gửi duyệt.", "error"); return; }
+              start(async () => {
+                const res = await submitPRQAction(prqId);
+                if (!res.ok) { toast(res.error ?? "Không gửi được đề nghị.", "error"); return; }
+                router.refresh();
+              });
+            }}
           >
             Gửi duyệt
           </Button>

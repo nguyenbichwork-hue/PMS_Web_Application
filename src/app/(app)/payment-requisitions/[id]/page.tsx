@@ -7,6 +7,7 @@ import { Card, PageHeader, StatusBadge, ExportButton } from "@/components/ui";
 import { money, date } from "@/lib/format";
 import { amountInWordsVi } from "@/lib/num-to-words-vi";
 import { PRQEditor, type PRQLine } from "./PRQEditor";
+import { PrqDirtyProvider } from "./DirtyContext";
 import { PRQActions } from "./PRQActions";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
 
@@ -109,6 +110,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
         action={<StatusBadge status={prq.status} />}
       />
 
+      <PrqDirtyProvider>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card className="p-5">
@@ -220,6 +222,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           </Card>
         </div>
       </div>
+      </PrqDirtyProvider>
     </div>
   );
 }

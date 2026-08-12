@@ -5,6 +5,7 @@ import { updatePRQAction, addPOToPRQAction, removePRQLineAction } from "@/action
 import { Card, Button, Field, inputCls } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { money } from "@/lib/format";
+import { usePrqDirty } from "./DirtyContext";
 
 export interface PRQLine {
   id: number;
@@ -47,6 +48,7 @@ export function PRQEditor({
   const [pending, start] = useTransition();
   const [addPo, setAddPo] = useState("");
   const router = useRouter();
+  const { setDirty } = usePrqDirty();
 
   // Tính nhanh: nhập TIỀN TRƯỚC THUẾ + % VAT → tự ra SỐ TIỀN GỒM THUẾ (vẫn sửa tay được).
   const round = (n: number) => Math.round(n) || 0;
@@ -77,7 +79,12 @@ export function PRQEditor({
 
   return (
     <Card className="p-5">
-      <form action={updatePRQAction} className="space-y-5">
+      <form
+        action={updatePRQAction}
+        onInput={() => setDirty(true)}
+        onSubmit={() => setDirty(false)}
+        className="space-y-5"
+      >
         <input type="hidden" name="prq_id" value={prq.id} />
 
         <div>
