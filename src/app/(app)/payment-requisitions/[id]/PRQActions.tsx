@@ -30,7 +30,15 @@ export function PRQActions({
       <h3 className="mb-3 text-base font-semibold text-slate-800">Thao tác</h3>
       <div className="space-y-2">
         {canManage && status === "Draft" && (
-          <Button className="w-full justify-center" loading={pending} onClick={run(() => submitPRQAction(prqId))}>
+          <Button
+            className="w-full justify-center"
+            loading={pending}
+            onClick={() => start(async () => {
+              const res = await submitPRQAction(prqId);
+              if (!res.ok) { alert(res.error ?? "Không gửi được đề nghị."); return; }
+              router.refresh();
+            })}
+          >
             Gửi duyệt
           </Button>
         )}

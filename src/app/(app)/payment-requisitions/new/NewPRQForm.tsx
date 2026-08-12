@@ -43,6 +43,7 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
   const [supplierId, setSupplierId] = useState<number | null>(suppliers.length === 1 ? suppliers[0].id : null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [bank, setBank] = useState<string>(suppliers.length === 1 ? suppliers[0].bank ?? "" : "");
+  const [instMismatch, setInstMismatch] = useState(false);
 
   // Dòng của NCC đang chọn, gom theo PO.
   const byPO = useMemo<POGroup[]>(() => {
@@ -80,7 +81,7 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
       return next;
     });
 
-  const canSubmit = supplierId != null && checked.size > 0;
+  const canSubmit = supplierId != null && checked.size > 0 && !instMismatch;
   const idsJson = JSON.stringify([...checked]);
 
   return (
@@ -161,9 +162,12 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
       )}
 
       <Card className="p-6">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Field label="Số TK ngân hàng">
             <input name="bank_account" value={bank} onChange={(e) => setBank(e.target.value)} className={inputCls} placeholder="Số tài khoản NCC" />
+          </Field>
+          <Field label="Tên ngân hàng">
+            <input name="bank_name" className={inputCls} placeholder="VD: Ngân hàng ACB - PGD Nguyễn Khoái" />
           </Field>
           <Field label="Ngày đến hạn">
             <input type="date" name="due_date" className={inputCls} />
@@ -172,11 +176,13 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
             <input name="reason" className={inputCls} placeholder="VD: Thanh toán đợt 1" />
           </Field>
         </div>
+        <p className="mt-2 text-xs text-slate-400">Các trường ngân hàng / ngày đến hạn / lý do là <b>bắt buộc khi gửi duyệt</b> (có thể để trống ở bước Nháp).</p>
       </Card>
 
-      <PaymentMethodSection grandTotal={selectedTotal} />
+      <PaymentMethodSection grandTotal={selectedTotal} onMismatch={setInstMismatch} />
 
       <div className="flex items-center justify-end gap-3">
+        {instMismatch && <span className="text-xs font-medium text-rose-600">Tổng các lần thanh toán phải khớp tổng đã chọn.</span>}
         <span className="text-xs text-slate-400">{checked.size > 0 ? `Đã chọn ${checked.size} dòng` : "Chưa chọn dòng nào"}</span>
         <FormSubmitButton disabled={!canSubmit} pendingText="Đang tạo…">Tạo đề nghị thanh toán</FormSubmitButton>
       </div>

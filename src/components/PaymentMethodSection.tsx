@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, Field, inputCls } from "@/components/ui";
 import { money } from "@/lib/format";
 
@@ -17,7 +17,7 @@ const MAX_INSTALLMENTS = 9; // "dưới 10 ô"
  * Phát ra các hidden input để form cha gom bằng FormData:
  *   payment_method / advance_percent / payment_count / payment_installments (JSON).
  */
-export function PaymentMethodSection({ grandTotal }: { grandTotal: number }) {
+export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: number; onMismatch?: (mismatch: boolean) => void }) {
   const [method, setMethod] = useState<string>(METHODS[0]);
   const [advance, setAdvance] = useState<string>("");
   const [count, setCount] = useState<number>(0);
@@ -42,6 +42,9 @@ export function PaymentMethodSection({ grandTotal }: { grandTotal: number }) {
   const sum = useMemo(() => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [rows]);
   const diff = grandTotal - sum;
   const installmentsJson = count > 0 ? JSON.stringify(rows) : "";
+  // Chia kỳ mà tổng các lần lệch tổng đơn → báo form cha CHẶN tạo (feedback 6).
+  const mismatch = count > 0 && Math.abs(diff) > 0.5;
+  useEffect(() => { onMismatch?.(mismatch); }, [mismatch, onMismatch]);
 
   return (
     <Card className="mt-4 p-6">

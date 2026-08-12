@@ -69,6 +69,7 @@ export async function createPRQAction(formData: FormData) {
 
   const due_date = String(formData.get("due_date") ?? "").trim() || null;
   const bank_account = String(formData.get("bank_account") ?? "").trim() || null;
+  const bank_name = String(formData.get("bank_name") ?? "").trim() || null;
   const reason = String(formData.get("reason") ?? "").trim() || null;
   const terms = readPaymentTerms(formData);
   const payment_type = terms.payment_method === "Ứng trước" ? "Advance" : "Normal";
@@ -115,10 +116,10 @@ export async function createPRQAction(formData: FormData) {
     const prq = await firstRow<{ id: number }>(
       exec,
       `INSERT INTO payment_requisitions
-         (company_id, supplier_id, payment_type, currency, bank_account, reason, due_date, status, created_by,
+         (company_id, supplier_id, payment_type, currency, bank_account, bank_name, reason, due_date, status, created_by,
           payment_method, advance_percent, payment_count, payment_installments)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'Draft',$8, $9,$10,$11,$12) RETURNING id`,
-      [companyId, supplierId, payment_type, currency, bank_account ?? sup?.bank_account ?? null, reason, due_date, user.id,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9, $10,$11,$12,$13) RETURNING id`,
+      [companyId, supplierId, payment_type, currency, bank_account ?? sup?.bank_account ?? null, bank_name, reason, due_date, user.id,
        terms.payment_method, terms.advance_percent, terms.payment_count, terms.payment_installments]
     );
     await exec(`UPDATE payment_requisitions SET prq_number = $1 WHERE id = $2`, [docNumber("PRQ", prq!.id), prq!.id]);
@@ -260,15 +261,61 @@ export async function removePRQLineAction(prqId: number, itemId: number) {
   revalidatePath(`/payment-requisitions/${prqId}`);
 }
 
-export async function submitPRQAction(prqId: number) {
+export async function submitPRQAction(prqId: number): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
-  if (!can(user.role, "prq.manage")) throw new Error("FORBIDDEN");
-  const prq = await loadPRQ(user, prqId);
-  if (prq.status !== "Draft") throw new Error("Chỉ gửi được đề nghị đang Nháp.");
+  if (!can(user.role, "prq.manage")) return { ok: false, error: "Bạn không có quyền gửi duyệt." };
+  const prq = await queryOne<{
+    company_id: number; status: string; bank_account: string | null; bank_name: string | null;
+    due_date: string | null; reason: string | null; payment_count: number | null; payment_installments: unknown;
+  }>(
+    `SELECT company_id, status, bank_account, bank_name, due_date, reason, payment_count, payment_installments
+       FROM payment_requisitions WHERE id = $1`,
+    [prqId]
+  );
+  if (!prq) return { ok: false, error: "Không tìm thấy đề nghị thanh toán." };
+  if (!canAccessCompany(user, prq.company_id)) return { ok: false, error: "FORBIDDEN" };
+  if (prq.status !== "Draft") return { ok: false, error: "Chỉ gửi được đề nghị đang Nháp." };
+
+  // (5) Trường bắt buộc khi gửi duyệt.
+  const missing: string[] = [];
+  if (!prq.bank_account?.trim()) missing.push("Số TK ngân hàng");
+  if (!prq.bank_name?.trim()) missing.push("Tên ngân hàng");
+  if (!prq.due_date) missing.push("Ngày đến hạn");
+  if (!prq.reason?.trim()) missing.push("Lý do / diễn giải");
+  if (missing.length) return { ok: false, error: `Vui lòng điền: ${missing.join(", ")} — trước khi gửi duyệt.` };
+
+  // (6) Nếu chia kỳ: TỔNG các lần phải KHỚP tổng các dòng đề nghị (chống lệch số tiền).
+  const totRow = await queryOne<{ total: string }>(
+    `SELECT COALESCE(sum(amount),0) AS total FROM payment_requisition_items WHERE prq_id = $1`,
+    [prqId]
+  );
+  const lineTotal = Number(totRow?.total ?? 0);
+  if (prq.payment_count && prq.payment_count > 0) {
+    let arr: unknown = prq.payment_installments;
+    if (typeof arr === "string") { try { arr = JSON.parse(arr); } catch { arr = []; } }
+    const instSum = (Array.isArray(arr) ? arr : []).reduce(
+      (s, v) => s + (Number((v as { amount?: unknown })?.amount) || 0), 0
+    );
+    if (Math.abs(instSum - lineTotal) > 0.5)
+      return {
+        ok: false,
+        error: `Tổng các lần thanh toán (${instSum.toLocaleString("vi-VN")} ₫) không khớp tổng các dòng (${lineTotal.toLocaleString("vi-VN")} ₫). Vui lòng sửa lại kế hoạch thanh toán.`,
+      };
+  }
+
+  // (7) Bắt buộc đã tải lên chứng từ "PRQ đã ký".
+  const signed = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n FROM attachments WHERE document_type='PRQ' AND document_id=$1 AND kind='PRQ đã ký'`,
+    [prqId]
+  );
+  if (!signed || signed.n === 0)
+    return { ok: false, error: "Vui lòng tải lên chứng từ 'PRQ đã ký' trước khi gửi duyệt đề nghị thanh toán." };
+
   await query(`UPDATE payment_requisitions SET status='Submitted', updated_at=now() WHERE id=$1`, [prqId]);
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Submit" });
   revalidatePath(`/payment-requisitions/${prqId}`);
   revalidatePath("/payment-requisitions");
+  return { ok: true };
 }
 
 export async function approvePRQAction(prqId: number) {

@@ -71,6 +71,8 @@ export async function createPRAction(formData: FormData): Promise<ActionResult> 
 
   // --- Kiểm tra dữ liệu phía server (không tin dữ liệu từ client) ---
   if (!company_id) throw new Error("Vui lòng chọn công ty.");
+  if (!buyer) throw new Error("Vui lòng nhập Nhân viên mua hàng.");
+  if (!department.trim()) throw new Error("Vui lòng chọn BU / Phòng ban.");
   const validItems = items.filter((it) => it.item_name?.trim());
   if (validItems.length === 0) throw new Error("Cần ít nhất một dòng hàng hợp lệ.");
   const vatOf = (it: ItemInput) => {

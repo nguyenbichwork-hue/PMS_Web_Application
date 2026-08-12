@@ -186,8 +186,8 @@ export function PRForm({
           <Field label="Người yêu cầu mua hàng">
             <input value={requesterName} readOnly className={yellowCls + " text-slate-600"} />
           </Field>
-          <Field label="Nhân viên mua hàng">
-            <input name="buyer" className={yellowCls} placeholder="Tên NV mua hàng phụ trách…" />
+          <Field label="Nhân viên mua hàng" required>
+            <input name="buyer" required className={yellowCls} placeholder="Tên NV mua hàng phụ trách…" />
           </Field>
           <Field label="Dự án / Công trình">
             <select name="project_id" value={projectId} onChange={(e) => onPickProject(e.target.value)} className={yellowCls}>
@@ -202,9 +202,9 @@ export function PRForm({
           <Field label="Số đơn bán / Hợp đồng bán">
             <input name="sales_order_ref" className={yellowCls} placeholder="VD: SO-2026-014" />
           </Field>
-          <Field label="BU / Phòng ban">
-            <select name="department" defaultValue={department} className={yellowCls}>
-              <option value="">— Chọn phòng ban —</option>
+          <Field label="BU / Phòng ban" required>
+            <select name="department" required defaultValue={department} className={yellowCls}>
+              <option value="" disabled>— Chọn phòng ban —</option>
               {buOptions.map((b) => (
                 <option key={b.id} value={b.bu_name}>{b.bu_name}</option>
               ))}
