@@ -64,6 +64,28 @@ body {
 .lift { transition: transform .18s ease, box-shadow .18s ease; }
 .lift:hover { transform: translateY(-2px); }
 
+/* =====================================================================
+   TƯƠNG TÁC NÚT — chuẩn hóa phản hồi cho MỌI nút/điều khiển toàn app:
+   con trỏ tay + vòng focus BÀN PHÍM (focus-visible) bằng màu thương hiệu.
+   Phủ cả 70+ nút "thô" không qua component <Button> mà không phải sửa từng file.
+   (Các <Button>/<LinkButton> tự tắt outline này để dùng ring riêng, đẹp hơn.)
+   ===================================================================== */
+button:not(:disabled), [role="button"], summary { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* Nhấn nhẹ (lún) cho nút thô — trừ nút đang disabled; tôn trọng giảm chuyển động */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active { transform: translateY(0.5px); }
+}
+
 /* Thanh cuộn mảnh, trung tính */
 * { scrollbar-width: thin; scrollbar-color: #c9ccd3 transparent; }
 *::-webkit-scrollbar { width: 9px; height: 9px; }
