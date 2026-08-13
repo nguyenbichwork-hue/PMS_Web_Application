@@ -210,10 +210,6 @@ export function PRForm({
               {buOptions.map((b) => (
                 <option key={b.id} value={b.bu_name}>{b.bu_name}</option>
               ))}
-              {/* Giữ giá trị mặc định của người dùng nếu không nằm trong danh sách BU */}
-              {department && !buOptions.some((b) => b.bu_name === department) && (
-                <option value={department}>{department}</option>
-              )}
             </select>
           </Field>
           <Field label="Địa điểm giao hàng">
