@@ -5,6 +5,7 @@ import { saveProjectAction, deleteProjectAction } from "@/actions/master";
 import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 import type { Project } from "@/lib/types";
 
 interface Opt { id: number; name: string }
@@ -21,6 +22,7 @@ export function ProjectManager({
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const editing = !!project;
   const d10 = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : "");
 
@@ -29,9 +31,9 @@ export function ProjectManager({
     if (!confirm(`Xóa dự án "${project.project_name}" (${project.project_code})?`)) return;
     start(async () => {
       const res = await deleteProjectAction(project.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được."); return; }
+      if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }
       setOpen(false);
-      if (res.deactivated) alert("Dự án đã phát sinh chứng từ nên được chuyển sang 'Ngưng' thay vì xóa.");
+      if (res.deactivated) toast("Dự án đã phát sinh chứng từ nên được chuyển sang 'Ngưng' thay vì xóa.", "info");
       router.refresh();
     });
   };

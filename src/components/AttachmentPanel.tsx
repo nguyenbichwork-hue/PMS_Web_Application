@@ -3,6 +3,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { uploadAttachmentAction, deleteAttachmentAction } from "@/actions/attachment";
 import { Card, Button } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import { attachmentTypesFor } from "@/lib/attachment-types";
 
 export interface AttachmentItem {
@@ -37,6 +38,7 @@ export function AttachmentPanel({
   const [pending, start] = useTransition();
   const [picked, setPicked] = useState<Record<string, number>>({});
   const router = useRouter();
+  const toast = useToast();
 
   // Danh mục loại tệp theo loại chứng từ (PRQ có thêm "PRQ đã ký").
   const TYPES = attachmentTypesFor(documentType);
@@ -52,7 +54,7 @@ export function AttachmentPanel({
   const del = (id: number) =>
     start(async () => {
       const res = await deleteAttachmentAction(id);
-      if (res && !res.ok) { alert(res.error); return; }
+      if (res && !res.ok) { toast(res.error ?? "Không xóa được tệp.", "error"); return; }
       router.refresh();
     });
 
@@ -71,10 +73,10 @@ export function AttachmentPanel({
         fd.set("kind", t.label);
         for (const f of Array.from(files)) fd.append("file", f);
         const res = await uploadAttachmentAction(fd);
-        if (res && !res.ok) { alert(res.error); return; }
+        if (res && !res.ok) { toast(res.error ?? "Không tải lên được tệp.", "error"); return; }
         uploaded += files.length;
       }
-      if (uploaded === 0) { alert("Chưa chọn tệp nào để tải lên."); return; }
+      if (uploaded === 0) { toast("Chưa chọn tệp nào để tải lên.", "info"); return; }
       form.reset();
       setPicked({});
       router.refresh();

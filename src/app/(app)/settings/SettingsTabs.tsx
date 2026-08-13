@@ -7,6 +7,7 @@ import { saveCompanyAction, deleteCompanyAction, saveBUAction, deleteBUAction } 
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 import { SectionImport } from "@/components/SectionImport";
 import { PasswordInput } from "@/components/PasswordInput";
 import { AccentPicker } from "@/components/AccentPicker";
@@ -603,6 +604,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState<{ user: UserRow; usage: UsageItem[] } | null>(null);
   const router = useRouter();
+  const toast = useToast();
 
   const remove = (u: UserRow) => {
     if (!confirm(`Xóa tài khoản "${u.name}" (${u.email})?`)) return;
@@ -611,7 +613,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
       if (res.ok) { router.refresh(); return; }
       // Tài khoản đã phát sinh dữ liệu → mở bảng thông báo để xác nhận xóa cưỡng bức.
       if (res.hasData) { setConfirming({ user: u, usage: res.usage ?? [] }); return; }
-      alert(res.error ?? "Không xóa được tài khoản.");
+      toast(res.error ?? "Không xóa được tài khoản.", "error");
     });
   };
 
@@ -621,7 +623,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
     start(async () => {
       const res = await forceDeleteUserAction(uid);
       setConfirming(null);
-      if (!res.ok) alert(res.error ?? "Không xóa được tài khoản.");
+      if (!res.ok) toast(res.error ?? "Không xóa được tài khoản.", "error");
       else router.refresh();
     });
   };
@@ -750,13 +752,14 @@ function CompaniesPanel({ companies }: { companies: CompanyRow[] }) {
   const [editing, setEditing] = useState<CompanyRow | "new" | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   const remove = (c: CompanyRow) => {
     if (!confirm(`Xóa pháp nhân "${c.company_name}" (${c.company_code})?`)) return;
     start(async () => {
       const res = await deleteCompanyAction(c.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được pháp nhân."); return; }
-      if (res.deactivated) alert("Pháp nhân đã có chứng từ tham chiếu → đã chuyển sang trạng thái Ngưng.");
+      if (!res.ok) { toast(res.error ?? "Không xóa được pháp nhân.", "error"); return; }
+      if (res.deactivated) toast("Pháp nhân đã có chứng từ tham chiếu → đã chuyển sang trạng thái Ngưng.", "info");
       router.refresh();
     });
   };
@@ -841,13 +844,14 @@ function BUsPanel({ businessUnits, companies }: { businessUnits: BURow[]; compan
   const [editing, setEditing] = useState<BURow | "new" | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const activeCompanies = companies.filter((c) => c.status !== "Inactive");
 
   const remove = (b: BURow) => {
     if (!confirm(`Xóa phòng ban "${b.bu_name}" (${b.bu_code})?`)) return;
     start(async () => {
       const res = await deleteBUAction(b.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được phòng ban."); return; }
+      if (!res.ok) { toast(res.error ?? "Không xóa được phòng ban.", "error"); return; }
       router.refresh();
     });
   };
@@ -935,6 +939,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   // Phân biệt nút nào đang chạy (busy dùng chung) để chỉ 1 nút hiện spinner.
   const [busyKind, setBusyKind] = useState<"all" | "history" | null>(null);
   const router = useRouter();
+  const toast = useToast();
 
   // Tự động làm mới mỗi 4 giây (poll) khi bật.
   useEffect(() => {
@@ -966,7 +971,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     setRows((p) => p.filter((x) => x.id !== a.id)); // xóa lạc quan
     start(async () => {
       const res = await deleteAuditEntryAction(a.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được."); setAuto(true); }
+      if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); setAuto(true); }
     });
   };
 
@@ -976,7 +981,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     setBusyKind("all");
     start(async () => {
       const res = await clearAuditLogAction();
-      if (!res.ok) { alert(res.error ?? "Không dọn được nhật ký."); setAuto(true); return; }
+      if (!res.ok) { toast(res.error ?? "Không dọn được nhật ký.", "error"); setAuto(true); return; }
       setRows([]);
     });
   };
@@ -989,10 +994,10 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     setBusyKind("history");
     start(async () => {
       const res = await clearAllHistoryAction();
-      if (!res.ok) { alert(res.error ?? "Xóa thất bại."); setAuto(true); return; }
+      if (!res.ok) { toast(res.error ?? "Xóa thất bại.", "error"); setAuto(true); return; }
       setRows([]);
       router.refresh();
-      alert("Đã xóa toàn bộ lịch sử chứng từ. Có thể bắt đầu demo lại từ đầu.");
+      toast("Đã xóa toàn bộ lịch sử chứng từ. Có thể bắt đầu demo lại từ đầu.", "success");
     });
   };
 

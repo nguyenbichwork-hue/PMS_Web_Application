@@ -5,12 +5,14 @@ import { saveProductAction, deleteProductAction } from "@/actions/master";
 import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 import type { Product, Supplier } from "@/lib/types";
 
 export function ProductManager({ product, suppliers }: { product?: Product; suppliers: Supplier[] }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const editing = !!product;
 
   const remove = () => {
@@ -18,9 +20,9 @@ export function ProductManager({ product, suppliers }: { product?: Product; supp
     if (!confirm(`Xóa hàng hóa "${product.item_name}" (${product.item_code})?`)) return;
     start(async () => {
       const res = await deleteProductAction(product.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được."); return; }
+      if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }
       setOpen(false);
-      if (res.deactivated) alert("Hàng hóa đã phát sinh chứng từ nên được chuyển sang 'Ngưng' thay vì xóa.");
+      if (res.deactivated) toast("Hàng hóa đã phát sinh chứng từ nên được chuyển sang 'Ngưng' thay vì xóa.", "info");
       router.refresh();
     });
   };

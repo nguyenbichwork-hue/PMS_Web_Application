@@ -2,6 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { listCommentsAction, addCommentAction, deleteCommentAction } from "@/actions/comment";
 import { Button, inputCls } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 interface CommentRow {
   id: number;
@@ -27,6 +28,7 @@ export function ReconCommentBox({
   const [comments, setComments] = useState<CommentRow[] | null>(null);
   const [value, setValue] = useState("");
   const [pending, start] = useTransition();
+  const toast = useToast();
 
   const load = () =>
     listCommentsAction("Invoice", invoiceId)
@@ -56,7 +58,7 @@ export function ReconCommentBox({
         setValue("");
         await load();
       } catch (e) {
-        alert((e as Error)?.message || "Lỗi khi gửi bình luận.");
+        toast((e as Error)?.message || "Lỗi khi gửi bình luận.", "error");
       }
     });
   };
@@ -64,7 +66,7 @@ export function ReconCommentBox({
   const del = (id: number) =>
     start(async () => {
       const r = await deleteCommentAction(id);
-      if (!r.ok) alert(r.error ?? "Không xóa được bình luận.");
+      if (!r.ok) toast(r.error ?? "Không xóa được bình luận.", "error");
       else await load();
     });
 

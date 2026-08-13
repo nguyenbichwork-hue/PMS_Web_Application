@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addCommentAction, deleteCommentAction } from "@/actions/comment";
 import { Card, Button, inputCls } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 export interface CommentItem {
   id: number;
@@ -44,6 +45,7 @@ export function CommentPanel({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   const [value, setValue] = useState("");
   const [picked, setPicked] = useState<MentionUser[]>([]);
@@ -119,7 +121,7 @@ export function CommentPanel({
                       onClick={() =>
                         start(async () => {
                           const res = await deleteCommentAction(c.id);
-                          if (!res.ok) alert(res.error ?? "Không xóa được bình luận.");
+                          if (!res.ok) toast(res.error ?? "Không xóa được bình luận.", "error");
                           else router.refresh();
                         })
                       }

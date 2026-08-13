@@ -5,12 +5,14 @@ import { saveSupplierAction, deleteSupplierAction } from "@/actions/master";
 import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 import type { Supplier } from "@/lib/types";
 
 export function SupplierManager({ supplier }: { supplier?: Supplier }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const toast = useToast();
   const editing = !!supplier;
 
   const remove = () => {
@@ -18,9 +20,9 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
     if (!confirm(`Xóa nhà cung cấp "${supplier.supplier_name}" (${supplier.supplier_code})?`)) return;
     start(async () => {
       const res = await deleteSupplierAction(supplier.id);
-      if (!res.ok) { alert(res.error ?? "Không xóa được."); return; }
+      if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }
       setOpen(false);
-      if (res.deactivated) alert("NCC đã phát sinh chứng từ (PO/hóa đơn) nên được chuyển sang 'Ngưng' thay vì xóa.");
+      if (res.deactivated) toast("NCC đã phát sinh chứng từ (PO/hóa đơn) nên được chuyển sang 'Ngưng' thay vì xóa.", "info");
       router.refresh();
     });
   };
