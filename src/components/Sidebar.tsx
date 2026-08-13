@@ -39,9 +39,9 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
       { href: "/purchase-orders", label: "Đơn đặt hàng", icon: "po" },
       { href: "/payment-requisitions", label: "Đề nghị thanh toán", icon: "invoice" },
       { href: "/goods-receipts", label: "Nhận hàng", icon: "gr" },
-      { href: "/invoices", label: "Hóa đơn", icon: "invoice" },
-      { href: "/invoices/sync", label: "Đồng bộ hóa đơn", icon: "invoice" },
-      { href: "/reconciliation", label: "Đối chiếu", icon: "gr" },
+      // Ẩn menu "Hóa đơn" / "Đồng bộ hóa đơn" / "Đối chiếu" (giữ route + dữ liệu,
+      // giống cách ẩn tab "Khách hàng"). Các trang /invoices, /invoices/sync,
+      // /reconciliation vẫn truy cập được qua link trực tiếp/cross-link.
     ],
   },
   {
