@@ -2,7 +2,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveProjectAction, deleteProjectAction } from "@/actions/master";
-import { Field, inputCls, Button } from "@/components/ui";
+import { Field, inputCls, Button, Spinner } from "@/components/ui";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import type { Project } from "@/lib/types";
 
@@ -97,10 +98,13 @@ export function ProjectManager({
           </Field>
           <div className="flex items-center gap-2 pt-2">
             {editing && (
-              <button type="button" onClick={remove} disabled={pending} className="mr-auto text-sm font-semibold text-rose-500 hover:underline disabled:opacity-40">Xóa</button>
+              <button type="button" onClick={remove} disabled={pending} className="mr-auto inline-flex items-center gap-1.5 text-sm font-semibold text-rose-500 hover:underline disabled:opacity-40">
+                {pending && <Spinner className="h-3.5 w-3.5" />}
+                Xóa
+              </button>
             )}
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit">Lưu</Button>
+            <FormSubmitButton>Lưu</FormSubmitButton>
           </div>
         </form>
       </Modal>

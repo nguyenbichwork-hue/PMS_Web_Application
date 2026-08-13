@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, saveMatchSettingsAction, getStorageStatsAction, getAccessLogAction, getDataHealthAction, type UsageItem, type StorageStats, type AccessEntry, type DataHealth } from "@/actions/admin";
 import { syncDiagnosticAction, type SyncDiagnostic } from "@/actions/invoice-sync";
 import { saveCompanyAction, deleteCompanyAction, saveBUAction, deleteBUAction } from "@/actions/master";
-import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton } from "@/components/ui";
+import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton, Spinner } from "@/components/ui";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { SectionImport } from "@/components/SectionImport";
 import { PasswordInput } from "@/components/PasswordInput";
@@ -555,7 +556,7 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
             </Field>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
-              <Button type="submit">Lưu</Button>
+              <FormSubmitButton>Lưu</FormSubmitButton>
             </div>
           </form>
         </Modal>
@@ -588,7 +589,7 @@ function TolerancePanel({ settings }: { settings: MatchSettings }) {
           Gợi ý: Đơn giá 1% · Tổng tiền 1% · Số lượng 0% (không cho vượt số đã nhận). Thuế chỉ chấp nhận sai số làm tròn — không cấu hình ở đây.
         </p>
         <div className="flex items-center gap-3 pt-1">
-          <Button type="submit" disabled={pending}>{pending ? "Đang lưu…" : "Lưu ngưỡng"}</Button>
+          <Button type="submit" loading={pending}>{pending ? "Đang lưu…" : "Lưu ngưỡng"}</Button>
           {saved && !pending && <span className="text-xs font-medium text-emerald-600">✓ Đã lưu</span>}
         </div>
       </form>
@@ -692,7 +693,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
             </Field>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
-              <Button type="submit">Lưu</Button>
+              <FormSubmitButton>Lưu</FormSubmitButton>
             </div>
           </form>
         </Modal>
@@ -710,8 +711,9 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
               <button
                 onClick={forceRemove}
                 disabled={pending}
-                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
               >
+                {pending && <Spinner className="h-4 w-4" />}
                 {pending ? "Đang xóa…" : "Xóa luôn (chuyển dữ liệu cho tôi)"}
               </button>
             </>
@@ -825,7 +827,7 @@ function CompaniesPanel({ companies }: { companies: CompanyRow[] }) {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
-              <Button type="submit">Lưu</Button>
+              <FormSubmitButton>Lưu</FormSubmitButton>
             </div>
           </form>
         </Modal>
@@ -907,7 +909,7 @@ function BUsPanel({ businessUnits, companies }: { businessUnits: BURow[]; compan
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setEditing(null)}>Hủy</Button>
-              <Button type="submit">Lưu</Button>
+              <FormSubmitButton>Lưu</FormSubmitButton>
             </div>
           </form>
         </Modal>
@@ -930,6 +932,8 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   const [auto, setAuto] = useState(true);
   const [updatedAt, setUpdatedAt] = useState("");
   const [busy, start] = useTransition();
+  // Phân biệt nút nào đang chạy (busy dùng chung) để chỉ 1 nút hiện spinner.
+  const [busyKind, setBusyKind] = useState<"all" | "history" | null>(null);
   const router = useRouter();
 
   // Tự động làm mới mỗi 4 giây (poll) khi bật.
@@ -969,6 +973,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   const clearAll = () => {
     if (!confirm("Dọn SẠCH toàn bộ nhật ký? Thao tác này không thể hoàn tác.")) return;
     setAuto(false);
+    setBusyKind("all");
     start(async () => {
       const res = await clearAuditLogAction();
       if (!res.ok) { alert(res.error ?? "Không dọn được nhật ký."); setAuto(true); return; }
@@ -981,6 +986,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     if (!confirm("⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Đề nghị thanh toán · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm (kể cả tệp trên kho) · Thông báo · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt, dự án, khách hàng.\nSố chứng từ sẽ chạy LẠI TỪ ĐẦU (PR-2026-00001…).\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo.")) return;
     if (!confirm("Xác nhận LẦN 2: xóa sạch toàn bộ chứng từ để làm lại demo?")) return;
     setAuto(false);
+    setBusyKind("history");
     start(async () => {
       const res = await clearAllHistoryAction();
       if (!res.ok) { alert(res.error ?? "Xóa thất bại."); setAuto(true); return; }
@@ -1013,9 +1019,9 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
           <button
             onClick={clearAll}
             disabled={busy || rows.length === 0}
-            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-100 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-100 disabled:opacity-40"
           >
-            🧹 Dọn sạch
+            {busy && busyKind === "all" ? <Spinner className="h-3.5 w-3.5" /> : "🧹"} Dọn sạch
           </button>
         </div>
       </div>
@@ -1067,9 +1073,10 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
           <button
             onClick={clearHistory}
             disabled={busy}
-            className="shrink-0 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
           >
-            {busy ? "Đang xóa…" : "Xóa toàn bộ lịch sử"}
+            {busy && busyKind === "history" && <Spinner className="h-4 w-4" />}
+            {busy && busyKind === "history" ? "Đang xóa…" : "Xóa toàn bộ lịch sử"}
           </button>
         </div>
       </div>
