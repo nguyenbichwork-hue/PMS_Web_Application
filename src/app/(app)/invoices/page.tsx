@@ -23,7 +23,17 @@ export default async function InvoiceList({ searchParams }: { searchParams: Prom
   }
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(i.invoice_number ILIKE $${params.length} OR po.po_number ILIKE $${params.length})`);
+    const p = params.length;
+    // NCC dùng EXISTS tự chứa (câu ĐẾM không join suppliers).
+    const qc = [
+      `i.invoice_number ILIKE $${p}`,
+      `i.tax_code ILIKE $${p}`,
+      `po.po_number ILIKE $${p}`,
+      `EXISTS (SELECT 1 FROM suppliers s WHERE s.id = i.supplier_id AND (s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p} OR s.tax_code ILIKE $${p}))`,
+    ];
+    const digits = sp.q.replace(/\D/g, "");
+    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(i.total_amount)::bigint::text ILIKE $${params.length}`); }
+    where.push(`(${qc.join(" OR ")})`);
   }
   if (user && user.role !== "Admin") {
     params.push(user.company_id);

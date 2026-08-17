@@ -35,12 +35,16 @@ export default async function POListPage({
     params.push(`%${sp.q}%`);
     const p = params.length;
     // Dùng EXISTS tự chứa để chạy đúng cả ở câu ĐẾM (không join s/pr) lẫn câu lấy dòng.
-    where.push(`(
-      po.po_number ILIKE $${p}
-      OR EXISTS (SELECT 1 FROM suppliers s WHERE s.id = po.supplier_id AND (s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))
-      OR EXISTS (SELECT 1 FROM purchase_requests pr WHERE pr.id = po.pr_id AND pr.pr_number ILIKE $${p})
-      OR EXISTS (SELECT 1 FROM purchase_order_items it WHERE it.po_id = po.id AND (it.description ILIKE $${p} OR it.item_code ILIKE $${p}))
-    )`);
+    const qc = [
+      `po.po_number ILIKE $${p}`,
+      `EXISTS (SELECT 1 FROM companies c WHERE c.id = po.company_id AND c.company_name ILIKE $${p})`,
+      `EXISTS (SELECT 1 FROM suppliers s WHERE s.id = po.supplier_id AND (s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))`,
+      `EXISTS (SELECT 1 FROM purchase_requests pr WHERE pr.id = po.pr_id AND pr.pr_number ILIKE $${p})`,
+      `EXISTS (SELECT 1 FROM purchase_order_items it WHERE it.po_id = po.id AND (it.description ILIKE $${p} OR it.item_code ILIKE $${p}))`,
+    ];
+    const digits = sp.q.replace(/\D/g, "");
+    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(po.grand_total)::bigint::text ILIKE $${params.length}`); }
+    where.push(`(${qc.join(" OR ")})`);
   }
   // Lọc theo KHOẢNG NGÀY đặt hàng.
   if (sp.df) { params.push(sp.df); where.push(`po.order_date >= $${params.length}`); }

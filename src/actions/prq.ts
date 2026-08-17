@@ -294,7 +294,18 @@ export async function submitPRQAction(prqId: number): Promise<{ ok: boolean; err
   if (prq.payment_count && prq.payment_count > 0) {
     let arr: unknown = prq.payment_installments;
     if (typeof arr === "string") { try { arr = JSON.parse(arr); } catch { arr = []; } }
-    const instSum = (Array.isArray(arr) ? arr : []).reduce(
+    const list = Array.isArray(arr) ? arr : [];
+    // Mỗi kỳ BẮT BUỘC có số tiền > 0 và NGÀY thanh toán (feedback 17/08).
+    if (list.length < prq.payment_count)
+      return { ok: false, error: "Vui lòng nhập đủ số tiền và ngày cho từng lần thanh toán." };
+    for (let i = 0; i < prq.payment_count; i++) {
+      const v = (list[i] ?? {}) as { amount?: unknown; due_date?: unknown };
+      if (!(Number(v.amount) > 0))
+        return { ok: false, error: `Lần ${i + 1}: số tiền thanh toán phải lớn hơn 0.` };
+      if (!(typeof v.due_date === "string" && v.due_date.trim()))
+        return { ok: false, error: `Lần ${i + 1}: vui lòng chọn ngày thanh toán.` };
+    }
+    const instSum = list.reduce(
       (s, v) => s + (Number((v as { amount?: unknown })?.amount) || 0), 0
     );
     if (Math.abs(instSum - lineTotal) > 0.5)

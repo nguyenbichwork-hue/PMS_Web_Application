@@ -17,7 +17,11 @@ export default async function GRList({ searchParams }: { searchParams: Promise<R
   const params: unknown[] = [];
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(gr.gr_number ILIKE $${params.length} OR po.po_number ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(
+      gr.gr_number ILIKE $${p} OR gr.warehouse ILIKE $${p} OR po.po_number ILIKE $${p}
+      OR EXISTS (SELECT 1 FROM suppliers s WHERE s.id = po.supplier_id AND (s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))
+    )`);
   }
   if (user) pushCompanyScope(user, "po.company_id", where, params);
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";

@@ -33,18 +33,15 @@ export default async function PRListPage({
     // nhập tay hoặc NCC trong danh mục).
     params.push(`%${sp.q}%`);
     const p = params.length;
-    where.push(`(
-      pr.pr_number ILIKE $${p} OR pr.purpose ILIKE $${p} OR pr.project_code ILIKE $${p}
-      OR EXISTS (SELECT 1 FROM users u WHERE u.id = pr.requester_id AND u.name ILIKE $${p})
-      OR EXISTS (
-        SELECT 1 FROM purchase_request_items it
-        LEFT JOIN suppliers s ON s.id = it.supplier_suggestion
-        WHERE it.pr_id = pr.id AND (
-          it.item_name ILIKE $${p} OR it.item_code ILIKE $${p}
-          OR it.supplier_text ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}
-        )
-      )
-    )`);
+    const qc = [
+      `pr.pr_number ILIKE $${p}`, `pr.purpose ILIKE $${p}`, `pr.project_code ILIKE $${p}`,
+      `EXISTS (SELECT 1 FROM companies c WHERE c.id = pr.company_id AND c.company_name ILIKE $${p})`,
+      `EXISTS (SELECT 1 FROM users u WHERE u.id = pr.requester_id AND u.name ILIKE $${p})`,
+      `EXISTS (SELECT 1 FROM purchase_request_items it LEFT JOIN suppliers s ON s.id = it.supplier_suggestion WHERE it.pr_id = pr.id AND (it.item_name ILIKE $${p} OR it.item_code ILIKE $${p} OR it.supplier_text ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))`,
+    ];
+    const digits = sp.q.replace(/\D/g, "");
+    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(pr.total_amount)::bigint::text ILIKE $${params.length}`); }
+    where.push(`(${qc.join(" OR ")})`);
   }
   if (sp.priority) {
     params.push(sp.priority);

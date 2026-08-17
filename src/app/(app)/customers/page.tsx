@@ -20,7 +20,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const params: unknown[] = [];
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(c.customer_name ILIKE $${params.length} OR c.customer_code ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(c.customer_name ILIKE $${p} OR c.customer_code ILIKE $${p} OR c.tax_code ILIKE $${p} OR c.contact_name ILIKE $${p} OR c.phone ILIKE $${p})`);
   }
   if (sp.status) {
     params.push(sp.status);

@@ -17,7 +17,8 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const params: unknown[] = [];
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(supplier_name ILIKE $${params.length} OR supplier_code ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(supplier_name ILIKE $${p} OR supplier_code ILIKE $${p} OR tax_code ILIKE $${p} OR contact_name ILIKE $${p} OR phone ILIKE $${p} OR email ILIKE $${p})`);
   }
   if (sp.status) {
     params.push(sp.status);

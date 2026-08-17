@@ -16,7 +16,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const params: unknown[] = [];
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(p.item_name ILIKE $${params.length} OR p.item_code ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(p.item_name ILIKE $${p} OR p.item_code ILIKE $${p} OR p.category ILIKE $${p})`);
   }
   if (sp.category) {
     params.push(sp.category);

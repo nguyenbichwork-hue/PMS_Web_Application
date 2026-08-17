@@ -31,10 +31,15 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
     // Tìm từ khóa rộng: số đề nghị, NCC (tên/mã/MST), hoặc trong dòng (diễn giải, số HĐ).
     params.push(`%${sp.q}%`);
     const p = params.length;
-    where.push(`(
-      prq.prq_number ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p} OR s.tax_code ILIKE $${p}
-      OR EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = prq.id AND (it.description ILIKE $${p} OR it.inv_no ILIKE $${p}))
-    )`);
+    const qc = [
+      `prq.prq_number ILIKE $${p}`, `s.supplier_name ILIKE $${p}`, `s.supplier_code ILIKE $${p}`, `s.tax_code ILIKE $${p}`,
+      `prq.bank_account ILIKE $${p}`, `prq.bank_name ILIKE $${p}`,
+      `EXISTS (SELECT 1 FROM companies c WHERE c.id = prq.company_id AND c.company_name ILIKE $${p})`,
+      `EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = prq.id AND (it.description ILIKE $${p} OR it.inv_no ILIKE $${p}))`,
+    ];
+    const digits = sp.q.replace(/\D/g, "");
+    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(prq.grand_total)::bigint::text ILIKE $${params.length}`); }
+    where.push(`(${qc.join(" OR ")})`);
   }
   // Lọc theo KHOẢNG NGÀY lập đề nghị.
   if (sp.df) { params.push(sp.df); where.push(`prq.created_at::date >= $${params.length}`); }

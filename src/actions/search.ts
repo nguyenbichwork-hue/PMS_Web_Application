@@ -17,12 +17,19 @@ export async function searchAction(qRaw: string): Promise<SearchHit[]> {
   if (q.length < 1) return [];
   const user = await requireUser();
   const like = `%${q}%`;
+  // Chuỗi CHỈ CÒN CHỮ SỐ để tìm theo SỐ TIỀN (khớp "chứa": gõ 756 ra cả 75.600
+  // lẫn 7.560.000). Bỏ dấu ., khoảng trắng… Chỉ dùng khi có ≥2 chữ số.
+  const qDigits = q.replace(/\D/g, "");
+  const digitsLike = `%${qDigits}%`;
+  const useAmount = qDigits.length >= 2;
   const hits: SearchHit[] = [];
 
   // --- Yêu cầu mua ---
   {
-    const where = ["(pr.pr_number ILIKE $1 OR pr.purpose ILIKE $1)"];
     const params: unknown[] = [like];
+    const qc = ["pr.pr_number ILIKE $1", "pr.purpose ILIKE $1"];
+    if (useAmount) { params.push(digitsLike); qc.push(`round(pr.total_amount)::bigint::text ILIKE $${params.length}`); }
+    const where = [`(${qc.join(" OR ")})`];
     pushCompanyScope(user, "pr.company_id", where, params);
     if (user.role === "Employee") {
       params.push(user.id);
@@ -37,8 +44,10 @@ export async function searchAction(qRaw: string): Promise<SearchHit[]> {
 
   // --- Đơn đặt hàng ---
   {
-    const where = ["po.po_number ILIKE $1"];
     const params: unknown[] = [like];
+    const qc = ["po.po_number ILIKE $1", "s.supplier_name ILIKE $1"];
+    if (useAmount) { params.push(digitsLike); qc.push(`round(po.grand_total)::bigint::text ILIKE $${params.length}`); }
+    const where = [`(${qc.join(" OR ")})`];
     pushCompanyScope(user, "po.company_id", where, params);
     const rows = await query<{ id: number; po_number: string; supplier_name: string | null }>(
       `SELECT po.id, po.po_number, s.supplier_name FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE ${where.join(" AND ")} ORDER BY po.id DESC LIMIT 5`,
@@ -47,13 +56,29 @@ export async function searchAction(qRaw: string): Promise<SearchHit[]> {
     rows.forEach((r) => hits.push({ type: "PO", tone: "indigo", label: r.po_number, sub: r.supplier_name ?? "Đơn đặt hàng", href: `/purchase-orders/${r.id}` }));
   }
 
+  // --- Đề nghị thanh toán ---
+  {
+    const params: unknown[] = [like];
+    const qc = ["prq.prq_number ILIKE $1", "s.supplier_name ILIKE $1"];
+    if (useAmount) { params.push(digitsLike); qc.push(`round(prq.grand_total)::bigint::text ILIKE $${params.length}`); }
+    const where = [`(${qc.join(" OR ")})`];
+    pushCompanyScope(user, "prq.company_id", where, params);
+    const rows = await query<{ id: number; prq_number: string | null; supplier_name: string | null }>(
+      `SELECT prq.id, prq.prq_number, s.supplier_name FROM payment_requisitions prq LEFT JOIN suppliers s ON s.id = prq.supplier_id WHERE ${where.join(" AND ")} ORDER BY prq.id DESC LIMIT 5`,
+      params
+    );
+    rows.forEach((r) => hits.push({ type: "PRQ", tone: "teal", label: r.prq_number ?? `PRQ-${r.id}`, sub: r.supplier_name ?? "Đề nghị thanh toán", href: `/payment-requisitions/${r.id}` }));
+  }
+
   // --- Hóa đơn ---
   {
-    const where = ["i.invoice_number ILIKE $1"];
     const params: unknown[] = [like];
+    const qc = ["i.invoice_number ILIKE $1", "s.supplier_name ILIKE $1"];
+    if (useAmount) { params.push(digitsLike); qc.push(`round(i.total_amount)::bigint::text ILIKE $${params.length}`); }
+    const where = [`(${qc.join(" OR ")})`];
     pushCompanyScope(user, "po.company_id", where, params);
     const rows = await query<{ id: number; invoice_number: string; status: string }>(
-      `SELECT i.id, i.invoice_number, i.status FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id WHERE ${where.join(" AND ")} ORDER BY i.id DESC LIMIT 5`,
+      `SELECT i.id, i.invoice_number, i.status FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id LEFT JOIN suppliers s ON s.id = i.supplier_id WHERE ${where.join(" AND ")} ORDER BY i.id DESC LIMIT 5`,
       params
     );
     rows.forEach((r) => hits.push({ type: "HĐ", tone: "emerald", label: r.invoice_number, sub: `Hóa đơn · ${r.status}`, href: `/invoices/${r.id}` }));

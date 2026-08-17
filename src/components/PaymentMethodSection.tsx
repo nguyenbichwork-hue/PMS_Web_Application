@@ -44,7 +44,10 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
   const installmentsJson = count > 0 ? JSON.stringify(rows) : "";
   // Chia kỳ mà tổng các lần lệch tổng đơn → báo form cha CHẶN tạo (feedback 6).
   const mismatch = count > 0 && Math.abs(diff) > 0.5;
-  useEffect(() => { onMismatch?.(mismatch); }, [mismatch, onMismatch]);
+  // Mỗi kỳ BẮT BUỘC số tiền > 0 và có ngày (feedback 17/08) → cũng CHẶN gửi.
+  const incomplete = count > 0 && rows.some((r) => !(Number(r.amount) > 0) || !r.due_date);
+  const blocking = mismatch || incomplete;
+  useEffect(() => { onMismatch?.(blocking); }, [blocking, onMismatch]);
 
   return (
     <Card className="mt-4 p-6">
@@ -136,6 +139,11 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
               </span>
             )}
           </div>
+          {incomplete && (
+            <p className="mt-2 text-xs font-medium text-rose-600">
+              Mỗi lần thanh toán phải có <b>số tiền &gt; 0</b> và <b>ngày thanh toán</b>.
+            </p>
+          )}
         </div>
       )}
     </Card>

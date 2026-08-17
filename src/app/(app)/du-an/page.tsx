@@ -25,7 +25,8 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const params: unknown[] = [];
   if (sp.q) {
     params.push(`%${sp.q}%`);
-    where.push(`(p.project_name ILIKE $${params.length} OR p.project_code ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(p.project_name ILIKE $${p} OR p.project_code ILIKE $${p} OR p.manager_name ILIKE $${p} OR p.location ILIKE $${p})`);
   }
   if (sp.status) {
     params.push(sp.status);
