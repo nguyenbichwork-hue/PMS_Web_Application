@@ -25,6 +25,14 @@ interface DocCtx {
   year: number;
 }
 
+export interface ArchiveResult {
+  enabled: boolean; // OneDrive đã cấu hình chưa
+  total: number; // tổng số đính kèm của chứng từ
+  archived: number; // số tệp vừa đẩy lên OneDrive lần này
+  failed: number; // số tệp lỗi (giữ nguyên bản nóng)
+  alreadyArchived: number; // số tệp đã ở OneDrive từ trước
+}
+
 /** Lấy pháp nhân / số chứng từ / năm để dựng đường dẫn thư mục lưu trữ. */
 async function docContext(documentType: string, documentId: number): Promise<DocCtx | null> {
   const nowYear = new Date().getFullYear();
@@ -63,18 +71,22 @@ async function docContext(documentType: string, documentId: number): Promise<Doc
  * chuyển sang trạng thái kết thúc (đã commit DB). An toàn để await mà không lo
  * chặn/hỏng luồng — nuốt mọi lỗi.
  */
-export async function archiveDocumentAttachments(documentType: string, documentId: number): Promise<void> {
-  if (!oneDriveEnabled()) return; // chưa cấu hình OneDrive → giữ nguyên hành vi cũ
+export async function archiveDocumentAttachments(documentType: string, documentId: number): Promise<ArchiveResult> {
+  const result: ArchiveResult = { enabled: false, total: 0, archived: 0, failed: 0, alreadyArchived: 0 };
+  if (!oneDriveEnabled()) return result; // chưa cấu hình OneDrive → giữ nguyên hành vi cũ
+  result.enabled = true;
   try {
     const atts = await query<{ id: number; file_url: string; file_name: string }>(
       `SELECT id, file_url, file_name FROM attachments WHERE document_type = $1 AND document_id = $2`,
       [documentType, documentId]
     );
+    result.total = atts.length;
+    result.alreadyArchived = atts.filter((a) => a.file_url?.startsWith(OD_PREFIX)).length;
     const pending = atts.filter((a) => a.file_url && !a.file_url.startsWith(OD_PREFIX));
-    if (pending.length === 0) return;
+    if (pending.length === 0) return result;
 
     const ctx = await docContext(documentType, documentId);
-    if (!ctx) return;
+    if (!ctx) return result;
     const folder = `${ROOT}/${ctx.company}/${DOC_FOLDER[documentType] || documentType}/${ctx.year}/${ctx.number}`;
 
     for (const a of pending) {
@@ -84,8 +96,10 @@ export async function archiveDocumentAttachments(documentType: string, documentI
         const oldPointer = a.file_url;
         await query(`UPDATE attachments SET file_url = $1, archived_at = now() WHERE id = $2`, [saved.storedName, a.id]);
         if (DELETE_HOT) await removeFile(oldPointer).catch(() => {});
+        result.archived++;
       } catch (e) {
         // Lỗi 1 tệp → giữ nguyên bản nóng của tệp đó, thử lại lần archive sau.
+        result.failed++;
         console.error(
           `[archive] tệp #${a.id} (${documentType} ${documentId}) lỗi, giữ bản nóng:`,
           e instanceof Error ? e.message : e
@@ -95,4 +109,5 @@ export async function archiveDocumentAttachments(documentType: string, documentI
   } catch (e) {
     console.error(`[archive] ${documentType} ${documentId} lỗi tổng:`, e instanceof Error ? e.message : e);
   }
+  return result;
 }

@@ -10,6 +10,7 @@ import { PRQEditor, type PRQLine } from "./PRQEditor";
 import { PrqDirtyProvider } from "./DirtyContext";
 import { PRQActions } from "./PRQActions";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { ArchiveNowButton } from "@/components/ArchiveNowButton";
 
 interface PRQHead {
   id: number;
@@ -211,6 +212,8 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
                 🖨 In PDF (có ô ký)
               </a>
               <ExportButton href={`/export/prq/${prqId}`} label="Xuất Excel (mẫu PRQ)" />
+              {/* Đã chi tiền → cho lưu trữ đính kèm lên OneDrive (backfill/thử lại). */}
+              {prq.status === "Paid" && <ArchiveNowButton documentType="PRQ" documentId={prqId} />}
             </div>
           </Card>
 

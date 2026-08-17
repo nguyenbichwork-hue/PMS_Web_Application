@@ -9,6 +9,7 @@ import { PaymentPanel, type PaymentRow } from "./PaymentPanel";
 import { CreditNotePanel } from "./CreditNotePanel";
 import { RemapPanel, type RemapPoOption } from "./RemapPanel";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { ArchiveNowButton } from "@/components/ArchiveNowButton";
 import { reconcileLines, deriveMatchCode, MATCH_CODE_LABEL, matchCodeTone, type ReconLine, type CheckResult } from "@/lib/matching";
 import type { Invoice, InvoiceItem, MatchCheck } from "@/lib/types";
 
@@ -260,6 +261,9 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
           <PaymentPanel invoiceId={invId} total={Number(inv.total_amount)} payments={payments} canPay={canPay} />
 
           <CreditNotePanel invoiceId={invId} notes={creditNotes} open={openAmount} canManage={canCredit} />
+
+          {/* Đã thanh toán đủ → cho lưu trữ đính kèm lên OneDrive (backfill/thử lại). */}
+          {inv.status === "Paid" && <ArchiveNowButton documentType="Invoice" documentId={invId} />}
 
           <AttachmentPanel
             documentType="Invoice"
