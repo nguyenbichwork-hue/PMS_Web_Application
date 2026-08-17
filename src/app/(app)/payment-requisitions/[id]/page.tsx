@@ -54,34 +54,35 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   if (!prq) notFound();
   if (user && !canAccessCompany(user, prq.company_id)) notFound();
 
-  const lines = await query<PRQLine>(
-    `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
-            it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
-       FROM payment_requisition_items it
-       LEFT JOIN purchase_orders po ON po.id = it.po_id
-      WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
-    [prqId]
-  );
-
-  // PO ứng viên để GỘP thêm: cùng NCC + công ty, đã duyệt (không Nháp/Hủy), chưa có trong PRQ này.
-  const addablePOs = prq.supplier_id
-    ? await query<{ id: number; po_number: string | null; grand_total: string }>(
-        `SELECT po.id, po.po_number, po.grand_total
-           FROM purchase_orders po
-          WHERE po.supplier_id = $1 AND po.company_id = $2
-            AND po.status NOT IN ('Draft','Cancelled')
-            AND NOT EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = $3 AND it.po_id = po.id)
-          ORDER BY po.id DESC LIMIT 50`,
-        [prq.supplier_id, prq.company_id, prqId]
-      )
-    : [];
-
-  const attachments = await query<AttachmentItem>(
-    `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
-       FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
-      WHERE a.document_type='PRQ' AND a.document_id=$1 ORDER BY a.id DESC`,
-    [prqId]
-  );
+  // 3 truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
+  const [lines, addablePOs, attachments] = await Promise.all([
+    query<PRQLine>(
+      `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
+              it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
+         FROM payment_requisition_items it
+         LEFT JOIN purchase_orders po ON po.id = it.po_id
+        WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
+      [prqId]
+    ),
+    // PO ứng viên để GỘP thêm: cùng NCC + công ty, đã duyệt (không Nháp/Hủy), chưa có trong PRQ này.
+    prq.supplier_id
+      ? query<{ id: number; po_number: string | null; grand_total: string }>(
+          `SELECT po.id, po.po_number, po.grand_total
+             FROM purchase_orders po
+            WHERE po.supplier_id = $1 AND po.company_id = $2
+              AND po.status NOT IN ('Draft','Cancelled')
+              AND NOT EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = $3 AND it.po_id = po.id)
+            ORDER BY po.id DESC LIMIT 50`,
+          [prq.supplier_id, prq.company_id, prqId]
+        )
+      : Promise.resolve([]),
+    query<AttachmentItem>(
+      `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+         FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+        WHERE a.document_type='PRQ' AND a.document_id=$1 ORDER BY a.id DESC`,
+      [prqId]
+    ),
+  ]);
 
   const canManage = !!(user && can(user.role, "prq.manage"));
   const canApprove = !!(user && can(user.role, "prq.approve"));

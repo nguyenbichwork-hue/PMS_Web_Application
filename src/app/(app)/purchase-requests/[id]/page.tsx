@@ -48,13 +48,44 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
   const allowed = !user || user.id === pr.requester_id || canAccessCompany(user, pr.company_id) || isCrossCompanyApprover(user);
   if (!allowed) notFound();
 
-  const items = await query<PRItem & { sup_name: string | null; sup_tax: string | null; supplier_tax_text: string | null }>(
-    `SELECT it.*, s.supplier_name AS sup_name, s.tax_code AS sup_tax
-       FROM purchase_request_items it
-       LEFT JOIN suppliers s ON s.id = it.supplier_suggestion
-      WHERE it.pr_id = $1 ORDER BY it.line_no`,
-    [prId]
-  );
+  // 7 truy vấn phụ ĐỘC LẬP (chỉ phụ thuộc prId/pr đã có) → chạy SONG SONG thay vì
+  // 7 round-trip nối tiếp.
+  const [items, history, linkedPO, attachments, comments, mentionUsers, chain] = await Promise.all([
+    query<PRItem & { sup_name: string | null; sup_tax: string | null; supplier_tax_text: string | null }>(
+      `SELECT it.*, s.supplier_name AS sup_name, s.tax_code AS sup_tax
+         FROM purchase_request_items it
+         LEFT JOIN suppliers s ON s.id = it.supplier_suggestion
+        WHERE it.pr_id = $1 ORDER BY it.line_no`,
+      [prId]
+    ),
+    query<ApprovalRecord>(
+      `SELECT ah.*, u.name AS approver_name
+         FROM approval_history ah LEFT JOIN users u ON u.id = ah.approver_id
+        WHERE ah.document_type='PR' AND ah.document_id=$1 ORDER BY ah.id`,
+      [prId]
+    ),
+    queryOne<{ id: number; po_number: string }>(
+      `SELECT id, po_number FROM purchase_orders WHERE pr_id = $1`,
+      [prId]
+    ),
+    query<AttachmentItem>(
+      `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+         FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+        WHERE a.document_type='PR' AND a.document_id=$1 ORDER BY a.id DESC`,
+      [prId]
+    ),
+    query<CommentItem>(
+      `SELECT id, author_id, author_name, body, created_at
+         FROM comments WHERE document_type='PR' AND document_id=$1 ORDER BY id`,
+      [prId]
+    ),
+    // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+    query<{ id: number; name: string }>(
+      `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+      [pr.company_id]
+    ),
+    resolveApprovalChain(Number(pr.total_amount)),
+  ]);
   // Kế hoạch thanh toán từng lần: JSONB có thể về dạng mảng (pg) hoặc chuỗi (PGlite).
   // Hỗ trợ cả định dạng mới {amount, days} lẫn định dạng cũ (chỉ số tiền).
   const rawInst = pr.payment_installments as unknown;
@@ -69,34 +100,7 @@ export default async function PRDetail({ params }: { params: Promise<{ id: strin
       );
     }
   } catch { installments = []; }
-  const history = await query<ApprovalRecord>(
-    `SELECT ah.*, u.name AS approver_name
-       FROM approval_history ah LEFT JOIN users u ON u.id = ah.approver_id
-      WHERE ah.document_type='PR' AND ah.document_id=$1 ORDER BY ah.id`,
-    [prId]
-  );
-  const linkedPO = await queryOne<{ id: number; po_number: string }>(
-    `SELECT id, po_number FROM purchase_orders WHERE pr_id = $1`,
-    [prId]
-  );
-  const attachments = await query<AttachmentItem>(
-    `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
-       FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
-      WHERE a.document_type='PR' AND a.document_id=$1 ORDER BY a.id DESC`,
-    [prId]
-  );
-  const comments = await query<CommentItem>(
-    `SELECT id, author_id, author_name, body, created_at
-       FROM comments WHERE document_type='PR' AND document_id=$1 ORDER BY id`,
-    [prId]
-  );
-  // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
-  const mentionUsers = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
-    [pr.company_id]
-  );
 
-  const chain = await resolveApprovalChain(Number(pr.total_amount));
   const canApprove =
     user &&
     can(user.role, "pr.approve") &&

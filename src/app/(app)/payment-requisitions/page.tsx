@@ -43,33 +43,36 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const page = Math.max(1, Number(sp.page) || 1);
-  const totalRow = await queryOne<{ n: number }>(`SELECT count(*)::int n FROM payment_requisitions prq LEFT JOIN suppliers s ON s.id=prq.supplier_id ${clause}`, params);
-  const total = totalRow?.n ?? 0;
-
-  const rows = await query<PRQRow>(
-    `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.payment_type, prq.due_date, prq.grand_total, prq.status
-       FROM payment_requisitions prq
-       JOIN companies c ON c.id = prq.company_id
-       LEFT JOIN suppliers s ON s.id = prq.supplier_id
-       ${clause}
-      ORDER BY prq.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, PER_PAGE, (page - 1) * PER_PAGE]
-  );
 
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
   if (user) pushCompanyScope(user, "company_id", sWhere, sParams);
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-  const stats = await queryOne<{ total: number; draft: number; submitted: number; approved: number; value: string }>(
-    `SELECT count(*)::int total,
-            count(*) FILTER (WHERE status='Draft')::int draft,
-            count(*) FILTER (WHERE status='Submitted')::int submitted,
-            count(*) FILTER (WHERE status IN ('Approved','Paid'))::int approved,
-            COALESCE(sum(grand_total),0) value
-       FROM payment_requisitions ${sClause}`,
-    sParams
-  );
+
+  // Đếm tổng, lấy trang, và số liệu StatStrip đều ĐỘC LẬP → chạy SONG SONG.
+  const [totalRow, rows, stats] = await Promise.all([
+    queryOne<{ n: number }>(`SELECT count(*)::int n FROM payment_requisitions prq LEFT JOIN suppliers s ON s.id=prq.supplier_id ${clause}`, params),
+    query<PRQRow>(
+      `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.payment_type, prq.due_date, prq.grand_total, prq.status
+         FROM payment_requisitions prq
+         JOIN companies c ON c.id = prq.company_id
+         LEFT JOIN suppliers s ON s.id = prq.supplier_id
+         ${clause}
+        ORDER BY prq.id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, PER_PAGE, (page - 1) * PER_PAGE]
+    ),
+    queryOne<{ total: number; draft: number; submitted: number; approved: number; value: string }>(
+      `SELECT count(*)::int total,
+              count(*) FILTER (WHERE status='Draft')::int draft,
+              count(*) FILTER (WHERE status='Submitted')::int submitted,
+              count(*) FILTER (WHERE status IN ('Approved','Paid'))::int approved,
+              COALESCE(sum(grand_total),0) value
+         FROM payment_requisitions ${sClause}`,
+      sParams
+    ),
+  ]);
+  const total = totalRow?.n ?? 0;
 
   return (
     <div>

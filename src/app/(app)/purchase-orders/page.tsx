@@ -50,33 +50,36 @@ export default async function POListPage({
 
   const PER_PAGE = 20;
   const page = Math.max(1, Number(sp.page) || 1);
-  const totalRow = await queryOne<{ n: number }>(`SELECT count(*)::int n FROM purchase_orders po ${clause}`, params);
-  const total = totalRow?.n ?? 0;
-
-  const rows = await query<PurchaseOrder>(
-    `SELECT po.*, s.supplier_name, c.company_name, pr.pr_number
-       FROM purchase_orders po
-       LEFT JOIN suppliers s ON s.id = po.supplier_id
-       JOIN companies c ON c.id = po.company_id
-       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
-       ${clause}
-      ORDER BY po.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, PER_PAGE, (page - 1) * PER_PAGE]
-  );
 
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
   if (user) pushCompanyScope(user, "company_id", sWhere, sParams);
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-  const stats = await queryOne<{ total: number; open: number; received: number; value: string }>(
-    `SELECT count(*)::int total,
-            count(*) FILTER (WHERE status IN ('Draft','Approved','Sent','Confirmed'))::int open,
-            count(*) FILTER (WHERE status='Received')::int received,
-            COALESCE(sum(grand_total),0) value
-       FROM purchase_orders ${sClause}`,
-    sParams
-  );
+
+  // Đếm tổng, lấy trang, và số liệu StatStrip đều ĐỘC LẬP → chạy SONG SONG.
+  const [totalRow, rows, stats] = await Promise.all([
+    queryOne<{ n: number }>(`SELECT count(*)::int n FROM purchase_orders po ${clause}`, params),
+    query<PurchaseOrder>(
+      `SELECT po.*, s.supplier_name, c.company_name, pr.pr_number
+         FROM purchase_orders po
+         LEFT JOIN suppliers s ON s.id = po.supplier_id
+         JOIN companies c ON c.id = po.company_id
+         LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+         ${clause}
+        ORDER BY po.id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, PER_PAGE, (page - 1) * PER_PAGE]
+    ),
+    queryOne<{ total: number; open: number; received: number; value: string }>(
+      `SELECT count(*)::int total,
+              count(*) FILTER (WHERE status IN ('Draft','Approved','Sent','Confirmed'))::int open,
+              count(*) FILTER (WHERE status='Received')::int received,
+              COALESCE(sum(grand_total),0) value
+         FROM purchase_orders ${sClause}`,
+      sParams
+    ),
+  ]);
+  const total = totalRow?.n ?? 0;
 
   return (
     <div>

@@ -40,41 +40,45 @@ export default async function PODetail({ params }: { params: Promise<{ id: strin
   if (!po) notFound();
   if (user && !canAccessCompany(user, po.company_id)) notFound();
 
-  const items = await query<POItem>(`SELECT * FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`, [poId]);
-  const suppliers = await query<Supplier>(`SELECT * FROM suppliers WHERE status='Active' ORDER BY supplier_name`);
-  const changes = await query<ChangeRow>(
-    `SELECT ch.*, u.name AS changed_by_name
-       FROM po_change_history ch LEFT JOIN users u ON u.id = ch.changed_by
-      WHERE ch.po_id=$1 ORDER BY ch.id DESC`,
-    [poId]
-  );
-  const attachments = await query<AttachmentItem>(
-    `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
-       FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
-      WHERE a.document_type='PO' AND a.document_id=$1 ORDER BY a.id DESC`,
-    [poId]
-  );
-  const comments = await query<CommentItem>(
-    `SELECT id, author_id, author_name, body, created_at
-       FROM comments WHERE document_type='PO' AND document_id=$1 ORDER BY id`,
-    [poId]
-  );
-  // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
-  const mentionUsers = await query<{ id: number; name: string }>(
-    `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
-    [po.company_id]
-  );
+  // Các truy vấn phụ ĐỘC LẬP (chỉ phụ thuộc poId/po.company_id đã có) → chạy
+  // SONG SONG thay vì 7 round-trip nối tiếp.
+  const [items, suppliers, changes, attachments, comments, mentionUsers, prq] = await Promise.all([
+    query<POItem>(`SELECT * FROM purchase_order_items WHERE po_id=$1 ORDER BY line_no`, [poId]),
+    query<Supplier>(`SELECT * FROM suppliers WHERE status='Active' ORDER BY supplier_name`),
+    query<ChangeRow>(
+      `SELECT ch.*, u.name AS changed_by_name
+         FROM po_change_history ch LEFT JOIN users u ON u.id = ch.changed_by
+        WHERE ch.po_id=$1 ORDER BY ch.id DESC`,
+      [poId]
+    ),
+    query<AttachmentItem>(
+      `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+         FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+        WHERE a.document_type='PO' AND a.document_id=$1 ORDER BY a.id DESC`,
+      [poId]
+    ),
+    query<CommentItem>(
+      `SELECT id, author_id, author_name, body, created_at
+         FROM comments WHERE document_type='PO' AND document_id=$1 ORDER BY id`,
+      [poId]
+    ),
+    // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+    query<{ id: number; name: string }>(
+      `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+      [po.company_id]
+    ),
+    // PRQ (đề nghị thanh toán) sinh khi duyệt PO — hiện link nếu đã có.
+    queryOne<{ id: number; prq_number: string | null }>(
+      `SELECT prq.id, prq.prq_number FROM payment_requisition_items it
+         JOIN payment_requisitions prq ON prq.id = it.prq_id WHERE it.po_id = $1 LIMIT 1`,
+      [poId]
+    ),
+  ]);
 
   // Cho sửa PO (kể cả sau duyệt) để khớp hóa đơn điện tử; chỉ khóa khi Đóng/Hủy.
   const editable = user && can(user.role, "po.manage") && !["Closed", "Cancelled"].includes(po.status);
   const canManage = !!(user && can(user.role, "po.manage"));
   const canApprove = !!(user && can(user.role, "po.approve")); // Manager/Admin duyệt PO
-  // PRQ (đề nghị thanh toán) sinh khi duyệt PO — hiện link nếu đã có.
-  const prq = await queryOne<{ id: number; prq_number: string | null }>(
-    `SELECT prq.id, prq.prq_number FROM payment_requisition_items it
-       JOIN payment_requisitions prq ON prq.id = it.prq_id WHERE it.po_id = $1 LIMIT 1`,
-    [poId]
-  );
 
   return (
     <div className="mx-auto max-w-5xl">

@@ -37,58 +37,59 @@ export default async function InvoiceDetail({ params }: { params: Promise<{ id: 
   if (!inv) notFound();
   if (user && inv.company_id != null && !canAccessCompany(user, inv.company_id)) notFound();
 
-  const items = await query<InvoiceItem & { vat_rate: string | null }>(`SELECT * FROM invoice_items WHERE invoice_id=$1`, [invId]);
-  const checks = await query<MatchCheck>(`SELECT * FROM invoice_matching WHERE invoice_id=$1 ORDER BY id`, [invId]);
+  const canManage = !!(user && can(user.role, "invoice.manage"));
 
-  // ---- Đối chiếu TỪNG DÒNG với PO (§11.1: kiểm soát dựa trên line, không chỉ po_number) ----
-  const poItems = inv.po_id
-    ? await query<{ item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null; received: string }>(
-        `SELECT poi.item_code, poi.description, poi.quantity, poi.unit_price, poi.vat_rate,
-                COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
-           FROM purchase_order_items poi WHERE poi.po_id=$1 ORDER BY poi.line_no`,
-        [inv.po_id]
-      )
-    : [];
+  // Các truy vấn phụ ĐỘC LẬP (chỉ phụ thuộc inv đã có) → chạy SONG SONG thay vì
+  // nối tiếp. recon/matchCode/remapOptions tính SAU khi có kết quả.
+  const [items, checks, poItems, remapRows, payments, attachments, creditNotes] = await Promise.all([
+    query<InvoiceItem & { vat_rate: string | null }>(`SELECT * FROM invoice_items WHERE invoice_id=$1`, [invId]),
+    query<MatchCheck>(`SELECT * FROM invoice_matching WHERE invoice_id=$1 ORDER BY id`, [invId]),
+    // ---- Đối chiếu TỪNG DÒNG với PO (§11.1: kiểm soát dựa trên line, không chỉ po_number) ----
+    inv.po_id
+      ? query<{ item_code: string | null; description: string; quantity: string; unit_price: string; vat_rate: string | null; received: string }>(
+          `SELECT poi.item_code, poi.description, poi.quantity, poi.unit_price, poi.vat_rate,
+                  COALESCE((SELECT sum(gri.received_qty) FROM goods_receipt_items gri WHERE gri.po_item_id = poi.id),0) AS received
+             FROM purchase_order_items poi WHERE poi.po_id=$1 ORDER BY poi.line_no`,
+          [inv.po_id]
+        )
+      : Promise.resolve([]),
+    // ---- PO ứng viên để SỬA/BỎ map (ưu tiên cùng NCC, đang mở) — chỉ khi được quản lý ----
+    canManage
+      ? query<{ id: number; po_number: string | null; supplier_name: string | null; grand_total: string; supplier_id: number | null }>(
+          `SELECT po.id, po.po_number, s.supplier_name, po.grand_total, po.supplier_id
+             FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+            WHERE po.status IN ('Sent','Confirmed','Approved','Partially Received','Received')
+              ${inv.company_id != null ? "AND po.company_id = " + Number(inv.company_id) : ""}
+            ORDER BY (po.supplier_id IS NOT DISTINCT FROM ${inv.supplier_id == null ? "NULL" : Number(inv.supplier_id)}) DESC, po.id DESC
+            LIMIT 50`
+        )
+      : Promise.resolve([]),
+    query<PaymentRow>(
+      `SELECT id, payment_date, amount, method, reference FROM payments WHERE invoice_id=$1 ORDER BY id`,
+      [invId]
+    ),
+    query<AttachmentItem>(
+      `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+         FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+        WHERE a.document_type='Invoice' AND a.document_id=$1 ORDER BY a.id DESC`,
+      [invId]
+    ),
+    // Credit notes (điều chỉnh giảm) — bọc catch phòng bảng chưa migrate.
+    query<{ id: number; amount: number; reason: string | null; created_at: string; author: string | null }>(
+      `SELECT c.id, c.amount, c.reason, c.created_at, u.name AS author
+         FROM credit_notes c LEFT JOIN users u ON u.id = c.created_by
+        WHERE c.invoice_id=$1 ORDER BY c.id DESC`,
+      [invId]
+    ).catch(() => [] as { id: number; amount: number; reason: string | null; created_at: string; author: string | null }[]),
+  ]);
+
   const invRecon: ReconLine[] = items.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate) }));
   const poRecon: ReconLine[] = poItems.map((it) => ({ itemCode: it.item_code, description: it.description, quantity: Number(it.quantity), unitPrice: Number(it.unit_price), vatRate: it.vat_rate == null ? null : Number(it.vat_rate), receivedQty: Number(it.received) }));
   const recon = inv.po_id ? reconcileLines(invRecon, poRecon) : null;
   const matchCode = deriveMatchCode(checks.map((c) => ({ check_name: c.check_name, result: c.result, reason: c.reason })), { hasPo: !!inv.po_id });
 
-  // ---- PO ứng viên để SỬA/BỎ map (ưu tiên cùng NCC, đang mở) ----
-  const canManage = !!(user && can(user.role, "invoice.manage"));
-  let remapOptions: RemapPoOption[] = [];
-  if (canManage) {
-    remapOptions = (
-      await query<{ id: number; po_number: string | null; supplier_name: string | null; grand_total: string; supplier_id: number | null }>(
-        `SELECT po.id, po.po_number, s.supplier_name, po.grand_total, po.supplier_id
-           FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-          WHERE po.status IN ('Sent','Confirmed','Approved','Partially Received','Received')
-            ${inv.company_id != null ? "AND po.company_id = " + Number(inv.company_id) : ""}
-          ORDER BY (po.supplier_id IS NOT DISTINCT FROM ${inv.supplier_id == null ? "NULL" : Number(inv.supplier_id)}) DESC, po.id DESC
-          LIMIT 50`
-      )
-    ).map((p) => ({ id: p.id, po_number: p.po_number, supplier_name: p.supplier_name, grand_total: Number(p.grand_total), same_supplier: p.supplier_id != null && p.supplier_id === inv.supplier_id }));
-  }
-  const payments = await query<PaymentRow>(
-    `SELECT id, payment_date, amount, method, reference FROM payments WHERE invoice_id=$1 ORDER BY id`,
-    [invId]
-  );
-  const attachments = await query<AttachmentItem>(
-    `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
-       FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
-      WHERE a.document_type='Invoice' AND a.document_id=$1 ORDER BY a.id DESC`,
-    [invId]
-  );
-  // Credit notes (điều chỉnh giảm) — bọc try/catch phòng bảng chưa migrate.
-  let creditNotes: { id: number; amount: number; reason: string | null; created_at: string; author: string | null }[] = [];
-  try {
-    creditNotes = await query(
-      `SELECT c.id, c.amount, c.reason, c.created_at, u.name AS author
-         FROM credit_notes c LEFT JOIN users u ON u.id = c.created_by
-        WHERE c.invoice_id=$1 ORDER BY c.id DESC`,
-      [invId]
-    );
-  } catch { /* bảng credit_notes chưa tồn tại */ }
+  const remapOptions: RemapPoOption[] = remapRows.map((p) => ({ id: p.id, po_number: p.po_number, supplier_name: p.supplier_name, grand_total: Number(p.grand_total), same_supplier: p.supplier_id != null && p.supplier_id === inv.supplier_id }));
+
   const paidSum = payments.reduce((s, p) => s + Number(p.amount), 0);
   const creditedSum = creditNotes.reduce((s, c) => s + Number(c.amount), 0);
   const openAmount = Number(inv.total_amount) - paidSum - creditedSum;

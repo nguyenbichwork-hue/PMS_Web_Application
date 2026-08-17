@@ -32,22 +32,6 @@ export default async function InvoiceList({ searchParams }: { searchParams: Prom
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const page = Math.max(1, Number(sp.page) || 1);
-  const totalRow = await queryOne<{ n: number }>(
-    `SELECT count(*)::int n FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id ${clause}`,
-    params
-  );
-  const total = totalRow?.n ?? 0;
-
-  const rows = await query<Invoice>(
-    `SELECT i.*, s.supplier_name, po.po_number
-       FROM invoices i
-       LEFT JOIN suppliers s ON s.id = i.supplier_id
-       LEFT JOIN purchase_orders po ON po.id = i.po_id
-       ${clause}
-      ORDER BY i.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, PER_PAGE, (page - 1) * PER_PAGE]
-  );
 
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
@@ -56,15 +40,34 @@ export default async function InvoiceList({ searchParams }: { searchParams: Prom
     sWhere.push(`po.company_id = $${sParams.length}`);
   }
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-  const stats = await queryOne<{ total: number; matched: number; warning: number; failed: number; paid: number }>(
-    `SELECT count(*)::int total,
-            count(*) FILTER (WHERE i.status='Matched')::int matched,
-            count(*) FILTER (WHERE i.status='Warning')::int warning,
-            count(*) FILTER (WHERE i.status='Failed')::int failed,
-            count(*) FILTER (WHERE i.status='Paid')::int paid
-       FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id ${sClause}`,
-    sParams
-  );
+
+  // Đếm tổng, lấy trang, và số liệu StatStrip đều ĐỘC LẬP → chạy SONG SONG.
+  const [totalRow, rows, stats] = await Promise.all([
+    queryOne<{ n: number }>(
+      `SELECT count(*)::int n FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id ${clause}`,
+      params
+    ),
+    query<Invoice>(
+      `SELECT i.*, s.supplier_name, po.po_number
+         FROM invoices i
+         LEFT JOIN suppliers s ON s.id = i.supplier_id
+         LEFT JOIN purchase_orders po ON po.id = i.po_id
+         ${clause}
+        ORDER BY i.id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, PER_PAGE, (page - 1) * PER_PAGE]
+    ),
+    queryOne<{ total: number; matched: number; warning: number; failed: number; paid: number }>(
+      `SELECT count(*)::int total,
+              count(*) FILTER (WHERE i.status='Matched')::int matched,
+              count(*) FILTER (WHERE i.status='Warning')::int warning,
+              count(*) FILTER (WHERE i.status='Failed')::int failed,
+              count(*) FILTER (WHERE i.status='Paid')::int paid
+         FROM invoices i LEFT JOIN purchase_orders po ON po.id = i.po_id ${sClause}`,
+      sParams
+    ),
+  ]);
+  const total = totalRow?.n ?? 0;
 
   return (
     <div>

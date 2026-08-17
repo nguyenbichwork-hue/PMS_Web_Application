@@ -71,19 +71,6 @@ export default async function PRListPage({
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const page = Math.max(1, Number(sp.page) || 1);
-  const totalRow = await queryOne<{ n: number }>(`SELECT count(*)::int n FROM purchase_requests pr ${clause}`, params);
-  const total = totalRow?.n ?? 0;
-
-  const rows = await query<PurchaseRequest>(
-    `SELECT pr.*, u.name AS requester_name, c.company_name
-       FROM purchase_requests pr
-       JOIN users u ON u.id = pr.requester_id
-       JOIN companies c ON c.id = pr.company_id
-       ${clause}
-      ORDER BY pr.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, PER_PAGE, (page - 1) * PER_PAGE]
-  );
 
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
@@ -95,20 +82,36 @@ export default async function PRListPage({
     }
   }
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-  const stats = await queryOne<{ total: number; draft: number; pending: number; approved: number; rejected: number }>(
-    `SELECT count(*)::int total,
-            count(*) FILTER (WHERE status='Draft')::int draft,
-            count(*) FILTER (WHERE status='Pending Approval')::int pending,
-            count(*) FILTER (WHERE status IN ('Approved','Completed'))::int approved,
-            count(*) FILTER (WHERE status='Rejected')::int rejected
-       FROM purchase_requests ${sClause}`,
-    sParams
-  );
 
-  // Danh mục NCC cho ô lọc.
-  const suppliers = await query<{ id: number; supplier_name: string }>(
-    `SELECT id, supplier_name FROM suppliers ORDER BY supplier_name`
-  );
+  // Đếm tổng, lấy trang, số liệu StatStrip, và danh mục NCC (ô lọc) đều ĐỘC LẬP
+  // → chạy SONG SONG thay vì 4 round-trip nối tiếp.
+  const [totalRow, rows, stats, suppliers] = await Promise.all([
+    queryOne<{ n: number }>(`SELECT count(*)::int n FROM purchase_requests pr ${clause}`, params),
+    query<PurchaseRequest>(
+      `SELECT pr.*, u.name AS requester_name, c.company_name
+         FROM purchase_requests pr
+         JOIN users u ON u.id = pr.requester_id
+         JOIN companies c ON c.id = pr.company_id
+         ${clause}
+        ORDER BY pr.id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, PER_PAGE, (page - 1) * PER_PAGE]
+    ),
+    queryOne<{ total: number; draft: number; pending: number; approved: number; rejected: number }>(
+      `SELECT count(*)::int total,
+              count(*) FILTER (WHERE status='Draft')::int draft,
+              count(*) FILTER (WHERE status='Pending Approval')::int pending,
+              count(*) FILTER (WHERE status IN ('Approved','Completed'))::int approved,
+              count(*) FILTER (WHERE status='Rejected')::int rejected
+         FROM purchase_requests ${sClause}`,
+      sParams
+    ),
+    // Danh mục NCC cho ô lọc.
+    query<{ id: number; supplier_name: string }>(
+      `SELECT id, supplier_name FROM suppliers ORDER BY supplier_name`
+    ),
+  ]);
+  const total = totalRow?.n ?? 0;
 
   return (
     <div>
