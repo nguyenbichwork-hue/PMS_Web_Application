@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { queryOne, query } from "./db";
@@ -90,7 +91,9 @@ export async function logout(): Promise<void> {
   jar.delete(COOKIE);
 }
 
-export async function getCurrentUser(): Promise<User | null> {
+// Bọc React cache(): trong MỘT lần render, layout + page + requireUser (qua
+// getMyNotifications) đều gọi getCurrentUser — cache() gộp về ĐÚNG 1 query.
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<User | null> {
   const jar = await cookies();
   const id = verifySessionValue(jar.get(COOKIE)?.value);
   if (!id) return null;
@@ -99,7 +102,7 @@ export async function getCurrentUser(): Promise<User | null> {
        FROM users WHERE id = $1`,
     [id]
   );
-}
+});
 
 export async function requireUser(): Promise<User> {
   const u = await getCurrentUser();

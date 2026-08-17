@@ -351,3 +351,35 @@ ALTER TABLE purchase_orders   ADD COLUMN IF NOT EXISTS project_id      BIGINT RE
 ALTER TABLE purchase_orders   ADD COLUMN IF NOT EXISTS sales_order_ref TEXT;
 CREATE INDEX IF NOT EXISTS idx_pr_project ON purchase_requests(project_id);
 CREATE INDEX IF NOT EXISTS idx_po_project ON purchase_orders(project_id);
+
+-- =====================================================================
+-- HIỆU NĂNG (08/2026): index cho các KHÓA NGOẠI + cột LỌC/SẮP XẾP nóng.
+-- Trước đây phần lớn JOIN (suppliers/companies/pr) và câu ĐẾM ở list page,
+-- dashboard, "Việc của tôi" phải SEQ SCAN toàn bảng vì thiếu index. Các
+-- index dưới đây biến seq-scan → index-scan. An toàn: chỉ THÊM, idempotent,
+-- chạy trong CÙNG một khối execMulti (1 round-trip khi khởi động).
+-- ---------- purchase_orders: join NCC/công ty/PR + lọc theo ngày ----------
+CREATE INDEX IF NOT EXISTS idx_po_supplier  ON purchase_orders(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_po_company   ON purchase_orders(company_id);
+CREATE INDEX IF NOT EXISTS idx_po_pr        ON purchase_orders(pr_id);
+CREATE INDEX IF NOT EXISTS idx_po_order_date ON purchase_orders(order_date);
+-- ---------- dòng chứng từ: cascade + EXISTS tìm kiếm theo tên/mã hàng ----------
+CREATE INDEX IF NOT EXISTS idx_poi_po       ON purchase_order_items(po_id);
+CREATE INDEX IF NOT EXISTS idx_pri_pr       ON purchase_request_items(pr_id);
+-- ---------- purchase_requests: PR nháp của tôi / lọc người yêu cầu ----------
+CREATE INDEX IF NOT EXISTS idx_pr_requester ON purchase_requests(requester_id);
+-- ---------- invoices: join/EXISTS theo PO + NCC ----------
+CREATE INDEX IF NOT EXISTS idx_inv_po       ON invoices(po_id);
+CREATE INDEX IF NOT EXISTS idx_inv_supplier ON invoices(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_inv_items_inv ON invoice_items(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_inv_match_inv ON invoice_matching(invoice_id);
+-- ---------- nhận hàng ----------
+CREATE INDEX IF NOT EXISTS idx_gr_po        ON goods_receipts(po_id);
+CREATE INDEX IF NOT EXISTS idx_gri_gr       ON goods_receipt_items(gr_id);
+-- ---------- lịch sử duyệt (đọc ở MỌI trang chi tiết) ----------
+-- (attachments(document_type, document_id) đã có idx_attachments_doc ở trên.)
+CREATE INDEX IF NOT EXISTS idx_apphist_doc  ON approval_history(document_type, document_id);
+CREATE INDEX IF NOT EXISTS idx_pochg_po     ON po_change_history(po_id);
+-- ---------- PRQ: hàng đợi chi tiền + chống trả trùng theo dòng PO ----------
+CREATE INDEX IF NOT EXISTS idx_prq_status   ON payment_requisitions(status);
+CREATE INDEX IF NOT EXISTS idx_prq_items_poitem ON payment_requisition_items(po_item_id);

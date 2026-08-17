@@ -8,11 +8,6 @@ import { StatusBadge } from "@/components/ui";
 import { DashboardCharts } from "./Charts";
 import type { User } from "@/lib/types";
 
-async function count(sql: string, params: unknown[] = []): Promise<number> {
-  const r = await queryOne<{ c: number }>(sql, params);
-  return Number(r?.c ?? 0);
-}
-
 const DOC_PATH: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices" };
 const DOC_LABEL: Record<string, string> = { PR: "PR", PO: "PO", Invoice: "Hóa đơn" };
 
@@ -80,34 +75,52 @@ const CARDS_META = [
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
-  const [totalPR, pending, approved, openPO, invPending, invError, poTotal] = await Promise.all([
-    count(`SELECT count(*)::int c FROM purchase_requests`),
-    count(`SELECT count(*)::int c FROM purchase_requests WHERE status='Pending Approval'`),
-    count(`SELECT count(*)::int c FROM purchase_requests WHERE status='Approved'`),
-    count(`SELECT count(*)::int c FROM purchase_orders WHERE status IN ('Draft','Approved','Sent','Confirmed')`),
-    count(`SELECT count(*)::int c FROM invoices WHERE status='Pending'`),
-    count(`SELECT count(*)::int c FROM invoices WHERE status='Failed'`),
-    queryOne<{ s: string }>(`SELECT COALESCE(sum(grand_total),0) s FROM purchase_orders`),
+  // TẤT CẢ truy vấn của trang này ĐỘC LẬP → chạy SONG SONG trong 1 batch thay vì
+  // ~11 round-trip tuần tự. Ngoài ra gộp 6 câu count(*) → 3 câu FILTER (mỗi bảng
+  // 1 câu) để bớt số truy vấn.
+  const [prAgg, poAgg, invAgg, byMonth, bySupplier, byCompany, comments] = await Promise.all([
+    queryOne<{ total: number; pending: number; approved: number }>(
+      `SELECT count(*)::int total,
+              count(*) FILTER (WHERE status='Pending Approval')::int pending,
+              count(*) FILTER (WHERE status='Approved')::int approved
+         FROM purchase_requests`
+    ),
+    queryOne<{ open: number; s: string }>(
+      `SELECT count(*) FILTER (WHERE status IN ('Draft','Approved','Sent','Confirmed'))::int open,
+              COALESCE(sum(grand_total),0) s
+         FROM purchase_orders`
+    ),
+    queryOne<{ pending: number; failed: number }>(
+      `SELECT count(*) FILTER (WHERE status='Pending')::int pending,
+              count(*) FILTER (WHERE status='Failed')::int failed
+         FROM invoices`
+    ),
+    query<{ m: string; total: string }>(
+      `SELECT to_char(order_date, 'YYYY-MM') AS m, sum(grand_total) AS total
+         FROM purchase_orders GROUP BY 1 ORDER BY 1`
+    ),
+    query<{ name: string; total: string }>(
+      `SELECT COALESCE(s.supplier_name,'—') AS name, sum(po.grand_total) AS total
+         FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+        GROUP BY 1 ORDER BY 2 DESC`
+    ),
+    query<{ name: string; total: string }>(
+      `SELECT c.company_name AS name, sum(po.grand_total) AS total
+         FROM purchase_orders po JOIN companies c ON c.id = po.company_id
+        GROUP BY 1 ORDER BY 2 DESC`
+    ),
+    recentComments(user),
   ]);
 
-  const values: Record<string, number> = { totalPR, pending, approved, openPO, invPending, invError };
-
-  const byMonth = await query<{ m: string; total: string }>(
-    `SELECT to_char(order_date, 'YYYY-MM') AS m, sum(grand_total) AS total
-       FROM purchase_orders GROUP BY 1 ORDER BY 1`
-  );
-  const bySupplier = await query<{ name: string; total: string }>(
-    `SELECT COALESCE(s.supplier_name,'—') AS name, sum(po.grand_total) AS total
-       FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-      GROUP BY 1 ORDER BY 2 DESC`
-  );
-  const byCompany = await query<{ name: string; total: string }>(
-    `SELECT c.company_name AS name, sum(po.grand_total) AS total
-       FROM purchase_orders po JOIN companies c ON c.id = po.company_id
-      GROUP BY 1 ORDER BY 2 DESC`
-  );
-
-  const comments = await recentComments(user);
+  const poTotal = { s: poAgg?.s };
+  const values: Record<string, number> = {
+    totalPR: prAgg?.total ?? 0,
+    pending: prAgg?.pending ?? 0,
+    approved: prAgg?.approved ?? 0,
+    openPO: poAgg?.open ?? 0,
+    invPending: invAgg?.pending ?? 0,
+    invError: invAgg?.failed ?? 0,
+  };
 
   return (
     <div>

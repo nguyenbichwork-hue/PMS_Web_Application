@@ -18,10 +18,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { total: taskCount } = await getMyTasks(user);
-  // Thông báo @nhắc (best-effort: bảng chưa migrate thì để trống, không vỡ layout).
-  let notifFeed: NotificationFeed = { unread: 0, items: [] };
-  try { notifFeed = await getMyNotifications(); } catch { /* bảng notifications chưa tồn tại */ }
+  // getMyTasks và getMyNotifications độc lập → chạy SONG SONG (giảm 1 round-trip
+  // nối tiếp mỗi lần điều hướng). notifications best-effort: bảng chưa migrate
+  // thì để trống, không vỡ layout.
+  const [{ total: taskCount }, notifFeed] = await Promise.all([
+    getMyTasks(user),
+    getMyNotifications().catch((): NotificationFeed => ({ unread: 0, items: [] })),
+  ]);
 
   return (
     <ToastProvider>
