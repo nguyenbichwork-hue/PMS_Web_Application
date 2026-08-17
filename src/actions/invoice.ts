@@ -8,6 +8,7 @@ import { evaluateMatch, buildPoPriceIndex, findPoPrice, type MatchLine } from "@
 import { parseInvoiceXml } from "@/lib/import-invoice-xml";
 import { docNumber } from "@/lib/numbering";
 import { logAudit } from "@/lib/audit";
+import { archiveDocumentAttachments } from "@/lib/archive";
 
 /** Chặn IDOR trên hóa đơn theo công ty của PO gốc. Hóa đơn KHÔNG gắn PO thì
  *  không có công ty để scope → chỉ dựa trên quyền theo vai trò (đã kiểm trước). */
@@ -317,14 +318,15 @@ export async function addPaymentAction(formData: FormData) {
   const remaining = total - already - credited;
   if (amount > remaining + 0.5) throw new Error(`Vượt số còn phải trả (${Math.round(remaining).toLocaleString("vi-VN")} ₫).`);
 
+  // Trả đủ (đã trả + credit note ≥ tổng) → đánh dấu Paid.
+  const becamePaid = already + credited + amount >= total - 0.5;
   await withTransaction(async (exec) => {
     await exec(
       `INSERT INTO payments (invoice_id, payment_date, amount, method, reference, created_by)
        VALUES ($1, COALESCE($2::date, current_date), $3, $4, $5, $6)`,
       [invoiceId, payment_date, amount, method, reference, user.id]
     );
-    // Trả đủ (đã trả + credit note ≥ tổng) → đánh dấu Paid.
-    if (already + credited + amount >= total - 0.5) {
+    if (becamePaid) {
       await exec(`UPDATE invoices SET status='Paid' WHERE id=$1`, [invoiceId]);
     }
     await logAudit(
@@ -335,6 +337,8 @@ export async function addPaymentAction(formData: FormData) {
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
+  // Trả đủ = hóa đơn hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
+  if (becamePaid) await archiveDocumentAttachments("Invoice", invoiceId);
 }
 
 /** Trả HẾT phần còn lại trong 1 lần (ghi 1 đợt payment cho số dư rồi đánh dấu Paid). */
@@ -359,6 +363,8 @@ export async function markInvoicePaidAction(invoiceId: number) {
   });
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
+  // Hóa đơn hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
+  await archiveDocumentAttachments("Invoice", invoiceId);
 }
 
 /** Thêm CREDIT NOTE (§14) — điều chỉnh GIẢM nghĩa vụ của hóa đơn (vd trả hàng/giảm

@@ -7,6 +7,7 @@ import { canAccessCompany } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { docNumber } from "@/lib/numbering";
 import { recomputePRQTotals } from "@/lib/prq-generate";
+import { archiveDocumentAttachments } from "@/lib/archive";
 
 /** Chặn IDOR + lấy trạng thái/công ty PRQ. */
 async function loadPRQ(user: { role: string; company_id: number | null }, prqId: number) {
@@ -347,6 +348,8 @@ export async function markPRQPaidAction(prqId: number, paidRef?: string) {
   revalidatePath(`/payment-requisitions/${prqId}`);
   revalidatePath("/payment-requisitions");
   revalidatePath("/ke-toan");
+  // Đã chi tiền = PRQ hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
+  await archiveDocumentAttachments("PRQ", prqId);
 }
 
 /** Người duyệt TỪ CHỐI đề nghị đã gửi. Excel đã xuất/gửi NCC nên quyết định chỉ

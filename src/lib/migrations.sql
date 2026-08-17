@@ -383,3 +383,7 @@ CREATE INDEX IF NOT EXISTS idx_pochg_po     ON po_change_history(po_id);
 -- ---------- PRQ: hàng đợi chi tiền + chống trả trùng theo dòng PO ----------
 CREATE INDEX IF NOT EXISTS idx_prq_status   ON payment_requisitions(status);
 CREATE INDEX IF NOT EXISTS idx_prq_items_poitem ON payment_requisition_items(po_item_id);
+
+-- ---------- LƯU TRỮ NGUỘI (OneDrive) — mốc thời gian file đính kèm được archive ----------
+-- NULL = còn ở tầng nóng (Supabase/local); có giá trị = đã đẩy lên OneDrive (file_url 'od:…').
+ALTER TABLE attachments ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
