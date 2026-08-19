@@ -17,6 +17,9 @@ import { ToastProvider } from "@/components/Toast";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // Mật khẩu tạm (admin vừa cấp/đặt lại) → buộc đổi trước khi vào hệ thống.
+  // Trang /change-password nằm NGOÀI nhóm (app) nên không bị vòng lặp redirect.
+  if (user.must_change_password) redirect("/change-password");
 
   // getMyTasks và getMyNotifications độc lập → chạy SONG SONG (giảm 1 round-trip
   // nối tiếp mỗi lần điều hướng). notifications best-effort: bảng chưa migrate

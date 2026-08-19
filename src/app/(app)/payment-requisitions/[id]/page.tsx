@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
+import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 import { Card, PageHeader, StatusBadge, ExportButton } from "@/components/ui";
 import { money, date } from "@/lib/format";
 import { amountInWordsVi } from "@/lib/num-to-words-vi";
@@ -33,11 +34,15 @@ interface PRQHead {
   vat_total: string;
   grand_total: string;
   status: string;
+  current_level: number;
+  created_by: number | null;
   payment_method: string | null;
   advance_percent: string | null;
   payment_count: number | null;
   payment_installments: unknown;
 }
+
+const ROLE_VI: Record<string, string> = { Employee: "Người tạo lệnh", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
 
 export default async function PRQDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -86,8 +91,19 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   ]);
 
   const canManage = !!(user && can(user.role, "prq.manage"));
-  const canApprove = !!(user && can(user.role, "prq.approve"));
+  const canPay = !!(user && can(user.role, "prq.pay"));
   const editable = canManage && prq.status === "Draft";
+
+  // Duyệt 2 cấp: chuỗi [Finance, Manager]. "Đúng lượt" = có quyền duyệt + đúng cấp
+  // tiếp theo + KHÔNG phải người lập (SoD). Nút duyệt chỉ hiện cho đúng người/đúng cấp.
+  const prqChain = await resolveApprovalChain(0, "PRQ");
+  const isMyTurn = !!(
+    user &&
+    can(user.role, "prq.approve") &&
+    isNextApprover(prqChain, prq.current_level, user.role) &&
+    prq.created_by !== user.id
+  );
+  const pendingRoleLabel = ROLE_VI[prqChain[prq.current_level] ?? ""] ?? prqChain[prq.current_level] ?? "";
 
   // Kế hoạch thanh toán từng lần: JSONB có thể về mảng (pg) hoặc chuỗi (PGlite).
   let prqInstallments: { amount: number; days: number; due_date: string | null }[] = [];
@@ -217,7 +233,16 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
             </div>
           </Card>
 
-          <PRQActions prqId={prqId} status={prq.status} canManage={canManage} canApprove={canApprove} />
+          <PRQActions
+            prqId={prqId}
+            status={prq.status}
+            canManage={canManage}
+            isMyTurn={isMyTurn}
+            canPay={canPay}
+            currentLevel={prq.current_level}
+            chainLength={prqChain.length}
+            pendingRoleLabel={pendingRoleLabel}
+          />
 
           <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />
 

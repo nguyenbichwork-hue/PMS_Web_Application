@@ -11,12 +11,20 @@ export function PRQActions({
   prqId,
   status,
   canManage,
-  canApprove,
+  isMyTurn,
+  canPay,
+  currentLevel,
+  chainLength,
+  pendingRoleLabel,
 }: {
   prqId: number;
   status: string;
   canManage: boolean;
-  canApprove: boolean;
+  isMyTurn: boolean;
+  canPay: boolean;
+  currentLevel: number;
+  chainLength: number;
+  pendingRoleLabel: string;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -26,12 +34,19 @@ export function PRQActions({
 
   const showAny =
     (canManage && ["Draft", "Submitted", "Approved"].includes(status)) ||
-    (canApprove && ["Submitted", "Approved"].includes(status));
+    (isMyTurn && status === "Submitted") ||
+    (canPay && status === "Approved");
   if (!showAny) return null;
 
   return (
     <Card className="p-5">
       <h3 className="mb-3 text-base font-semibold text-slate-800">Thao tác</h3>
+      {status === "Submitted" && (
+        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Đang chờ duyệt cấp {Math.min(currentLevel + 1, chainLength)}/{chainLength}
+          {pendingRoleLabel ? ` — ${pendingRoleLabel}` : ""}.
+        </p>
+      )}
       <div className="space-y-2">
         {canManage && status === "Draft" && (
           <Button
@@ -49,10 +64,10 @@ export function PRQActions({
             Gửi duyệt
           </Button>
         )}
-        {canApprove && status === "Submitted" && (
+        {isMyTurn && status === "Submitted" && (
           <>
             <Button className="w-full justify-center" loading={pending} onClick={run(() => approvePRQAction(prqId))}>
-              Duyệt thanh toán
+              Duyệt thanh toán {chainLength > 1 ? `(cấp ${currentLevel + 1}/${chainLength})` : ""}
             </Button>
             <Button
               variant="danger"
@@ -68,7 +83,7 @@ export function PRQActions({
             </Button>
           </>
         )}
-        {canApprove && status === "Approved" && (
+        {canPay && status === "Approved" && (
           <MarkPaidModal prqId={prqId} fullWidth />
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (

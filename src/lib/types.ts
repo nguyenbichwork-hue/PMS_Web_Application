@@ -8,6 +8,8 @@ export interface User {
   role: Role;
   company_id: number | null;
   status: string;
+  // true = vừa được cấp/đặt lại mật khẩu tạm → buộc đổi ở lần đăng nhập tới.
+  must_change_password?: boolean;
 }
 
 export interface Company {

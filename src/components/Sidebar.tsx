@@ -11,7 +11,7 @@ export interface SidebarUser {
 }
 
 const ROLE_VI: Record<string, string> = {
-  Employee: "Nhân viên",
+  Employee: "Người tạo lệnh",
   Purchasing: "Mua hàng",
   Manager: "Quản lý",
   Finance: "Kế toán",

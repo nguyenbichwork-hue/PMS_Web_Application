@@ -33,7 +33,7 @@ const TABS = [
 
 interface MatchSettings { price: number; amount: number; qty: number }
 
-const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
+const ROLE_VI: Record<string, string> = { Employee: "Người tạo lệnh", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -671,7 +671,7 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
             {editing !== "new" && <input type="hidden" name="id" value={editing.id} />}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Họ tên" required><input name="name" defaultValue={editing === "new" ? "" : editing.name} className={inputCls} required /></Field>
-              <Field label="Email" required><input name="email" type="email" defaultValue={editing === "new" ? "" : editing.email} className={inputCls} required /></Field>
+              <Field label="Tên đăng nhập" required><input name="email" type="text" defaultValue={editing === "new" ? "" : editing.email} className={inputCls} required autoComplete="off" /></Field>
               <Field label="Phòng ban"><input name="department" defaultValue={editing === "new" ? "" : editing.department ?? ""} className={inputCls} /></Field>
               <Field label="Vai trò" required>
                 <select name="role" defaultValue={editing === "new" ? "Employee" : editing.role} className={inputCls}>

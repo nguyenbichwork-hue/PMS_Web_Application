@@ -14,7 +14,7 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
   );
 }
 
-const ROLE_VI: Record<string, string> = { Employee: "Nhân viên", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
+const ROLE_VI: Record<string, string> = { Employee: "Người tạo lệnh", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
 
 // ---- Dòng chảy nghiệp vụ chi tiết: mỗi mốc ghi rõ AI làm & hệ thống tự làm gì ----
 interface FlowStep { role: string; title: string; detail: string; auto?: string }

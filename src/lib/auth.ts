@@ -98,7 +98,7 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Use
   const id = verifySessionValue(jar.get(COOKIE)?.value);
   if (!id) return null;
   return queryOne<User>(
-    `SELECT id, name, email, department, role, company_id, status
+    `SELECT id, name, email, department, role, company_id, status, must_change_password
        FROM users WHERE id = $1`,
     [id]
   );
@@ -118,9 +118,15 @@ export function can(role: Role, action: string): boolean {
     "po.manage": ["Purchasing", "Admin"],
     // MANAGER duyệt PO (→ nhảy sang Payment Requisition).
     "po.approve": ["Manager", "Admin"],
-    // Đề nghị thanh toán (PRQ): lập/sửa/xuất; Finance/Admin duyệt.
-    "prq.manage": ["Purchasing", "Finance", "Manager", "Admin"],
-    "prq.approve": ["Finance", "Admin"],
+    // Đề nghị thanh toán (PRQ): lập/sửa/xuất. Người tạo lệnh (Employee) lập được
+    // PRQ theo chốt 19/08/2026 — maker tạo cả PR lẫn PRQ, không duyệt.
+    "prq.manage": ["Employee", "Purchasing", "Finance", "Manager", "Admin"],
+    // DUYỆT PRQ 2 CẤP (19/08/2026): cấp 1 = Finance (Sa), cấp 2 = Manager (Huyền).
+    // Thứ tự bắt buộc ép qua chuỗi duyệt [Finance, Manager] (resolveApprovalChain).
+    "prq.approve": ["Finance", "Manager", "Admin"],
+    // CHI TIỀN (Kế toán): chỉ Finance (Sa) + Admin — TÁCH khỏi prq.approve để
+    // Manager (Huyền) duyệt được cấp 2 nhưng KHÔNG tự chi tiền.
+    "prq.pay": ["Finance", "Admin"],
     "supplier.manage": ["Purchasing", "Finance", "Admin"],
     "product.manage": ["Purchasing", "Finance", "Admin"],
     "customer.manage": ["Purchasing", "Finance", "Manager", "Admin"],

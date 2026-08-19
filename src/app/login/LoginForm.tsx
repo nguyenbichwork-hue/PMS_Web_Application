@@ -12,8 +12,8 @@ export function LoginForm() {
   return (
     <form action={action} className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-white/70">Email</label>
-        <input name="email" type="email" required autoComplete="username" placeholder="ban@congty.vn" className={field} />
+        <label className="mb-1.5 block text-sm font-medium text-white/70">Tên đăng nhập</label>
+        <input name="email" type="text" required autoComplete="username" placeholder="tên đăng nhập" className={field} />
       </div>
       <div>
         <label className="mb-1.5 block text-sm font-medium text-white/70">Mật khẩu</label>

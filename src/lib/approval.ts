@@ -30,6 +30,10 @@ export async function resolveApprovalChain(
       return Array.isArray(r.levels) ? r.levels : JSON.parse(r.levels as unknown as string);
     }
   }
+  // Đề nghị thanh toán (PRQ): duyệt 2 cấp MẶC ĐỊNH — Kế toán (Finance=chị Sa)
+  // duyệt cấp 1, rồi Quản lý (Manager=chị Huyền) duyệt cấp 2 (chốt 19/08/2026).
+  // Có thể ghi đè bằng approval_rules(document_type='PRQ') nếu cần.
+  if (documentType === "PRQ") return ["Finance", "Manager"];
   return ["Manager"]; // sensible fallback
 }
 

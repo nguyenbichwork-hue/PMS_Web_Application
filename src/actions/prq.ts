@@ -8,11 +8,12 @@ import { logAudit } from "@/lib/audit";
 import { docNumber } from "@/lib/numbering";
 import { recomputePRQTotals } from "@/lib/prq-generate";
 import { archiveDocumentAttachments } from "@/lib/archive";
+import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 
-/** Chặn IDOR + lấy trạng thái/công ty PRQ. */
+/** Chặn IDOR + lấy trạng thái/công ty PRQ (kèm current_level + created_by cho duyệt 2 cấp). */
 async function loadPRQ(user: { role: string; company_id: number | null }, prqId: number) {
-  const row = await queryOne<{ id: number; company_id: number; supplier_id: number | null; status: string }>(
-    `SELECT id, company_id, supplier_id, status FROM payment_requisitions WHERE id = $1`,
+  const row = await queryOne<{ id: number; company_id: number; supplier_id: number | null; status: string; current_level: number; created_by: number | null }>(
+    `SELECT id, company_id, supplier_id, status, current_level, created_by FROM payment_requisitions WHERE id = $1`,
     [prqId]
   );
   if (!row) throw new Error("Không tìm thấy đề nghị thanh toán.");
@@ -323,29 +324,67 @@ export async function submitPRQAction(prqId: number): Promise<{ ok: boolean; err
   if (!signed || signed.n === 0)
     return { ok: false, error: "Vui lòng tải lên chứng từ 'PRQ đã ký' trước khi gửi duyệt đề nghị thanh toán." };
 
-  await query(`UPDATE payment_requisitions SET status='Submitted', updated_at=now() WHERE id=$1`, [prqId]);
+  // Gửi duyệt → về cấp 0 (bắt đầu lại chuỗi duyệt 2 cấp Finance→Manager).
+  await query(`UPDATE payment_requisitions SET status='Submitted', current_level=0, updated_at=now() WHERE id=$1`, [prqId]);
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Submit" });
   revalidatePath(`/payment-requisitions/${prqId}`);
   revalidatePath("/payment-requisitions");
   return { ok: true };
 }
 
-export async function approvePRQAction(prqId: number) {
+export async function approvePRQAction(prqId: number, comment?: string) {
   const user = await requireUser();
   if (!can(user.role, "prq.approve")) throw new Error("FORBIDDEN");
   const prq = await loadPRQ(user, prqId);
   if (prq.status !== "Submitted") throw new Error("Chỉ duyệt được đề nghị đã gửi.");
-  await query(`UPDATE payment_requisitions SET status='Approved', updated_at=now() WHERE id=$1`, [prqId]);
-  await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Approve" });
+
+  // SoD: không được tự duyệt đề nghị do CHÍNH MÌNH lập (kể cả khi có quyền duyệt).
+  // Ngoại lệ 1 tài khoản SIÊU QUẢN TRỊ để test toàn luồng một mình (giống PR).
+  const SUPER_TEST_EMAIL = (process.env.SUPER_TEST_EMAIL || "super@k-homes.vn").toLowerCase();
+  const isSuperTest = user.email.toLowerCase() === SUPER_TEST_EMAIL;
+  if (prq.created_by === user.id && !isSuperTest)
+    throw new Error("Bạn không được tự duyệt đề nghị do chính mình lập (phân tách nhiệm vụ).");
+
+  // Chuỗi duyệt 2 cấp [Finance, Manager]. Ép ĐÚNG lượt: cấp 1 = Finance (Sa),
+  // cấp 2 = Manager (Huyền). Admin duyệt được mọi cấp (isNextApprover).
+  const chain = await resolveApprovalChain(0, "PRQ");
+  if (!isNextApprover(chain, prq.current_level, user.role))
+    throw new Error(`Chưa tới lượt bạn duyệt. Cấp cần duyệt tiếp theo: ${chain[prq.current_level] ?? "—"}`);
+
+  const newLevel = prq.current_level + 1;
+  await withTransaction(async (exec) => {
+    // Optimistic locking theo current_level: chỉ tiến cấp nếu chưa ai đổi.
+    const locked = await firstRow<{ id: number }>(
+      exec,
+      `UPDATE payment_requisitions
+          SET current_level = $2::int,
+              status = CASE WHEN $2::int >= $3::int THEN 'Approved' ELSE status END,
+              updated_at = now()
+        WHERE id = $1 AND current_level = $4::int AND status = 'Submitted'
+        RETURNING id`,
+      [prqId, newLevel, chain.length, prq.current_level]
+    );
+    if (!locked) throw new Error("Đề nghị vừa được người khác cập nhật. Vui lòng tải lại trang.");
+    await exec(
+      `INSERT INTO approval_history (document_type, document_id, approver_id, approval_level, status, comment)
+       VALUES ('PRQ',$1,$2,$3,'Approved',$4)`,
+      [prqId, user.id, newLevel, comment || null]
+    );
+    await logAudit(
+      { actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Approve", field: `Cấp ${newLevel}/${chain.length}`, newValue: comment || "Approved" },
+      exec
+    );
+  });
   revalidatePath(`/payment-requisitions/${prqId}`);
   revalidatePath("/payment-requisitions");
+  revalidatePath("/ke-toan");
 }
 
 /** Kế toán ĐÁNH DẤU ĐÃ CHUYỂN TIỀN: Approved → Paid. Ghi ngày chi + người chi +
  *  số lệnh chi/UNC (tùy chọn) để đối chiếu sao kê. Đây là bước KẾT của vòng đời PRQ. */
 export async function markPRQPaidAction(prqId: number, paidRef?: string) {
   const user = await requireUser();
-  if (!can(user.role, "prq.approve")) throw new Error("FORBIDDEN");
+  if (!can(user.role, "prq.pay")) throw new Error("FORBIDDEN");
   const prq = await loadPRQ(user, prqId);
   if (prq.status !== "Approved") throw new Error("Chỉ đánh dấu đã chi cho đề nghị đã DUYỆT.");
   const ref = (paidRef ?? "").trim() || null;
@@ -370,6 +409,10 @@ export async function rejectPRQAction(prqId: number, reason: string) {
   if (!can(user.role, "prq.approve")) throw new Error("FORBIDDEN");
   const prq = await loadPRQ(user, prqId);
   if (prq.status !== "Submitted") throw new Error("Chỉ từ chối được đề nghị đã gửi.");
+  // Chỉ người ĐÚNG LƯỢT duyệt mới được từ chối (Huyền không phủ quyết trước Sa).
+  const chain = await resolveApprovalChain(0, "PRQ");
+  if (!isNextApprover(chain, prq.current_level, user.role))
+    throw new Error(`Chưa tới lượt bạn xử lý. Cấp cần duyệt tiếp theo: ${chain[prq.current_level] ?? "—"}`);
   await query(`UPDATE payment_requisitions SET status='Rejected', updated_at=now() WHERE id=$1`, [prqId]);
   await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Reject", newValue: reason || null });
   revalidatePath(`/payment-requisitions/${prqId}`);

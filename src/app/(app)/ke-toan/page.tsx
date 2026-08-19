@@ -25,7 +25,7 @@ interface Row {
 export default async function KeToanPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const sp = await searchParams;
   const user = await getCurrentUser();
-  const canPay = !!(user && can(user.role, "prq.approve"));
+  const canPay = !!(user && can(user.role, "prq.pay"));
   const tab = sp.tab === "da-chi" ? "da-chi" : "cho-chi"; // mặc định: chờ chi
 
   const where: string[] = [];

@@ -387,3 +387,15 @@ CREATE INDEX IF NOT EXISTS idx_prq_items_poitem ON payment_requisition_items(po_
 -- ---------- LƯU TRỮ NGUỘI (OneDrive) — mốc thời gian file đính kèm được archive ----------
 -- NULL = còn ở tầng nóng (Supabase/local); có giá trị = đã đẩy lên OneDrive (file_url 'od:…').
 ALTER TABLE attachments ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+-- ---------- DUYỆT ĐỀ NGHỊ THANH TOÁN (PRQ) 2 CẤP (19/08/2026) ----------
+-- current_level = số cấp ĐÃ duyệt. Chuỗi duyệt PRQ mặc định [Finance, Manager]
+-- (Kế toán duyệt cấp 1 → Quản lý duyệt cấp 2) — xem resolveApprovalChain('PRQ').
+-- Chỉ khi current_level >= số cấp thì status mới sang 'Approved' (đủ điều kiện chi).
+ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS current_level INT NOT NULL DEFAULT 0;
+
+-- ---------- ÉP ĐỔI MẬT KHẨU LẦN ĐẦU (19/08/2026) ----------
+-- true = tài khoản vừa được cấp/đặt lại mật khẩu tạm → buộc đổi trước khi dùng.
+-- Cột NÀY chỉ ở DB nghiệp vụ (Neon runtime); KHÔNG đồng bộ từ Supabase nên
+-- không bị pullUsersIntoLocal ghi đè. Xem accounts.ts.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;

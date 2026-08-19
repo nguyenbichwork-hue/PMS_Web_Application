@@ -247,14 +247,16 @@ export async function saveUserAction(formData: FormData) {
       [name, email, department, role, company_id, status, id]
     );
     // Băm mật khẩu trước khi lưu (không lưu thô). Chỉ đổi khi nhập mật khẩu mới.
-    if (password) await query(`UPDATE users SET password=$1 WHERE id=$2`, [hashPassword(password), id]);
+    // Admin đặt lại mật khẩu = mật khẩu TẠM → buộc người dùng đổi ở lần đăng nhập tới.
+    if (password) await query(`UPDATE users SET password=$1, must_change_password=true WHERE id=$2`, [hashPassword(password), id]);
     await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "User", documentId: id, action: "Update", newValue: `${name} · ${role}` });
   } else {
     const dup = await query(`SELECT id FROM users WHERE lower(email)=lower($1)`, [email]);
     if (dup.length) throw new Error("Email đã tồn tại.");
+    // Tài khoản mới: mật khẩu do admin cấp là TẠM → buộc đổi ở lần đăng nhập đầu.
     const rows = await query<{ id: number }>(
-      `INSERT INTO users (name, email, password, department, role, company_id, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      `INSERT INTO users (name, email, password, department, role, company_id, status, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING id`,
       [name, email, hashPassword(password || "password"), department, role, company_id, status]
     );
     await logAudit({ actorId: admin.id, actorName: admin.name, documentType: "User", documentId: rows[0]?.id, action: "Create", newValue: `${name} · ${role}` });

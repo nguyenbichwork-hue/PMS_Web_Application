@@ -13,11 +13,14 @@ export function isAdmin(user: User): boolean {
 }
 
 /**
- * Vai trò XUYÊN CÔNG TY: mọi vai trò TRỪ Nhân viên. Đội back-office dùng chung
- * cho nhiều pháp nhân nên thấy/xử lý chứng từ của tất cả công ty trong tập đoàn.
+ * Vai trò XUYÊN CÔNG TY. Theo chốt 19/08/2026: TOÀN BỘ tài khoản là đội
+ * back-office dùng chung cho cả tập đoàn (4 pháp nhân) — kể cả "Người tạo lệnh"
+ * (Employee), vì maker phải tạo PR/PRQ cho MỌI công ty. Vì vậy không giới hạn
+ * theo công ty với bất kỳ vai trò nào. (Employee vẫn CHỈ thấy PR do chính mình
+ * tạo — lọc riêng ở trang danh sách PR, không đụng hàm này.)
  */
 export function isCrossCompany(user: User): boolean {
-  return user.role !== "Employee";
+  return (["Employee", "Purchasing", "Manager", "Finance", "Admin"] as const).includes(user.role);
 }
 
 /**
