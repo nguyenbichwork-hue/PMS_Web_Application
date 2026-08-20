@@ -1,11 +1,15 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addPRQPaymentAction } from "@/actions/prq";
+import { uploadAttachmentAction } from "@/actions/attachment";
 import { Button, Field, inputCls } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { money } from "@/lib/format";
+
+const fileCls =
+  "block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700";
 
 /**
  * Nút "Chi tiền" + modal GHI NHẬN CHI TỪNG PHẦN cho PRQ đã duyệt (feedback 20/08/2026).
@@ -19,6 +23,7 @@ export function MarkPaidModal({ prqId, fullWidth, summary, remaining }: { prqId:
   const [open, setOpen] = useState(false);
   const [ref, setRef] = useState("");
   const [amount, setAmount] = useState<string>(remaining > 0 ? String(Math.round(remaining)) : "");
+  const filesRef = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
@@ -29,7 +34,19 @@ export function MarkPaidModal({ prqId, fullWidth, summary, remaining }: { prqId:
     if (amt > remaining + 0.5) { toast(`Số tiền chi vượt số còn lại (${money(remaining)}).`, "error"); return; }
     start(async () => {
       try {
-        await addPRQPaymentAction(prqId, amt, ref);
+        const { paymentId } = await addPRQPaymentAction(prqId, amt, ref);
+        // Đính kèm file bằng chứng cho ĐÚNG lần chi này (nếu có chọn). Không chặn:
+        // khoản chi đã ghi nhận rồi, lỗi upload chỉ cảnh báo để bổ sung lại sau.
+        const files = filesRef.current?.files;
+        if (files && files.length > 0) {
+          const fd = new FormData();
+          fd.set("document_type", "PRQPay");
+          fd.set("document_id", String(paymentId));
+          fd.set("kind", "Chứng từ chi");
+          for (const f of Array.from(files)) fd.append("file", f);
+          const res = await uploadAttachmentAction(fd);
+          if (res && !res.ok) toast(res.error ?? "Đã ghi nhận chi nhưng tải file lỗi — bổ sung lại ở Lịch sử chi.", "error");
+        }
         setOpen(false);
         setRef("");
         router.refresh();
@@ -87,8 +104,11 @@ export function MarkPaidModal({ prqId, fullWidth, summary, remaining }: { prqId:
               className={inputCls}
             />
           </Field>
+          <Field label="File bằng chứng (hóa đơn, UNC… — tùy chọn)">
+            <input ref={filesRef} type="file" multiple className={fileCls} />
+          </Field>
           <p className="text-xs text-slate-400">
-            Ghi nhận một khoản chi cho đề nghị này. Chi đủ tổng thì đề nghị tự chuyển <b>đã chi xong</b>. Ngày chi ghi theo hôm nay; người chi là bạn.
+            Ghi nhận một khoản chi cho đề nghị này. Chi đủ tổng thì đề nghị tự chuyển <b>đã chi xong</b>. Ngày chi ghi theo hôm nay; người chi là bạn. File có thể bổ sung sau ở <b>Lịch sử chi tiền</b>.
           </p>
         </div>
       </Modal>

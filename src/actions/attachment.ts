@@ -16,7 +16,8 @@ const PATHS: Record<string, string> = {
 };
 
 // Quyền tối thiểu để đính kèm/xóa theo từng loại chứng từ.
-const MANAGE_PERM: Record<string, string> = { PR: "pr.create", PO: "po.manage", Invoice: "invoice.manage", PRQ: "prq.manage" };
+// PRQPay = bằng chứng CHI TIỀN từng lần (hóa đơn/UNC…) → người CHI (prq.pay) quản lý.
+const MANAGE_PERM: Record<string, string> = { PR: "pr.create", PO: "po.manage", Invoice: "invoice.manage", PRQ: "prq.manage", PRQPay: "prq.pay" };
 // Bảng chứa company_id của chứng từ (whitelist cố định — an toàn để nội suy tên bảng).
 const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices", PRQ: "payment_requisitions" };
 
@@ -29,8 +30,7 @@ async function assertDocAccess(
   documentType: string,
   documentId: number
 ): Promise<void> {
-  const table = DOC_TABLE[documentType];
-  if (!table || !documentId) throw new Error("Chứng từ không hợp lệ.");
+  if (!documentId) throw new Error("Chứng từ không hợp lệ.");
   const perm = MANAGE_PERM[documentType];
   if (perm && !can(user.role as never, perm)) throw new Error("FORBIDDEN");
 
@@ -42,7 +42,17 @@ async function assertDocAccess(
     );
     if (!row) throw new Error("Chứng từ không tồn tại.");
     companyId = row.company_id;
+  } else if (documentType === "PRQPay") {
+    // Bằng chứng chi tiền gắn với 1 dòng prq_payments → company qua PRQ cha.
+    const row = await queryOne<{ company_id: number | null }>(
+      `SELECT p.company_id FROM prq_payments pp JOIN payment_requisitions p ON p.id = pp.prq_id WHERE pp.id = $1`,
+      [documentId]
+    );
+    if (!row) throw new Error("Chứng từ không tồn tại.");
+    companyId = row.company_id;
   } else {
+    const table = DOC_TABLE[documentType];
+    if (!table) throw new Error("Chứng từ không hợp lệ.");
     const row = await queryOne<{ company_id: number | null }>(
       `SELECT company_id FROM ${table} WHERE id = $1`,
       [documentId]
@@ -98,9 +108,19 @@ export async function uploadAttachmentAction(formData: FormData): Promise<Action
   if (uploaded === 0 && skipped.length > 0)
     throw new Error(`Các tệp đã đính kèm trước đó (trùng nội dung): ${skipped.join(", ")}.`);
 
+  await revalidateForDoc(documentType, documentId);
+ });
+}
+
+/** Revalidate trang chi tiết chứng từ. PRQPay trỏ tới 1 dòng chi → revalidate PRQ cha. */
+async function revalidateForDoc(documentType: string, documentId: number): Promise<void> {
+  if (documentType === "PRQPay") {
+    const p = await queryOne<{ prq_id: number }>(`SELECT prq_id FROM prq_payments WHERE id = $1`, [documentId]);
+    if (p) { revalidatePath(`/payment-requisitions/${p.prq_id}`); revalidatePath("/ke-toan"); }
+    return;
+  }
   const base = PATHS[documentType];
   if (base) revalidatePath(`${base}/${documentId}`);
- });
 }
 
 export async function deleteAttachmentAction(attachmentId: number): Promise<ActionResult> {
@@ -116,7 +136,6 @@ export async function deleteAttachmentAction(attachmentId: number): Promise<Acti
   await removeFile(att.file_url);
   await logAudit({ actorId: user.id, actorName: user.name, documentType: att.document_type, documentId: att.document_id, action: "AttachRemove", oldValue: att.file_name });
 
-  const base = PATHS[att.document_type];
-  if (base) revalidatePath(`${base}/${att.document_id}`);
+  await revalidateForDoc(att.document_type, att.document_id);
  });
 }

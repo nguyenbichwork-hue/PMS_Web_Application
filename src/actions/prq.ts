@@ -373,7 +373,7 @@ async function prqPaidTotal(prqId: number): Promise<number> {
 /** Kế toán GHI NHẬN CHI TIỀN TỪNG PHẦN (feedback 20/08/2026): mỗi lần chi số tiền
  *  tùy ý vào sổ prq_payments. Khi tổng đã chi ĐỦ tổng PRQ → chuyển 'Paid' và lưu
  *  trữ đính kèm. Chi lố số còn lại bị chặn. Duyệt 1 lần, chi nhiều lần. */
-export async function addPRQPaymentAction(prqId: number, amount: number, paidRef?: string, paidDate?: string) {
+export async function addPRQPaymentAction(prqId: number, amount: number, paidRef?: string, paidDate?: string): Promise<{ paymentId: number }> {
   const user = await requireUser();
   if (!can(user.role, "prq.pay")) throw new Error("FORBIDDEN");
   const prq = await loadPRQ(user, prqId);
@@ -392,10 +392,11 @@ export async function addPRQPaymentAction(prqId: number, amount: number, paidRef
   const nowPaid = paid + amt;
   const settled = nowPaid >= grand - 0.5; // đã chi đủ → kết PRQ
 
-  await withTransaction(async (exec) => {
-    await exec(
+  const paymentId = await withTransaction(async (exec) => {
+    const inserted = await firstRow<{ id: number }>(
+      exec,
       `INSERT INTO prq_payments (prq_id, amount, paid_date, paid_ref, paid_by)
-       VALUES ($1,$2,${isISODate ? "$5::date" : "current_date"},$3,$4)`,
+       VALUES ($1,$2,${isISODate ? "$5::date" : "current_date"},$3,$4) RETURNING id`,
       isISODate ? [prqId, amt, ref, user.id, paidDate] : [prqId, amt, ref, user.id]
     );
     if (settled) {
@@ -409,6 +410,7 @@ export async function addPRQPaymentAction(prqId: number, amount: number, paidRef
     } else {
       await exec(`UPDATE payment_requisitions SET updated_at=now() WHERE id=$1`, [prqId]);
     }
+    return inserted!.id;
   });
 
   await logAudit({
@@ -422,6 +424,7 @@ export async function addPRQPaymentAction(prqId: number, amount: number, paidRef
   revalidatePath("/ke-toan");
   // Chi ĐỦ = PRQ hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
   if (settled) await archiveDocumentAttachments("PRQ", prqId);
+  return { paymentId };
 }
 
 /** Người duyệt TỪ CHỐI đề nghị đã gửi. Excel đã xuất/gửi NCC nên quyết định chỉ

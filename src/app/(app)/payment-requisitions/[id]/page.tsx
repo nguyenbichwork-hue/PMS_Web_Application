@@ -10,6 +10,7 @@ import { amountInWordsVi } from "@/lib/num-to-words-vi";
 import { PRQEditor, type PRQLine } from "./PRQEditor";
 import { PrqDirtyProvider } from "./DirtyContext";
 import { PRQActions } from "./PRQActions";
+import { PaymentHistory } from "./PaymentHistory";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
 import { ArchiveNowButton } from "@/components/ArchiveNowButton";
 
@@ -100,6 +101,20 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   // Đã chi = tổng sổ chi; Còn lại = tổng PRQ − đã chi.
   const paidTotal = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
   const remaining = Number(prq.grand_total) - paidTotal;
+
+  // File bằng chứng gắn theo TỪNG lần chi (document_type='PRQPay', document_id = id lần chi).
+  const payIds = payments.map((p) => p.id);
+  const payFiles = payIds.length
+    ? await query<{ id: number; payment_id: number; file_name: string }>(
+        `SELECT id, document_id AS payment_id, file_name FROM attachments
+          WHERE document_type='PRQPay' AND document_id = ANY($1::bigint[]) ORDER BY id`,
+        [payIds]
+      )
+    : [];
+  const paymentsWithFiles = payments.map((p) => ({
+    ...p,
+    files: payFiles.filter((f) => f.payment_id === p.id).map((f) => ({ id: f.id, file_name: f.file_name })),
+  }));
 
   const canManage = !!(user && can(user.role, "prq.manage"));
   const canPay = !!(user && can(user.role, "prq.pay"));
@@ -202,33 +217,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           </Card>
 
           {payments.length > 0 && (
-            <Card className="p-5">
-              <h3 className="mb-3 text-base font-semibold text-slate-800">Lịch sử chi tiền</h3>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="p-2 text-left">Lần</th>
-                      <th className="p-2 text-left">Ngày chi</th>
-                      <th className="p-2 text-left">Số lệnh chi</th>
-                      <th className="p-2 text-left">Người chi</th>
-                      <th className="p-2 text-right">Số tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p, i) => (
-                      <tr key={p.id} className="border-t border-slate-100">
-                        <td className="p-2">{i + 1}</td>
-                        <td className="p-2">{p.paid_date ? date(p.paid_date) : "—"}</td>
-                        <td className="p-2">{p.paid_ref ?? "—"}</td>
-                        <td className="p-2">{p.paid_by_name ?? "—"}</td>
-                        <td className="p-2 text-right font-medium">{money(p.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+            <PaymentHistory payments={paymentsWithFiles} canPay={canPay} />
           )}
 
           {editable ? (
