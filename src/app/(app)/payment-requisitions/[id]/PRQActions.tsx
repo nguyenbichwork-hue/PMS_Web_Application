@@ -16,6 +16,7 @@ export function PRQActions({
   currentLevel,
   chainLength,
   pendingRoleLabel,
+  approvesAll = false,
 }: {
   prqId: number;
   status: string;
@@ -25,6 +26,7 @@ export function PRQActions({
   currentLevel: number;
   chainLength: number;
   pendingRoleLabel: string;
+  approvesAll?: boolean;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -67,7 +69,7 @@ export function PRQActions({
         {isMyTurn && status === "Submitted" && (
           <>
             <Button className="w-full justify-center" loading={pending} onClick={run(() => approvePRQAction(prqId))}>
-              Duyệt thanh toán {chainLength > 1 ? `(cấp ${currentLevel + 1}/${chainLength})` : ""}
+              Duyệt thanh toán {chainLength > 1 ? (approvesAll ? `(cả ${chainLength} cấp)` : `(cấp ${currentLevel + 1}/${chainLength})`) : ""}
             </Button>
             <Button
               variant="danger"

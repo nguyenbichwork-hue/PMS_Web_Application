@@ -242,6 +242,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
             currentLevel={prq.current_level}
             chainLength={prqChain.length}
             pendingRoleLabel={pendingRoleLabel}
+            approvesAll={user?.role === "Admin"}
           />
 
           <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />

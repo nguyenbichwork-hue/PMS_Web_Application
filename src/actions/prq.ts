@@ -351,7 +351,9 @@ export async function approvePRQAction(prqId: number, comment?: string) {
   if (!isNextApprover(chain, prq.current_level, user.role))
     throw new Error(`Chưa tới lượt bạn duyệt. Cấp cần duyệt tiếp theo: ${chain[prq.current_level] ?? "—"}`);
 
-  const newLevel = prq.current_level + 1;
+  // Superadmin (Admin) duyệt CẢ chuỗi trong MỘT lượt → nhảy thẳng tới cấp cuối
+  // (feedback 20/08/2026: Superadmin duyệt được cả 2 bước). Vai trò khác tiến 1 cấp.
+  const newLevel = user.role === "Admin" ? chain.length : prq.current_level + 1;
   await withTransaction(async (exec) => {
     // Optimistic locking theo current_level: chỉ tiến cấp nếu chưa ai đổi.
     const locked = await firstRow<{ id: number }>(
