@@ -108,11 +108,13 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   // Duyệt 2 cấp: chuỗi [Finance, Manager]. "Đúng lượt" = có quyền duyệt + đúng cấp
   // tiếp theo + KHÔNG phải người lập (SoD). Nút duyệt chỉ hiện cho đúng người/đúng cấp.
   const prqChain = await resolveApprovalChain(0, "PRQ");
+  // Admin = siêu quyền: duyệt được MỌI cấp, kể cả đề nghị do CHÍNH MÌNH lập (bỏ SoD).
+  // Vai trò khác vẫn bị ràng buộc phân tách nhiệm vụ (không tự duyệt đơn mình tạo).
   const isMyTurn = !!(
     user &&
     can(user.role, "prq.approve") &&
     isNextApprover(prqChain, prq.current_level, user.role) &&
-    prq.created_by !== user.id
+    (prq.created_by !== user.id || user.role === "Admin")
   );
   const pendingRoleLabel = ROLE_VI[prqChain[prq.current_level] ?? ""] ?? prqChain[prq.current_level] ?? "";
 

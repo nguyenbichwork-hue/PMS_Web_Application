@@ -313,10 +313,11 @@ export async function approvePRQAction(prqId: number, comment?: string) {
   if (prq.status !== "Submitted") throw new Error("Chỉ duyệt được đề nghị đã gửi.");
 
   // SoD: không được tự duyệt đề nghị do CHÍNH MÌNH lập (kể cả khi có quyền duyệt).
-  // Ngoại lệ 1 tài khoản SIÊU QUẢN TRỊ để test toàn luồng một mình (giống PR).
+  // Ngoại lệ: tài khoản SIÊU QUẢN TRỊ test + MỌI Admin (siêu quyền, toàn quyền duyệt
+  // kể cả đơn mình lập — feedback 20/08/2026).
   const SUPER_TEST_EMAIL = (process.env.SUPER_TEST_EMAIL || "super@k-homes.vn").toLowerCase();
   const isSuperTest = user.email.toLowerCase() === SUPER_TEST_EMAIL;
-  if (prq.created_by === user.id && !isSuperTest)
+  if (prq.created_by === user.id && !isSuperTest && user.role !== "Admin")
     throw new Error("Bạn không được tự duyệt đề nghị do chính mình lập (phân tách nhiệm vụ).");
 
   // Chuỗi duyệt 2 cấp [Finance, Manager]. Ép ĐÚNG lượt: cấp 1 = Finance (Sa),
