@@ -61,88 +61,61 @@ export async function createPRQAction(formData: FormData) {
   const user = await requireUser();
   if (!can(user.role, "prq.manage")) throw new Error("FORBIDDEN");
 
-  const supplierId = Number(formData.get("supplier_id"));
-  if (!supplierId) throw new Error("Vui lòng chọn nhà cung cấp.");
-
-  let ids: unknown = [];
-  try { ids = JSON.parse(String(formData.get("po_item_ids") ?? "[]")); } catch { ids = []; }
-  const poItemIds = (Array.isArray(ids) ? ids : []).map((v) => Number(v)).filter((n) => Number.isInteger(n) && n > 0);
-  if (poItemIds.length === 0) throw new Error("Chọn ít nhất một dòng PO để thanh toán.");
+  // MÔ HÌNH MỖI LẦN CHI = 1 PRQ (feedback 20/08/2026): chọn 1 PO đã duyệt + nhập
+  // SỐ TIỀN thanh toán lần này (một phần ≤ số còn lại của PO). PO có thể có NHIỀU
+  // PRQ tới khi chi hết. Mỗi PRQ duyệt riêng rồi mới chi.
+  const poId = Number(formData.get("po_id"));
+  if (!poId) throw new Error("Vui lòng chọn đơn hàng (PO) để thanh toán.");
+  const amount = Math.round(Number(formData.get("amount")) || 0);
+  if (!(amount > 0)) throw new Error("Số tiền thanh toán phải lớn hơn 0.");
 
   const due_date = String(formData.get("due_date") ?? "").trim() || null;
   const bank_account = String(formData.get("bank_account") ?? "").trim() || null;
   const bank_name = String(formData.get("bank_name") ?? "").trim() || null;
   const reason = String(formData.get("reason") ?? "").trim() || null;
-  // Bắt buộc ngay khi TẠO (feedback 20/08/2026): nhập một lần, dùng lại các bước sau.
+  // Bắt buộc ngay khi TẠO: nhập một lần, dùng lại các bước sau.
   const missing: string[] = [];
   if (!bank_account) missing.push("Số TK ngân hàng");
   if (!bank_name) missing.push("Tên ngân hàng");
   if (!due_date) missing.push("Ngày đến hạn");
   if (!reason) missing.push("Lý do / Nội dung");
   if (missing.length) throw new Error(`Vui lòng điền: ${missing.join(", ")}.`);
-  const terms = readPaymentTerms(formData);
-  const payment_type = terms.payment_method === "Ứng trước" ? "Advance" : "Normal";
 
-  // Nạp các dòng PO được chọn (kèm PO cha) — kiểm tra CÙNG NCC + CÙNG công ty +
-  // chưa bị "chiếm" bởi PRQ khác đang hoạt động (chống trả trùng một dòng).
-  const rows = await query<{
-    po_item_id: number; po_id: number; supplier_id: number | null; company_id: number;
-    currency: string; status: string; description: string; amount: string; vat_rate: string | null;
-  }>(
-    `SELECT poi.id AS po_item_id, po.id AS po_id, po.supplier_id, po.company_id, po.currency, po.status,
-            poi.description, poi.amount, poi.vat_rate
-       FROM purchase_order_items poi
-       JOIN purchase_orders po ON po.id = poi.po_id
-      WHERE poi.id = ANY($1::bigint[])`,
-    [poItemIds]
+  const po = await queryOne<{ company_id: number; supplier_id: number | null; currency: string; status: string; grand_total: string; po_number: string | null }>(
+    `SELECT company_id, supplier_id, currency, status, grand_total, po_number FROM purchase_orders WHERE id = $1`,
+    [poId]
   );
-  if (rows.length !== poItemIds.length) throw new Error("Một số dòng PO không tồn tại. Vui lòng tải lại trang.");
+  if (!po) throw new Error("Không tìm thấy đơn hàng.");
+  if (["Draft", "Cancelled"].includes(po.status)) throw new Error("Chỉ thanh toán đơn hàng ĐÃ DUYỆT.");
+  if (!canAccessCompany(user, po.company_id)) throw new Error("FORBIDDEN");
 
-  const companyId = rows[0].company_id;
-  for (const r of rows) {
-    if (r.supplier_id !== supplierId) throw new Error("Các dòng phải cùng MỘT nhà cung cấp cho một đề nghị thanh toán.");
-    if (r.company_id !== companyId) throw new Error("Các dòng phải cùng MỘT công ty (pháp nhân).");
-    if (["Draft", "Cancelled"].includes(r.status)) throw new Error("Chỉ thanh toán dòng thuộc PO đã duyệt (không phải Nháp/Hủy).");
-  }
-  if (!canAccessCompany(user, companyId)) throw new Error("FORBIDDEN");
-
-  // Chống trả trùng: dòng PO đã nằm trong một PRQ còn hiệu lực (chưa hủy/từ chối).
-  const taken = await query<{ po_item_id: number }>(
-    `SELECT it.po_item_id FROM payment_requisition_items it
-       JOIN payment_requisitions p ON p.id = it.prq_id
-      WHERE it.po_item_id = ANY($1::bigint[]) AND p.status IN ('Draft','Submitted','Approved','Paid')`,
-    [poItemIds]
-  );
-  if (taken.length > 0) throw new Error("Một số dòng đã nằm trong đề nghị thanh toán khác. Vui lòng tải lại trang.");
+  // Số CÒN LẠI của PO = tổng PO − tổng các PRQ (chưa hủy/từ chối) đã lập cho PO này.
+  const remaining = Number(po.grand_total) - (await poAllocated(poId));
+  if (amount > remaining + 0.5)
+    throw new Error(`Số tiền (${amount.toLocaleString("vi-VN")} ₫) vượt số còn lại của đơn hàng (${remaining.toLocaleString("vi-VN")} ₫).`);
 
   const sup = await queryOne<{ bank_account: string | null; tax_code: string | null }>(
     `SELECT bank_account, tax_code FROM suppliers WHERE id = $1`,
-    [supplierId]
+    [po.supplier_id]
   );
-  const currency = rows[0].currency || "VND";
+  const currency = po.currency || "VND";
 
   const prqId = await withTransaction(async (exec) => {
     const prq = await firstRow<{ id: number }>(
       exec,
       `INSERT INTO payment_requisitions
-         (company_id, supplier_id, payment_type, currency, bank_account, bank_name, reason, due_date, status, created_by,
-          payment_method, advance_percent, payment_count, payment_installments)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Draft',$9, $10,$11,$12,$13) RETURNING id`,
-      [companyId, supplierId, payment_type, currency, bank_account ?? sup?.bank_account ?? null, bank_name, reason, due_date, user.id,
-       terms.payment_method, terms.advance_percent, terms.payment_count, terms.payment_installments]
+         (company_id, supplier_id, payment_type, currency, bank_account, bank_name, reason, due_date, status, created_by)
+       VALUES ($1,$2,'Normal',$3,$4,$5,$6,$7,'Draft',$8) RETURNING id`,
+      [po.company_id, po.supplier_id, currency, bank_account ?? sup?.bank_account ?? null, bank_name, reason, due_date, user.id]
     );
     await exec(`UPDATE payment_requisitions SET prq_number = $1 WHERE id = $2`, [docNumber("PRQ", prq!.id), prq!.id]);
-
-    let line = 1;
-    for (const r of rows) {
-      await exec(
-        `INSERT INTO payment_requisition_items
-           (prq_id, po_id, po_item_id, description, tax_code, currency, amount, vat_rate, line_no)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [prq!.id, r.po_id, r.po_item_id, r.description, sup?.tax_code ?? null, currency,
-         Number(r.amount), r.vat_rate != null ? Number(r.vat_rate) : null, line++]
-      );
-    }
+    // 1 dòng = số tiền chi lần này (đã GỒM thuế → vat_rate 0 để recompute giữ nguyên tổng).
+    await exec(
+      `INSERT INTO payment_requisition_items
+         (prq_id, po_id, po_item_id, description, tax_code, currency, amount, vat_rate, line_no)
+       VALUES ($1,$2,NULL,$3,$4,$5,$6,0,1)`,
+      [prq!.id, poId, `Thanh toán ${po.po_number ?? `PO-${poId}`}`, sup?.tax_code ?? null, currency, amount]
+    );
     await recomputePRQTotals(exec, prq!.id);
     await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prq!.id, action: "Create", newValue: docNumber("PRQ", prq!.id) }, exec);
     return prq!.id;
@@ -150,6 +123,18 @@ export async function createPRQAction(formData: FormData) {
 
   revalidatePath("/payment-requisitions");
   redirect(`/payment-requisitions/${prqId}`);
+}
+
+/** Tổng số tiền đã "chiếm" của 1 PO = Σ grand_total các PRQ (trừ Rejected/Cancelled)
+ *  có dòng trỏ tới PO đó. Dùng cho "PO còn lại" khi tạo & liệt kê. */
+export async function poAllocated(poId: number): Promise<number> {
+  const r = await queryOne<{ s: string }>(
+    `SELECT COALESCE(sum(p.grand_total),0) AS s FROM payment_requisitions p
+      WHERE p.status NOT IN ('Rejected','Cancelled')
+        AND EXISTS (SELECT 1 FROM payment_requisition_items it WHERE it.prq_id = p.id AND it.po_id = $1)`,
+    [poId]
+  );
+  return Number(r?.s ?? 0);
 }
 
 /** Cập nhật phần đầu (ngân hàng, ngày đến hạn, loại thanh toán, lý do) + từng dòng. */
