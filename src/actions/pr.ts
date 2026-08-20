@@ -200,13 +200,13 @@ export async function approvePRAction(prId: number, comment: string): Promise<Ac
   if (!pr || pr.status !== "Pending Approval") throw new Error("PR không ở trạng thái chờ duyệt.");
   // Manager/Finance/Admin duyệt xuyên công ty; vai trò khác phải cùng công ty.
   if (!isCrossCompanyApprover(user) && !canAccessCompany(user, pr.company_id)) throw new Error("FORBIDDEN");
-  // SoD (§4.1, UAT-40): không được tự duyệt PR do chính mình tạo (kể cả Admin).
-  // NGOẠI LỆ: tài khoản SIÊU QUẢN TRỊ để TEST nghiệp vụ (SUPER_TEST_EMAIL, mặc
-  // định super@k-homes.vn) được tự duyệt để chạy một mình toàn luồng. SoD vẫn
-  // áp cho MỌI tài khoản khác — đây là chốt bảo mật thật, chỉ nới cho 1 email test.
+  // SoD (§4.1, UAT-40): không được tự duyệt PR do chính mình tạo.
+  // NGOẠI LỆ: tài khoản SIÊU QUẢN TRỊ để TEST (SUPER_TEST_EMAIL) + MỌI Admin (siêu
+  // quyền, toàn quyền duyệt kể cả PR mình tạo — feedback 20/08/2026). SoD vẫn áp cho
+  // MỌI vai trò khác — đây là chốt bảo mật thật cho đội nghiệp vụ.
   const SUPER_TEST_EMAIL = (process.env.SUPER_TEST_EMAIL || "super@k-homes.vn").toLowerCase();
   const isSuperTest = user.email.toLowerCase() === SUPER_TEST_EMAIL;
-  if (pr.requester_id === user.id && !isSuperTest) throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
+  if (pr.requester_id === user.id && !isSuperTest && user.role !== "Admin") throw new Error("Bạn không được tự duyệt PR do chính mình tạo (phân tách nhiệm vụ).");
 
   const chain = await resolveApprovalChain(Number(pr.total_amount));
   if (!isNextApprover(chain, pr.current_level, user.role)) {
