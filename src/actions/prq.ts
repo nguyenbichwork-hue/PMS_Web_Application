@@ -73,6 +73,13 @@ export async function createPRQAction(formData: FormData) {
   const bank_account = String(formData.get("bank_account") ?? "").trim() || null;
   const bank_name = String(formData.get("bank_name") ?? "").trim() || null;
   const reason = String(formData.get("reason") ?? "").trim() || null;
+  // Bắt buộc ngay khi TẠO (feedback 20/08/2026): nhập một lần, dùng lại các bước sau.
+  const missing: string[] = [];
+  if (!bank_account) missing.push("Số TK ngân hàng");
+  if (!bank_name) missing.push("Tên ngân hàng");
+  if (!due_date) missing.push("Ngày đến hạn");
+  if (!reason) missing.push("Lý do / Nội dung");
+  if (missing.length) throw new Error(`Vui lòng điền: ${missing.join(", ")}.`);
   const terms = readPaymentTerms(formData);
   const payment_type = terms.payment_method === "Ứng trước" ? "Advance" : "Normal";
 

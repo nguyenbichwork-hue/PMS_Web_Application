@@ -1,7 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
 import { createPRQAction } from "@/actions/prq";
-import { PaymentMethodSection } from "@/components/PaymentMethodSection";
 import { Card, Field, inputCls } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { money } from "@/lib/format";
@@ -43,7 +42,6 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
   const [supplierId, setSupplierId] = useState<number | null>(suppliers.length === 1 ? suppliers[0].id : null);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [bank, setBank] = useState<string>(suppliers.length === 1 ? suppliers[0].bank ?? "" : "");
-  const [instMismatch, setInstMismatch] = useState(false);
 
   // Dòng của NCC đang chọn, gom theo PO.
   const byPO = useMemo<POGroup[]>(() => {
@@ -81,7 +79,7 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
       return next;
     });
 
-  const canSubmit = supplierId != null && checked.size > 0 && !instMismatch;
+  const canSubmit = supplierId != null && checked.size > 0;
   const idsJson = JSON.stringify([...checked]);
 
   return (
@@ -163,26 +161,23 @@ export function NewPRQForm({ lines }: { lines: EligibleLine[] }) {
 
       <Card className="p-6">
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Số TK ngân hàng">
-            <input name="bank_account" value={bank} onChange={(e) => setBank(e.target.value)} className={inputCls} placeholder="Số tài khoản NCC" />
+          <Field label="Số TK ngân hàng" required>
+            <input name="bank_account" value={bank} onChange={(e) => setBank(e.target.value)} className={inputCls} placeholder="Số tài khoản NCC" required />
           </Field>
-          <Field label="Tên ngân hàng">
-            <input name="bank_name" className={inputCls} placeholder="VD: Ngân hàng ACB - PGD Nguyễn Khoái" />
+          <Field label="Tên ngân hàng" required>
+            <input name="bank_name" className={inputCls} placeholder="VD: Ngân hàng ACB - PGD Nguyễn Khoái" required />
           </Field>
-          <Field label="Ngày đến hạn">
-            <input type="date" name="due_date" className={inputCls} />
+          <Field label="Ngày đến hạn" required>
+            <input type="date" name="due_date" className={inputCls} required />
           </Field>
-          <Field label="Lý do / Nội dung">
-            <input name="reason" className={inputCls} placeholder="VD: Thanh toán đợt 1" />
+          <Field label="Lý do / Nội dung" required>
+            <input name="reason" className={inputCls} placeholder="VD: Thanh toán đợt 1" required />
           </Field>
         </div>
-        <p className="mt-2 text-xs text-slate-400">Các trường ngân hàng / ngày đến hạn / lý do là <b>bắt buộc khi gửi duyệt</b> (có thể để trống ở bước Nháp).</p>
+        <p className="mt-2 text-xs text-slate-400">Các trường ngân hàng / ngày đến hạn / lý do là <b>bắt buộc</b>. Thông tin này được dùng lại ở các bước sau — không phải nhập lại.</p>
       </Card>
 
-      <PaymentMethodSection grandTotal={selectedTotal} onMismatch={setInstMismatch} />
-
       <div className="flex items-center justify-end gap-3">
-        {instMismatch && <span className="text-xs font-medium text-rose-600">Tổng các lần thanh toán phải khớp tổng đã chọn.</span>}
         <span className="text-xs text-slate-400">{checked.size > 0 ? `Đã chọn ${checked.size} dòng` : "Chưa chọn dòng nào"}</span>
         <FormSubmitButton disabled={!canSubmit} pendingText="Đang tạo…">Tạo đề nghị thanh toán</FormSubmitButton>
       </div>
