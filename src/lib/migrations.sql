@@ -275,6 +275,22 @@ CREATE INDEX IF NOT EXISTS idx_prq_items_po  ON payment_requisition_items(po_id)
 -- % thuế theo dòng PRQ (nhập nhanh: tiền trước thuế × (1+%/100) = số tiền gồm thuế).
 ALTER TABLE payment_requisition_items ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2);
 
+-- SỔ CHI TỪNG PHẦN (feedback 20/08/2026): thay vì khai trước số kỳ + chốt "đã chi"
+-- 1 phát, kế toán chi NHIỀU LẦN số tiền tùy ý cho tới khi hết tổng PRQ. Mỗi lần chi
+-- = 1 dòng. "Đã chi" = SUM(amount); "Còn lại" = grand_total − đã chi. Khi còn lại = 0
+-- thì PRQ chuyển 'Paid' và rớt khỏi hàng đợi Chờ chi.
+CREATE TABLE IF NOT EXISTS prq_payments (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  prq_id      BIGINT NOT NULL REFERENCES payment_requisitions(id) ON DELETE CASCADE,
+  amount      NUMERIC(18,2) NOT NULL DEFAULT 0,        -- số tiền chi lần này (gồm thuế)
+  paid_date   DATE NOT NULL DEFAULT current_date,
+  paid_ref    TEXT,                                    -- số lệnh chi / UNC để đối chiếu sao kê
+  note        TEXT,
+  paid_by     BIGINT REFERENCES users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_prq_payments_prq ON prq_payments(prq_id);
+
 -- PHÂN BỔ TỪNG DÒNG hóa đơn ↔ dòng PO — "bảng hạng nhất" (§11.2/§15.2
 -- invoice_po_allocation): kiểm soát số lượng/giá trị dựa trên LINE, không chỉ
 -- lưu po_id trên header. Mỗi dòng hóa đơn ghép với đúng dòng PO + lưu vết đối chiếu.

@@ -60,8 +60,8 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   if (!prq) notFound();
   if (user && !canAccessCompany(user, prq.company_id)) notFound();
 
-  // 3 truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
-  const [lines, addablePOs, attachments] = await Promise.all([
+  // 4 truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
+  const [lines, addablePOs, attachments, payments] = await Promise.all([
     query<PRQLine>(
       `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
               it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
@@ -88,7 +88,18 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
         WHERE a.document_type='PRQ' AND a.document_id=$1 ORDER BY a.id DESC`,
       [prqId]
     ),
+    // Sổ chi từng phần (feedback 20/08/2026): các lần đã chuyển tiền cho PRQ này.
+    query<{ id: number; amount: string; paid_date: string; paid_ref: string | null; paid_by_name: string | null }>(
+      `SELECT pp.id, pp.amount, pp.paid_date, pp.paid_ref, u.name AS paid_by_name
+         FROM prq_payments pp LEFT JOIN users u ON u.id = pp.paid_by
+        WHERE pp.prq_id = $1 ORDER BY pp.id ASC`,
+      [prqId]
+    ),
   ]);
+
+  // Đã chi = tổng sổ chi; Còn lại = tổng PRQ − đã chi.
+  const paidTotal = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const remaining = Number(prq.grand_total) - paidTotal;
 
   const canManage = !!(user && can(user.role, "prq.manage"));
   const canPay = !!(user && can(user.role, "prq.pay"));
@@ -176,8 +187,47 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
                 <span>{money(prq.grand_total)}</span>
               </div>
               <p className="pt-1 text-right text-xs italic text-slate-500">{amountInWordsVi(Number(prq.grand_total))}</p>
+              {(paidTotal > 0 || ["Approved", "Paid"].includes(prq.status)) && (
+                <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+                  <Row label="Đã chi" value={money(paidTotal)} />
+                  <div className={`flex justify-between font-semibold ${remaining > 0.5 ? "text-amber-600" : "text-emerald-600"}`}>
+                    <span>Còn lại</span>
+                    <span>{money(remaining)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
+
+          {payments.length > 0 && (
+            <Card className="p-5">
+              <h3 className="mb-3 text-base font-semibold text-slate-800">Lịch sử chi tiền</h3>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="p-2 text-left">Lần</th>
+                      <th className="p-2 text-left">Ngày chi</th>
+                      <th className="p-2 text-left">Số lệnh chi</th>
+                      <th className="p-2 text-left">Người chi</th>
+                      <th className="p-2 text-right">Số tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p, i) => (
+                      <tr key={p.id} className="border-t border-slate-100">
+                        <td className="p-2">{i + 1}</td>
+                        <td className="p-2">{p.paid_date ? date(p.paid_date) : "—"}</td>
+                        <td className="p-2">{p.paid_ref ?? "—"}</td>
+                        <td className="p-2">{p.paid_by_name ?? "—"}</td>
+                        <td className="p-2 text-right font-medium">{money(p.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           {editable ? (
             <PRQEditor key={lines.map((l) => `${l.id}:${l.amount}:${l.vat_rate ?? ""}`).join("|")} prq={prq} lines={lines} addablePOs={addablePOs} />
@@ -243,6 +293,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
             chainLength={prqChain.length}
             pendingRoleLabel={pendingRoleLabel}
             approvesAll={user?.role === "Admin"}
+            remaining={remaining}
           />
 
           <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />

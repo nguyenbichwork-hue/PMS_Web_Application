@@ -42,12 +42,9 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
   const sum = useMemo(() => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [rows]);
   const diff = grandTotal - sum;
   const installmentsJson = count > 0 ? JSON.stringify(rows) : "";
-  // Chia kỳ mà tổng các lần lệch tổng đơn → báo form cha CHẶN tạo (feedback 6).
-  const mismatch = count > 0 && Math.abs(diff) > 0.5;
-  // Mỗi kỳ BẮT BUỘC số tiền > 0 và có ngày (feedback 17/08) → cũng CHẶN gửi.
-  const incomplete = count > 0 && rows.some((r) => !(Number(r.amount) > 0) || !r.due_date);
-  const blocking = mismatch || incomplete;
-  useEffect(() => { onMismatch?.(blocking); }, [blocking, onMismatch]);
+  // KẾ HOẠCH kỳ nay chỉ là DỰ KIẾN để nhắc hạn (feedback 20/08/2026): thực chi từng
+  // phần tùy ý ở khâu Kế toán → KHÔNG bắt buộc, KHÔNG ràng khớp tổng, KHÔNG chặn gửi.
+  useEffect(() => { onMismatch?.(false); }, [onMismatch]);
 
   return (
     <Card className="mt-4 p-6">
@@ -81,7 +78,7 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
             />
           </Field>
         )}
-        <Field label="Số lần thanh toán (tối đa 9)">
+        <Field label="Số lần thanh toán dự kiến (tùy chọn, tối đa 9)">
           <input
             type="number"
             min={0}
@@ -90,14 +87,14 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
             value={count || ""}
             onChange={(e) => setCountSafe(e.target.value)}
             className={yellowCls}
-            placeholder="VD: 3"
+            placeholder="Bỏ trống nếu chi linh hoạt"
           />
         </Field>
       </div>
 
       {count > 0 && (
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="mb-2 text-xs font-medium text-slate-500">Số tiền & ngày thanh toán từng lần</div>
+          <div className="mb-2 text-xs font-medium text-slate-500">Kế hoạch dự kiến (chỉ để nhắc hạn — kế toán chi từng phần tùy ý, không bắt buộc khớp)</div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((r, i) => (
               <div key={i} className="rounded-lg border border-slate-200 p-3">
@@ -134,16 +131,11 @@ export function PaymentMethodSection({ grandTotal, onMismatch }: { grandTotal: n
               Tổng đơn (gồm thuế): <b className="text-slate-800">{money(grandTotal)}</b>
             </span>
             {Math.abs(diff) > 0.5 && (
-              <span className={diff > 0 ? "text-amber-600" : "text-rose-600"}>
-                {diff > 0 ? `Còn thiếu ${money(diff)}` : `Vượt ${money(-diff)}`} so với tổng đơn
+              <span className="text-slate-400">
+                (lệch {diff > 0 ? money(diff) : money(-diff)} so với tổng đơn — không sao, chỉ là dự kiến)
               </span>
             )}
           </div>
-          {incomplete && (
-            <p className="mt-2 text-xs font-medium text-rose-600">
-              Mỗi lần thanh toán phải có <b>số tiền &gt; 0</b> và <b>ngày thanh toán</b>.
-            </p>
-          )}
         </div>
       )}
     </Card>

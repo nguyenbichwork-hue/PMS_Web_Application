@@ -16,6 +16,7 @@ interface Row {
   company_name: string;
   supplier_name: string | null;
   grand_total: string;
+  paid: string;          // tổng đã chi (sổ prq_payments)
   status: string;
   paid_date: string | null;
   paid_ref: string | null;
@@ -41,6 +42,7 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
 
   const rows = await query<Row>(
     `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.grand_total, prq.status,
+            COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = prq.id),0) AS paid,
             prq.paid_date, prq.paid_ref, u.name AS paid_by_name
        FROM payment_requisitions prq
        JOIN companies c ON c.id = prq.company_id
@@ -58,7 +60,7 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
   const stats = await queryOne<{ cho_chi: number; gt_cho_chi: string; da_chi: number; gt_da_chi: string }>(
     `SELECT count(*) FILTER (WHERE status='Approved')::int cho_chi,
-            COALESCE(sum(grand_total) FILTER (WHERE status='Approved'),0) gt_cho_chi,
+            COALESCE(sum(grand_total - COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = payment_requisitions.id),0)) FILTER (WHERE status='Approved'),0) gt_cho_chi,
             count(*) FILTER (WHERE status='Paid')::int da_chi,
             COALESCE(sum(grand_total) FILTER (WHERE status='Paid'),0) gt_da_chi
        FROM payment_requisitions ${sClause}`,
@@ -109,7 +111,11 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
                   <Th>Người chi</Th>
                 </>
               ) : (
-                <Th className="text-right">Thao tác</Th>
+                <>
+                  <Th className="text-right">Đã chi</Th>
+                  <Th className="text-right">Còn lại</Th>
+                  <Th className="text-right">Thao tác</Th>
+                </>
               )}
             </tr>
           </thead>
@@ -131,16 +137,26 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
                     <Td>{r.paid_by_name ?? "—"}</Td>
                   </>
                 ) : (
-                  <Td className="text-right">
-                    {canPay ? (
-                      <MarkPaidModal
-                        prqId={r.id}
-                        summary={`${r.prq_number ?? `PRQ-${r.id}`} · ${r.supplier_name ?? "—"} · ${money(r.grand_total)}`}
-                      />
-                    ) : (
-                      <StatusBadge status={r.status} />
-                    )}
-                  </Td>
+                  (() => {
+                    const remaining = Number(r.grand_total) - Number(r.paid);
+                    return (
+                      <>
+                        <Td className="text-right">{Number(r.paid) > 0 ? money(r.paid) : "—"}</Td>
+                        <Td className="text-right font-semibold text-teal-700">{money(remaining)}</Td>
+                        <Td className="text-right">
+                          {canPay ? (
+                            <MarkPaidModal
+                              prqId={r.id}
+                              remaining={remaining}
+                              summary={`${r.prq_number ?? `PRQ-${r.id}`} · ${r.supplier_name ?? "—"} · tổng ${money(r.grand_total)}`}
+                            />
+                          ) : (
+                            <StatusBadge status={r.status} />
+                          )}
+                        </Td>
+                      </>
+                    );
+                  })()
                 )}
               </tr>
             ))}

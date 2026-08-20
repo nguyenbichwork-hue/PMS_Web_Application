@@ -12,8 +12,8 @@ import { resolveApprovalChain, isNextApprover } from "@/lib/approval";
 
 /** Chặn IDOR + lấy trạng thái/công ty PRQ (kèm current_level + created_by cho duyệt 2 cấp). */
 async function loadPRQ(user: { role: string; company_id: number | null }, prqId: number) {
-  const row = await queryOne<{ id: number; company_id: number; supplier_id: number | null; status: string; current_level: number; created_by: number | null }>(
-    `SELECT id, company_id, supplier_id, status, current_level, created_by FROM payment_requisitions WHERE id = $1`,
+  const row = await queryOne<{ id: number; company_id: number; supplier_id: number | null; status: string; current_level: number; created_by: number | null; grand_total: string }>(
+    `SELECT id, company_id, supplier_id, status, current_level, created_by, grand_total FROM payment_requisitions WHERE id = $1`,
     [prqId]
   );
   if (!row) throw new Error("Không tìm thấy đề nghị thanh toán.");
@@ -286,35 +286,9 @@ export async function submitPRQAction(prqId: number): Promise<{ ok: boolean; err
   if (!prq.reason?.trim()) missing.push("Lý do / diễn giải");
   if (missing.length) return { ok: false, error: `Vui lòng điền: ${missing.join(", ")} — trước khi gửi duyệt.` };
 
-  // (6) Nếu chia kỳ: TỔNG các lần phải KHỚP tổng các dòng đề nghị (chống lệch số tiền).
-  const totRow = await queryOne<{ total: string }>(
-    `SELECT COALESCE(sum(amount),0) AS total FROM payment_requisition_items WHERE prq_id = $1`,
-    [prqId]
-  );
-  const lineTotal = Number(totRow?.total ?? 0);
-  if (prq.payment_count && prq.payment_count > 0) {
-    let arr: unknown = prq.payment_installments;
-    if (typeof arr === "string") { try { arr = JSON.parse(arr); } catch { arr = []; } }
-    const list = Array.isArray(arr) ? arr : [];
-    // Mỗi kỳ BẮT BUỘC có số tiền > 0 và NGÀY thanh toán (feedback 17/08).
-    if (list.length < prq.payment_count)
-      return { ok: false, error: "Vui lòng nhập đủ số tiền và ngày cho từng lần thanh toán." };
-    for (let i = 0; i < prq.payment_count; i++) {
-      const v = (list[i] ?? {}) as { amount?: unknown; due_date?: unknown };
-      if (!(Number(v.amount) > 0))
-        return { ok: false, error: `Lần ${i + 1}: số tiền thanh toán phải lớn hơn 0.` };
-      if (!(typeof v.due_date === "string" && v.due_date.trim()))
-        return { ok: false, error: `Lần ${i + 1}: vui lòng chọn ngày thanh toán.` };
-    }
-    const instSum = list.reduce(
-      (s, v) => s + (Number((v as { amount?: unknown })?.amount) || 0), 0
-    );
-    if (Math.abs(instSum - lineTotal) > 0.5)
-      return {
-        ok: false,
-        error: `Tổng các lần thanh toán (${instSum.toLocaleString("vi-VN")} ₫) không khớp tổng các dòng (${lineTotal.toLocaleString("vi-VN")} ₫). Vui lòng sửa lại kế hoạch thanh toán.`,
-      };
-  }
+  // (6) Kế hoạch chia kỳ (payment_installments) nay CHỈ là DỰ KIẾN để nhắc hạn —
+  // KHÔNG bắt buộc, KHÔNG ràng khớp tổng (feedback 20/08/2026: chi từng phần tùy ý
+  // qua sổ prq_payments). Không validate gì thêm ở đây.
 
   // (7) Bắt buộc đã tải lên chứng từ "PRQ đã ký".
   const signed = await queryOne<{ n: number }>(
@@ -382,26 +356,64 @@ export async function approvePRQAction(prqId: number, comment?: string) {
   revalidatePath("/ke-toan");
 }
 
-/** Kế toán ĐÁNH DẤU ĐÃ CHUYỂN TIỀN: Approved → Paid. Ghi ngày chi + người chi +
- *  số lệnh chi/UNC (tùy chọn) để đối chiếu sao kê. Đây là bước KẾT của vòng đời PRQ. */
-export async function markPRQPaidAction(prqId: number, paidRef?: string) {
+/** Tổng đã chi của 1 PRQ (SUM sổ prq_payments). */
+async function prqPaidTotal(prqId: number): Promise<number> {
+  const r = await queryOne<{ s: string }>(`SELECT COALESCE(sum(amount),0) AS s FROM prq_payments WHERE prq_id=$1`, [prqId]);
+  return Number(r?.s ?? 0);
+}
+
+/** Kế toán GHI NHẬN CHI TIỀN TỪNG PHẦN (feedback 20/08/2026): mỗi lần chi số tiền
+ *  tùy ý vào sổ prq_payments. Khi tổng đã chi ĐỦ tổng PRQ → chuyển 'Paid' và lưu
+ *  trữ đính kèm. Chi lố số còn lại bị chặn. Duyệt 1 lần, chi nhiều lần. */
+export async function addPRQPaymentAction(prqId: number, amount: number, paidRef?: string, paidDate?: string) {
   const user = await requireUser();
   if (!can(user.role, "prq.pay")) throw new Error("FORBIDDEN");
   const prq = await loadPRQ(user, prqId);
-  if (prq.status !== "Approved") throw new Error("Chỉ đánh dấu đã chi cho đề nghị đã DUYỆT.");
+  if (prq.status !== "Approved") throw new Error("Chỉ chi tiền cho đề nghị đã DUYỆT (và chưa chi đủ).");
+
+  const amt = Number(amount);
+  if (!(amt > 0)) throw new Error("Số tiền chi phải lớn hơn 0.");
+  const grand = Number(prq.grand_total ?? 0);
+  const paid = await prqPaidTotal(prqId);
+  const remaining = grand - paid;
+  if (amt > remaining + 0.5)
+    throw new Error(`Số tiền chi (${amt.toLocaleString("vi-VN")} ₫) vượt số còn lại (${remaining.toLocaleString("vi-VN")} ₫).`);
+
   const ref = (paidRef ?? "").trim() || null;
-  await query(
-    `UPDATE payment_requisitions
-        SET status='Paid', paid_date=now()::date, paid_by=$2, paid_ref=$3, updated_at=now()
-      WHERE id=$1`,
-    [prqId, user.id, ref]
-  );
-  await logAudit({ actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId, action: "Pay", newValue: ref });
+  const isISODate = typeof paidDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(paidDate);
+  const nowPaid = paid + amt;
+  const settled = nowPaid >= grand - 0.5; // đã chi đủ → kết PRQ
+
+  await withTransaction(async (exec) => {
+    await exec(
+      `INSERT INTO prq_payments (prq_id, amount, paid_date, paid_ref, paid_by)
+       VALUES ($1,$2,${isISODate ? "$5::date" : "current_date"},$3,$4)`,
+      isISODate ? [prqId, amt, ref, user.id, paidDate] : [prqId, amt, ref, user.id]
+    );
+    if (settled) {
+      // Kết PRQ: cột paid_* header ghi LẦN CHI CUỐI (ngày/UNC gần nhất) để tương thích.
+      await exec(
+        `UPDATE payment_requisitions
+            SET status='Paid', paid_date=${isISODate ? "$3::date" : "current_date"}, paid_by=$2, paid_ref=$4, updated_at=now()
+          WHERE id=$1`,
+        isISODate ? [prqId, user.id, paidDate, ref] : [prqId, user.id, ref]
+      );
+    } else {
+      await exec(`UPDATE payment_requisitions SET updated_at=now() WHERE id=$1`, [prqId]);
+    }
+  });
+
+  await logAudit({
+    actorId: user.id, actorName: user.name, documentType: "PRQ", documentId: prqId,
+    action: settled ? "Pay" : "PayPartial",
+    field: `${nowPaid.toLocaleString("vi-VN")}/${grand.toLocaleString("vi-VN")} ₫`,
+    newValue: `+${amt.toLocaleString("vi-VN")} ₫${ref ? ` · ${ref}` : ""}`,
+  });
   revalidatePath(`/payment-requisitions/${prqId}`);
   revalidatePath("/payment-requisitions");
   revalidatePath("/ke-toan");
-  // Đã chi tiền = PRQ hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
-  await archiveDocumentAttachments("PRQ", prqId);
+  // Chi ĐỦ = PRQ hoàn tất → lưu trữ đính kèm lên OneDrive (best-effort).
+  if (settled) await archiveDocumentAttachments("PRQ", prqId);
 }
 
 /** Người duyệt TỪ CHỐI đề nghị đã gửi. Excel đã xuất/gửi NCC nên quyết định chỉ

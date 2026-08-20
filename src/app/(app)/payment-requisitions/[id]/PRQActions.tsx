@@ -17,6 +17,7 @@ export function PRQActions({
   chainLength,
   pendingRoleLabel,
   approvesAll = false,
+  remaining,
 }: {
   prqId: number;
   status: string;
@@ -27,6 +28,7 @@ export function PRQActions({
   chainLength: number;
   pendingRoleLabel: string;
   approvesAll?: boolean;
+  remaining: number;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -86,7 +88,7 @@ export function PRQActions({
           </>
         )}
         {canPay && status === "Approved" && (
-          <MarkPaidModal prqId={prqId} fullWidth />
+          <MarkPaidModal prqId={prqId} fullWidth remaining={remaining} />
         )}
         {canManage && ["Draft", "Submitted", "Approved"].includes(status) && (
           <div className="border-t border-slate-100 pt-2">
