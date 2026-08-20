@@ -386,9 +386,10 @@ export async function addPRQPaymentAction(prqId: number, amount: number, paidRef
     );
     if (settled) {
       // Kết PRQ: cột paid_* header ghi LẦN CHI CUỐI (ngày/UNC gần nhất) để tương thích.
+      // LƯU Ý đánh số tham số theo nhánh: có ngày → paid_ref=$4; không ngày → paid_ref=$3.
       await exec(
         `UPDATE payment_requisitions
-            SET status='Paid', paid_date=${isISODate ? "$3::date" : "current_date"}, paid_by=$2, paid_ref=$4, updated_at=now()
+            SET status='Paid', paid_date=${isISODate ? "$3::date" : "current_date"}, paid_by=$2, paid_ref=${isISODate ? "$4" : "$3"}, updated_at=now()
           WHERE id=$1`,
         isISODate ? [prqId, user.id, paidDate, ref] : [prqId, user.id, ref]
       );
