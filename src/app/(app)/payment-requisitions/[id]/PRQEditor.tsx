@@ -34,7 +34,18 @@ interface PRQHeadLite {
   reason: string | null;
 }
 
-const d10 = (v: string | null) => (v ? String(v).slice(0, 10) : "");
+// Chuẩn hóa về 'YYYY-MM-DD' cho <input type=date>. Postgres (Neon) trả cột DATE
+// dưới dạng đối tượng Date → phải format theo NGÀY ĐỊA PHƯƠNG (tránh lệch múi giờ),
+// không dùng String(date).slice (ra "Thu Aug 2..." → input bỏ trống). PGlite trả chuỗi.
+const d10 = (v: string | Date | null | undefined): string => {
+  if (!v) return "";
+  if (v instanceof Date) {
+    const y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, "0"), d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+};
 
 export function PRQEditor({
   prq,
