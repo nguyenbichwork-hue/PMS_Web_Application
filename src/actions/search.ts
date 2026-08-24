@@ -28,7 +28,7 @@ export async function searchAction(qRaw: string): Promise<SearchHit[]> {
   {
     const params: unknown[] = [like];
     const qc = ["pr.pr_number ILIKE $1", "pr.purpose ILIKE $1"];
-    if (useAmount) { params.push(digitsLike); qc.push(`round(pr.total_amount)::bigint::text ILIKE $${params.length}`); }
+    if (useAmount) { params.push(digitsLike); qc.push(`round(pr.total_amount + COALESCE(pr.vat_total,0))::bigint::text ILIKE $${params.length}`); }
     const where = [`(${qc.join(" OR ")})`];
     pushCompanyScope(user, "pr.company_id", where, params);
     if (user.role === "Employee") {

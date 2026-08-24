@@ -39,15 +39,16 @@ function build(type: string, user: User, status: string, q: string, category: st
       const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
       return {
         sheet: "YeuCauMua", file: "yeu-cau-mua",
-        sql: `SELECT pr.pr_number, pr.request_date, u.name requester, c.company_name, pr.purpose, pr.priority, pr.total_amount, pr.status
+        sql: `SELECT pr.pr_number, pr.request_date, u.name requester, c.company_name, pr.purpose, pr.priority,
+                     pr.total_amount, pr.vat_total, (pr.total_amount + COALESCE(pr.vat_total,0)) AS gross, pr.status
                 FROM purchase_requests pr JOIN users u ON u.id=pr.requester_id JOIN companies c ON c.id=pr.company_id ${clause} ORDER BY pr.id DESC`,
         params,
         columns: [
           { h: "Số PR", k: "a", w: 16 }, { h: "Ngày", k: "b", w: 12 }, { h: "Người yêu cầu", k: "c", w: 22 },
           { h: "Công ty", k: "d", w: 18 }, { h: "Mục đích", k: "e", w: 34 }, { h: "Ưu tiên", k: "f", w: 12 },
-          { h: "Giá trị", k: "g", w: 16 }, { h: "Trạng thái", k: "h", w: 16 },
+          { h: "Chưa thuế", k: "g", w: 16 }, { h: "VAT", k: "i", w: 14 }, { h: "Giá trị (gồm thuế)", k: "j", w: 18 }, { h: "Trạng thái", k: "h", w: 16 },
         ],
-        map: (r) => ({ a: s(r.pr_number), b: s(r.request_date), c: s(r.requester), d: s(r.company_name), e: s(r.purpose), f: s(r.priority), g: n(r.total_amount), h: s(r.status) }),
+        map: (r) => ({ a: s(r.pr_number), b: s(r.request_date), c: s(r.requester), d: s(r.company_name), e: s(r.purpose), f: s(r.priority), g: n(r.total_amount), i: n(r.vat_total), j: n(r.gross), h: s(r.status) }),
       };
     }
     case "po": {

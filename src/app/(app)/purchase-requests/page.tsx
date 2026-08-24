@@ -40,7 +40,7 @@ export default async function PRListPage({
       `EXISTS (SELECT 1 FROM purchase_request_items it LEFT JOIN suppliers s ON s.id = it.supplier_suggestion WHERE it.pr_id = pr.id AND (it.item_name ILIKE $${p} OR it.item_code ILIKE $${p} OR it.supplier_text ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p}))`,
     ];
     const digits = sp.q.replace(/\D/g, "");
-    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(pr.total_amount)::bigint::text ILIKE $${params.length}`); }
+    if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(pr.total_amount + COALESCE(pr.vat_total,0))::bigint::text ILIKE $${params.length}`); }
     where.push(`(${qc.join(" OR ")})`);
   }
   if (sp.priority) {
@@ -196,7 +196,7 @@ export default async function PRListPage({
                 <Td>{r.company_name}</Td>
                 <Td className="max-w-xs truncate">{r.purpose}</Td>
                 <Td><PriorityBadge priority={r.priority} /></Td>
-                <Td className="text-right font-medium">{money(r.total_amount)}</Td>
+                <Td className="text-right font-medium">{money(Number(r.total_amount) + Number(r.vat_total ?? 0))}</Td>
                 <Td>
                   <StatusBadge status={r.status} />
                   <DueBadge date={r.required_date} active={["Pending Approval", "Draft"].includes(r.status)} />
