@@ -61,24 +61,13 @@ export function PRQEditor({
   const router = useRouter();
   const { setDirty } = usePrqDirty();
 
-  // Tính nhanh: nhập TIỀN TRƯỚC THUẾ + % VAT → tự ra SỐ TIỀN GỒM THUẾ (vẫn sửa tay được).
-  const round = (n: number) => Math.round(n) || 0;
-  const [amt, setAmt] = useState<Record<number, { net: number; vat: number; gross: number }>>(() => {
-    const m: Record<number, { net: number; vat: number; gross: number }> = {};
-    for (const l of lines) {
-      const vat = l.vat_rate != null && String(l.vat_rate) !== "" ? Number(l.vat_rate) : 0;
-      const gross = Number(l.amount) || 0;
-      const net = vat > 0 ? round(gross / (1 + vat / 100)) : gross;
-      m[l.id] = { net, vat, gross };
-    }
+  // Số tiền GỒM thuế của từng dòng (nhập trực tiếp).
+  const [gross, setGross] = useState<Record<number, number>>(() => {
+    const m: Record<number, number> = {};
+    for (const l of lines) m[l.id] = Number(l.amount) || 0;
     return m;
   });
-  const setNet = (id: number, net: number) =>
-    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, net, gross: v.vat > 0 ? round(net * (1 + v.vat / 100)) : net } }; });
-  const setVat = (id: number, vat: number) =>
-    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, vat, gross: vat > 0 ? round(v.net * (1 + vat / 100)) : v.net } }; });
-  const setGross = (id: number, gross: number) =>
-    setAmt((p) => { const v = p[id]; return { ...p, [id]: { ...v, gross } }; });
+  const setGrossFor = (id: number, v: number) => setGross((p) => ({ ...p, [id]: v }));
 
   const doAdd = () => {
     if (!addPo) return;
@@ -146,35 +135,12 @@ export function PRQEditor({
                     Xóa dòng
                   </button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <Field label="Số hóa đơn">
-                    <input name={`inv_no_${l.id}`} defaultValue={l.inv_no ?? ""} className={inputCls} placeholder="VD: 099/VM/2026" />
-                  </Field>
-                  <Field label="Ngày hóa đơn">
-                    <input name={`inv_date_${l.id}`} type="date" defaultValue={d10(l.inv_date)} className={inputCls} />
-                  </Field>
-                  <Field label="Mã số thuế">
-                    <input name={`tax_code_${l.id}`} defaultValue={l.tax_code ?? ""} className={inputCls} />
-                  </Field>
-                  <Field label="Tiền trước thuế">
-                    <input type="number" min={0} value={amt[l.id]?.net ?? 0} onChange={(e) => setNet(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right"} />
-                  </Field>
-                  <Field label="% VAT">
-                    <input name={`vat_rate_${l.id}`} type="number" min={0} max={100} step={0.5} value={amt[l.id]?.vat ?? 0} onChange={(e) => setVat(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right"} />
-                  </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Số tiền (gồm thuế)">
-                    <input name={`amount_${l.id}`} type="number" min={0} value={amt[l.id]?.gross ?? 0} onChange={(e) => setGross(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right font-semibold text-teal-700"} />
+                    <input name={`amount_${l.id}`} type="number" min={0} value={gross[l.id] ?? 0} onChange={(e) => setGrossFor(l.id, Number(e.target.value) || 0)} className={inputCls + " text-right font-semibold text-teal-700"} />
                   </Field>
-                  <div className="sm:col-span-2">
-                    <Field label="Diễn giải">
-                      <input name={`description_${l.id}`} defaultValue={l.description ?? ""} className={inputCls} placeholder="Nội dung thanh toán…" />
-                    </Field>
-                  </div>
-                  <Field label="GL Account">
-                    <input name={`gl_account_${l.id}`} defaultValue={l.gl_account ?? ""} className={inputCls} />
-                  </Field>
-                  <Field label="Cost center">
-                    <input name={`cost_center_${l.id}`} defaultValue={l.cost_center ?? ""} className={inputCls} />
+                  <Field label="Diễn giải">
+                    <input name={`description_${l.id}`} defaultValue={l.description ?? ""} className={inputCls} placeholder="Nội dung thanh toán…" />
                   </Field>
                 </div>
               </div>
