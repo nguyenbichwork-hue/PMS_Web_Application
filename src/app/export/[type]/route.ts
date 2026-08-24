@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { pushCompanyScope } from "@/lib/access";
 import type { User } from "@/lib/types";
 
 // Xuất danh sách ra Excel (.xlsx) — có phân quyền công ty + lọc theo trạng thái/từ khóa.
@@ -14,8 +15,19 @@ interface Conf {
 
 const s = (v: unknown) => (v == null ? "" : String(v));
 const n = (v: unknown) => (v == null ? 0 : Number(v));
+// DATE trên Neon trả về Date object, PGlite trả chuỗi → format thống nhất DD/MM/YYYY (giờ địa phương).
+const fdate = (v: unknown) => {
+  if (v == null || v === "") return "";
+  const d = v instanceof Date ? v : new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+const PRQ_STATUS_VI: Record<string, string> = {
+  Draft: "Nháp", Submitted: "Đã gửi", Approved: "Đã duyệt", Paid: "Đã thanh toán", Cancelled: "Đã hủy", Rejected: "Từ chối",
+};
 
-function build(type: string, user: User, status: string, q: string, category: string): Conf | null {
+function build(type: string, user: User, status: string, q: string, category: string, df: string, dt: string): Conf | null {
   const admin = user.role === "Admin";
   switch (type) {
     case "pr": {
@@ -192,6 +204,50 @@ function build(type: string, user: User, status: string, q: string, category: st
         map: (r) => ({ a: s(r.project_code), b: s(r.project_name), c: s(r.company_code), d: s(r.customer_code), e: n(r.budget), f: s(r.manager_name), g: s(r.location), h: s(r.start_date), i: s(r.end_date), j: s(r.status) }),
       };
     }
+    case "prq": {
+      // Khớp phạm vi + bộ lọc của trang danh sách Đề nghị thanh toán (status, từ khóa, khoảng ngày lập).
+      const where: string[] = []; const params: unknown[] = [];
+      if (status) { params.push(status); where.push(`prq.status=$${params.length}`); }
+      if (q) {
+        params.push(`%${q}%`); const p = params.length;
+        where.push(`(prq.prq_number ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p} OR s.tax_code ILIKE $${p})`);
+      }
+      if (df) { params.push(df); where.push(`prq.created_at::date >= $${params.length}`); }
+      if (dt) { params.push(dt); where.push(`prq.created_at::date <= $${params.length}`); }
+      pushCompanyScope(user, "prq.company_id", where, params);
+      const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      return {
+        sheet: "DeNghiThanhToan", file: "de-nghi-thanh-toan",
+        sql: `SELECT prq.prq_number, s.supplier_name, c.company_name,
+                     (SELECT string_agg(DISTINCT pr.department, ', ')
+                        FROM payment_requisition_items it
+                        JOIN purchase_orders po ON po.id = it.po_id
+                        JOIN purchase_requests pr ON pr.id = po.pr_id
+                       WHERE it.prq_id = prq.id AND pr.department IS NOT NULL AND pr.department <> '') AS bu,
+                     prq.payment_type, prq.due_date, prq.grand_total,
+                     COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = prq.id), 0) AS paid,
+                     prq.status
+                FROM payment_requisitions prq
+                JOIN companies c ON c.id = prq.company_id
+                LEFT JOIN suppliers s ON s.id = prq.supplier_id
+                ${clause} ORDER BY prq.id DESC`,
+        params,
+        columns: [
+          { h: "Số đề nghị", k: "a", w: 18 }, { h: "Nhà cung cấp", k: "b", w: 36 }, { h: "Công ty", k: "c", w: 18 },
+          { h: "BU", k: "d", w: 22 }, { h: "Loại", k: "e", w: 12 }, { h: "Đến hạn", k: "f", w: 14 },
+          { h: "Số tiền (gồm thuế)", k: "g", w: 18 }, { h: "Đã chi", k: "h", w: 16 }, { h: "Còn lại", k: "i", w: 16 },
+          { h: "Trạng thái", k: "j", w: 16 },
+        ],
+        map: (r) => {
+          const total = n(r.grand_total); const paid = n(r.paid);
+          return {
+            a: s(r.prq_number), b: s(r.supplier_name), c: s(r.company_name), d: s(r.bu),
+            e: r.payment_type === "Advance" ? "Ứng trước" : "Thường", f: fdate(r.due_date),
+            g: total, h: paid, i: total - paid, j: PRQ_STATUS_VI[s(r.status)] ?? s(r.status),
+          };
+        },
+      };
+    }
     default:
       return null;
   }
@@ -202,7 +258,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
   if (!user) return new Response("Chưa đăng nhập", { status: 401 });
   const { type } = await params;
   const sp = req.nextUrl.searchParams;
-  const conf = build(type, user, sp.get("status") ?? "", sp.get("q") ?? "", sp.get("category") ?? "");
+  const conf = build(type, user, sp.get("status") ?? "", sp.get("q") ?? "", sp.get("category") ?? "", sp.get("df") ?? "", sp.get("dt") ?? "");
   if (!conf) return new Response("Loại xuất không hợp lệ", { status: 400 });
 
   const rows = await query<Record<string, unknown>>(conf.sql, conf.params);
@@ -210,13 +266,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(conf.sheet);
   ws.columns = conf.columns.map((c) => ({ header: c.h, key: c.k, width: c.w ?? 18 }));
-  ws.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+
+  // Hàng tiêu đề: nền tím đậm, chữ trắng đậm, canh giữa.
+  const head = ws.getRow(1);
+  head.height = 24;
+  head.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF7C3AED" } };
-    cell.alignment = { vertical: "middle" };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = { bottom: { style: "thin", color: { argb: "FF5B21B6" } } };
   });
-  ws.getRow(1).height = 20;
+
   for (const r of rows) ws.addRow(conf.map(r));
+
+  // Dữ liệu: kẻ viền nhạt, zebra so le, số căn phải + format nghìn, ngày căn giữa.
+  const thin = { style: "thin" as const, color: { argb: "FFE2E8F0" } };
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const zebra = r % 2 === 0;
+    row.eachCell((cell) => {
+      cell.border = { top: thin, bottom: thin, left: thin, right: thin };
+      if (zebra) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+      if (typeof cell.value === "number") {
+        cell.numFmt = "#,##0";
+        cell.alignment = { horizontal: "right", vertical: "middle" };
+      } else {
+        cell.alignment = { vertical: "middle" };
+      }
+    });
+  }
+
+  ws.views = [{ state: "frozen", ySplit: 1 }];
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: conf.columns.length } };
 
   const buf = await wb.xlsx.writeBuffer();

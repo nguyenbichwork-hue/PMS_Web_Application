@@ -2,7 +2,7 @@ import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { pushCompanyScope } from "@/lib/access";
-import { Card, StatusBadge, Th, Td, EmptyState } from "@/components/ui";
+import { Card, ExportButton, StatusBadge, Th, Td, EmptyState } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { Pagination } from "@/components/Pagination";
@@ -89,7 +89,8 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
     <div>
       <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt" />
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <ExportButton href={`/export/prq?${new URLSearchParams(sp).toString()}`} />
         <Link
           href="/payment-requisitions/new"
           className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
