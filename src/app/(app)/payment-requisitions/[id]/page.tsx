@@ -62,7 +62,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   if (user && !canAccessCompany(user, prq.company_id)) notFound();
 
   // 4 truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
-  const [lines, addablePOs, attachments, payments] = await Promise.all([
+  const [lines, attachments, payments] = await Promise.all([
     query<PRQLine>(
       `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
               it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
@@ -71,9 +71,6 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
         WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
       [prqId]
     ),
-    // Mô hình mới: 1 PRQ = 1 PO (số tiền một phần) → KHÔNG cho gộp thêm PO nữa
-    // (gộp sẽ phá cách tính "PO còn lại"). Giữ chỗ mảng rỗng cho editor.
-    Promise.resolve([] as { id: number; po_number: string | null; grand_total: string }[]),
     query<AttachmentItem>(
       `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
          FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
@@ -212,7 +209,7 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           )}
 
           {editable ? (
-            <PRQEditor key={lines.map((l) => `${l.id}:${l.amount}:${l.vat_rate ?? ""}`).join("|")} prq={prq} lines={lines} addablePOs={addablePOs} />
+            <PRQEditor key={lines.map((l) => `${l.id}:${l.amount}:${l.vat_rate ?? ""}`).join("|")} prq={prq} lines={lines} />
           ) : (
             <Card className="p-5">
               <h3 className="mb-3 text-base font-semibold text-slate-800">Chi tiết dòng thanh toán</h3>

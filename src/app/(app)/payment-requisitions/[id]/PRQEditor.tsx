@@ -1,10 +1,9 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updatePRQAction, addPOToPRQAction, removePRQLineAction } from "@/actions/prq";
-import { Card, Button, Field, inputCls } from "@/components/ui";
+import { updatePRQAction, removePRQLineAction } from "@/actions/prq";
+import { Card, Field, inputCls } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
-import { money } from "@/lib/format";
 import { usePrqDirty } from "./DirtyContext";
 
 export interface PRQLine {
@@ -50,14 +49,11 @@ const d10 = (v: string | Date | null | undefined): string => {
 export function PRQEditor({
   prq,
   lines,
-  addablePOs,
 }: {
   prq: PRQHeadLite;
   lines: PRQLine[];
-  addablePOs: { id: number; po_number: string | null; grand_total: string }[];
 }) {
   const [pending, start] = useTransition();
-  const [addPo, setAddPo] = useState("");
   const router = useRouter();
   const { setDirty } = usePrqDirty();
 
@@ -69,10 +65,6 @@ export function PRQEditor({
   });
   const setGrossFor = (id: number, v: number) => setGross((p) => ({ ...p, [id]: v }));
 
-  const doAdd = () => {
-    if (!addPo) return;
-    start(async () => { await addPOToPRQAction(prq.id, Number(addPo)); setAddPo(""); router.refresh(); });
-  };
   const doRemove = (itemId: number) => {
     start(async () => { await removePRQLineAction(prq.id, itemId); router.refresh(); });
   };
@@ -147,23 +139,10 @@ export function PRQEditor({
             ))}
             {lines.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
-                Chưa có dòng nào. Gộp thêm PO ở bên dưới.
+                Chưa có dòng nào.
               </div>
             )}
           </div>
-
-          {addablePOs.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">Gộp thêm PO cùng NCC:</span>
-              <select value={addPo} onChange={(e) => setAddPo(e.target.value)} className={inputCls + " max-w-xs !py-1.5"}>
-                <option value="">— Chọn PO —</option>
-                {addablePOs.map((p) => (
-                  <option key={p.id} value={p.id}>{p.po_number ?? `PO-${p.id}`} · {money(p.grand_total)}</option>
-                ))}
-              </select>
-              <Button type="button" variant="secondary" onClick={doAdd} disabled={pending || !addPo}>+ Thêm PO</Button>
-            </div>
-          )}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
