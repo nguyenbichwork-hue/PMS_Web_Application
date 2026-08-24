@@ -136,6 +136,12 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
     }
   } catch { prqInstallments = []; }
 
+  // PO nguồn của PRQ — 1 PRQ = 1 phần tiền của 1 PO (một PO có thể có NHIỀU PRQ).
+  // Gộp distinct phòng trường hợp dữ liệu cũ có nhiều dòng khác PO. Hiển thị + link để dễ đối chiếu.
+  const poRefs = Array.from(
+    new Map(lines.filter((l) => l.po_id != null).map((l) => [l.po_id as number, l.po_number])).entries()
+  ).map(([id, number]) => ({ id, number: number ?? `PO-${id}` }));
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
@@ -152,6 +158,20 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
               <Info label="Nhà cung cấp" value={prq.supplier_name} />
               <Info label="MST" value={prq.supplier_tax} />
               <Info label="Công ty (pháp nhân)" value={prq.company_name} />
+              <Info
+                label="Đơn hàng (PO)"
+                value={
+                  poRefs.length ? (
+                    <span className="flex flex-wrap gap-x-3 gap-y-1">
+                      {poRefs.map((p) => (
+                        <Link key={p.id} href={`/purchase-orders/${p.id}`} className="font-semibold text-brand-600 hover:underline">
+                          {p.number}
+                        </Link>
+                      ))}
+                    </span>
+                  ) : "—"
+                }
+              />
               <Info label="Loại thanh toán" value={prq.payment_type === "Advance" ? "Ứng trước / Đặt cọc" : "Thanh toán thường"} />
               <Info label="Đến hạn" value={prq.due_date ? date(prq.due_date) : "—"} />
               <Info label="Tiền tệ" value={prq.currency} />
