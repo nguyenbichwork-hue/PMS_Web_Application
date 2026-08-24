@@ -14,6 +14,7 @@ interface PRQRow {
   id: number;
   prq_number: string | null;
   company_name: string;
+  bu: string | null;
   supplier_name: string | null;
   payment_type: string;
   due_date: string | null;
@@ -58,7 +59,12 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   const [totalRow, rows, stats] = await Promise.all([
     queryOne<{ n: number }>(`SELECT count(*)::int n FROM payment_requisitions prq LEFT JOIN suppliers s ON s.id=prq.supplier_id ${clause}`, params),
     query<PRQRow>(
-      `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.payment_type, prq.due_date, prq.grand_total, prq.status
+      `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.payment_type, prq.due_date, prq.grand_total, prq.status,
+              (SELECT string_agg(DISTINCT pr.department, ', ')
+                 FROM payment_requisition_items it
+                 JOIN purchase_orders po ON po.id = it.po_id
+                 JOIN purchase_requests pr ON pr.id = po.pr_id
+                WHERE it.prq_id = prq.id AND pr.department IS NOT NULL AND pr.department <> '') AS bu
          FROM payment_requisitions prq
          JOIN companies c ON c.id = prq.company_id
          LEFT JOIN suppliers s ON s.id = prq.supplier_id
@@ -127,6 +133,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
               <Th>Số đề nghị</Th>
               <Th>Nhà cung cấp</Th>
               <Th>Công ty</Th>
+              <Th>BU</Th>
               <Th>Loại</Th>
               <Th>Đến hạn</Th>
               <Th className="text-right">Số tiền (gồm thuế)</Th>
@@ -143,6 +150,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
                 </Td>
                 <Td>{r.supplier_name ?? "—"}</Td>
                 <Td>{r.company_name}</Td>
+                <Td>{r.bu ?? "—"}</Td>
                 <Td>{r.payment_type === "Advance" ? "Ứng trước" : "Thường"}</Td>
                 <Td>{r.due_date ? date(r.due_date) : "—"}</Td>
                 <Td className="text-right font-medium">{money(r.grand_total)}</Td>
