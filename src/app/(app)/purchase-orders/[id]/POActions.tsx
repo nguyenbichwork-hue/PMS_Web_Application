@@ -41,13 +41,16 @@ export function POActions({
           <p className="px-0.5 text-xs text-slate-400">Duyệt xong hệ thống tự tạo Đề nghị thanh toán.</p>
         )}
 
-        <Button
-          variant="secondary"
-          className="w-full justify-center"
-          onClick={() => window.open(`/print/purchase-order/${poId}`, "_blank")}
+        {/* Điều hướng trực tiếp bằng thẻ <a target=_blank> — KHÔNG dùng window.open()
+            (popup do script mở dễ bị trình chặn popup chặn im lặng → máy khác bấm không thấy gì). */}
+        <a
+          href={`/print/purchase-order/${poId}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
         >
-          Xuất PDF / In
-        </Button>
+          🖨 Xuất PDF / In
+        </a>
 
         {canManage && ["Approved", "Draft"].includes(status) && (
           <Button
