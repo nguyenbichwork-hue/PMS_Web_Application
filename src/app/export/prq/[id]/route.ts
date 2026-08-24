@@ -18,6 +18,7 @@ interface Head {
 interface Line {
   inv_no: string | null; inv_date: string | null; description: string | null;
   tax_code: string | null; gl_account: string | null; cost_center: string | null; currency: string; amount: string;
+  quantity: string | null;
 }
 
 const fmtDate = (v: string | null) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "");
@@ -42,8 +43,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!canAccessCompany(user, h.company_id)) return new Response("FORBIDDEN", { status: 403 });
 
   const lines = await query<Line>(
-    `SELECT inv_no, inv_date, description, tax_code, gl_account, cost_center, currency, amount
-       FROM payment_requisition_items WHERE prq_id = $1 ORDER BY line_no, id`,
+    `SELECT it.inv_no, it.inv_date, it.description, it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount,
+            poi.quantity AS quantity
+       FROM payment_requisition_items it
+       LEFT JOIN purchase_order_items poi ON poi.id = it.po_item_id
+      WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
     [prqId]
   );
 
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ws = wb.addWorksheet("Payment Requisition");
   ws.columns = [
     { width: 6 }, { width: 18 }, { width: 13 }, { width: 34 },
-    { width: 16 }, { width: 12 }, { width: 16 }, { width: 8 }, { width: 16 },
+    { width: 16 }, { width: 12 }, { width: 16 }, { width: 9 }, { width: 8 }, { width: 16 },
   ];
   const B = (cell: string) => { ws.getCell(cell).font = { bold: true }; };
   const label = (row: number, text: string, value: string) => {
@@ -61,7 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ws.getCell(`C${row}`).value = value;
   };
 
-  ws.mergeCells("A1:I1");
+  ws.mergeCells("A1:J1");
   ws.getCell("A1").value = "PAYMENT REQUISITION — ĐỀ NGHỊ THANH TOÁN";
   ws.getCell("A1").font = { bold: true, size: 15 };
   ws.getCell("A1").alignment = { horizontal: "center" };
@@ -88,7 +92,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Bảng dòng
   const HEAD = 15;
-  const heads = ["S/N", "Inv No / Số HĐ", "Inv Date / Ngày HĐ", "Description / Diễn giải", "Tax code", "GL Account", "Cost Center", "Cur", "Amount / Số tiền"];
+  const heads = ["S/N", "Inv No / Số HĐ", "Inv Date / Ngày HĐ", "Description / Diễn giải", "Tax code", "GL Account", "Cost Center", "Qty / SL", "Cur", "Amount / Số tiền"];
   heads.forEach((t, i) => {
     const cell = ws.getRow(HEAD).getCell(i + 1);
     cell.value = t;
@@ -106,27 +110,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     row.getCell(5).value = l.tax_code ?? "";
     row.getCell(6).value = l.gl_account ?? "";
     row.getCell(7).value = l.cost_center ?? "";
-    row.getCell(8).value = l.currency || h.currency;
-    row.getCell(9).value = Number(l.amount);
-    row.getCell(9).numFmt = "#,##0";
+    // Số lượng lấy từ dòng PO liên kết (po_item_id); dòng thanh toán trọn gói không gắn PO item → mặc định 1.
+    row.getCell(8).value = l.quantity != null ? Number(l.quantity) : 1;
+    row.getCell(8).alignment = { horizontal: "right" };
+    row.getCell(9).value = l.currency || h.currency;
+    row.getCell(10).value = Number(l.amount);
+    row.getCell(10).numFmt = "#,##0";
   });
 
   // Tổng cộng
   const totalRow = ws.getRow(r++);
-  ws.mergeCells(`A${totalRow.number}:H${totalRow.number}`);
+  ws.mergeCells(`A${totalRow.number}:I${totalRow.number}`);
   totalRow.getCell(1).value = "Total / Tổng cộng";
   totalRow.getCell(1).font = { bold: true };
   totalRow.getCell(1).alignment = { horizontal: "right" };
-  totalRow.getCell(9).value = Number(h.grand_total);
-  totalRow.getCell(9).numFmt = "#,##0";
-  totalRow.getCell(9).font = { bold: true };
+  totalRow.getCell(10).value = Number(h.grand_total);
+  totalRow.getCell(10).numFmt = "#,##0";
+  totalRow.getCell(10).font = { bold: true };
 
   r++;
-  ws.mergeCells(`A${r}:I${r}`);
+  ws.mergeCells(`A${r}:J${r}`);
   ws.getCell(`A${r}`).value = `Amount in words / Bằng chữ: ${amountInWordsVi(Number(h.grand_total))}`;
   ws.getCell(`A${r}`).font = { italic: true };
   r += 2;
-  ws.mergeCells(`A${r}:I${r}`);
+  ws.mergeCells(`A${r}:J${r}`);
   ws.getCell(`A${r}`).value = `Reason / Lý do: ${h.reason ?? ""}`;
 
   // Chữ ký
