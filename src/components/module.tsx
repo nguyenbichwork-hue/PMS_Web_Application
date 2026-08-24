@@ -20,24 +20,28 @@ export function ModuleBanner({
   title,
   subtitle,
   action,
+  dense = false,
 }: {
   accent?: keyof typeof ACCENTS | string;
   icon?: string; // giữ để tương thích cũ (không dùng emoji nữa)
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
+  // dense: bản GỌN cho trang master-detail (bỏ margin dưới, tile/tiêu đề nhỏ) để chừa
+  // tối đa chiều cao cho 2 cột danh sách/chi tiết.
+  dense?: boolean;
 }) {
   const a = ACCENTS[accent] ?? ACCENTS.violet;
   void icon;
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-4">
-        <div className={clsx("flex h-12 w-12 items-center justify-center rounded-2xl", a.tile)}>
-          <Icon name={a.icon} size={24} />
+    <div className={clsx("flex flex-wrap items-center justify-between gap-3", dense ? "mb-0" : "mb-6 gap-4")}>
+      <div className={clsx("flex items-center", dense ? "gap-3" : "gap-4")}>
+        <div className={clsx("flex items-center justify-center", a.tile, dense ? "h-9 w-9 rounded-xl" : "h-12 w-12 rounded-2xl")}>
+          <Icon name={a.icon} size={dense ? 18 : 24} />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]">{title}</h1>
-          {subtitle && <p className="mt-1 text-[15px] text-slate-500">{subtitle}</p>}
+          <h1 className={clsx("font-bold tracking-tight text-slate-900", dense ? "text-lg" : "text-2xl sm:text-[28px]")}>{title}</h1>
+          {subtitle && <p className={clsx("text-slate-500", dense ? "text-[13px]" : "mt-1 text-[15px]")}>{subtitle}</p>}
         </div>
       </div>
       {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}

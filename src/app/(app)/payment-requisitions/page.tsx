@@ -83,7 +83,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
-        <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt"
+        <ModuleBanner dense accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt"
           action={
             <div className="flex gap-2">
               <ExportButton href={`/export/prq?${new URLSearchParams(sp).toString()}`} />
@@ -93,7 +93,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
             </div>
           }
         />
-        <div className="mt-3">
+        <div className="mt-2">
           <Filters
             searchPlaceholder="Tìm từ khóa (số đề nghị, NCC, diễn giải, số HĐ…)"
             dateRange={{}}

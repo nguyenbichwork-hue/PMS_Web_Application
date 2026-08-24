@@ -72,7 +72,7 @@ export default async function PRListPage({ searchParams }: { searchParams: Promi
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
-        <ModuleBanner accent="violet" icon="📝" title="Yêu cầu mua hàng" subtitle="Danh sách phiếu yêu cầu mua và trạng thái phê duyệt"
+        <ModuleBanner dense accent="violet" icon="📝" title="Yêu cầu mua hàng" subtitle="Danh sách phiếu yêu cầu mua và trạng thái phê duyệt"
           action={
             <div className="flex gap-2">
               <ExportButton href={`/export/pr?${qs}`} />
@@ -81,7 +81,7 @@ export default async function PRListPage({ searchParams }: { searchParams: Promi
             </div>
           }
         />
-        <div className="mt-3">
+        <div className="mt-2">
           <Filters
             searchPlaceholder="Tìm từ khóa trong phiếu (số PR, mục đích, tên hàng, NCC…)"
             dateRange={{}}

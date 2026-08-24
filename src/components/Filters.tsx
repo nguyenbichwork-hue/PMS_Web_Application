@@ -51,22 +51,26 @@ export function Filters({
     [params, push]
   );
 
+  // inputCls bắt đầu bằng "w-full" → với select/ô ngày (muốn AUTO width, nằm ngang) phải
+  // BỎ w-full, nếu không mọi control bị full-width và xếp dọc, chiếm quá nhiều chiều cao.
+  const ctl = `${inputCls.replace("w-full ", "")} !py-2 text-[13px]`;
+
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2">
       <input
         defaultValue={params.get("q") ?? ""}
         onChange={(e) => update("q", e.target.value, { debounce: true })}
         placeholder={searchPlaceholder}
-        className={`${inputCls} w-full sm:w-auto sm:max-w-xs`}
+        className={`${ctl} w-full sm:w-64`}
       />
       {dateRange && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <input
             type="date"
             aria-label="Từ ngày"
             defaultValue={params.get(fromKey) ?? ""}
             onChange={(e) => update(fromKey, e.target.value)}
-            className={`${inputCls} w-auto`}
+            className={`${ctl} w-auto`}
             title="Từ ngày"
           />
           <span className="text-slate-400">→</span>
@@ -75,7 +79,7 @@ export function Filters({
             aria-label="Đến ngày"
             defaultValue={params.get(toKey) ?? ""}
             onChange={(e) => update(toKey, e.target.value)}
-            className={`${inputCls} w-auto`}
+            className={`${ctl} w-auto`}
             title="Đến ngày"
           />
         </div>
@@ -85,7 +89,7 @@ export function Filters({
           key={f.key}
           defaultValue={params.get(f.key) ?? ""}
           onChange={(e) => update(f.key, e.target.value)}
-          className={`${inputCls} w-auto`}
+          className={`${ctl} w-auto max-w-[14rem]`}
         >
           <option value="">{f.label}: Tất cả</option>
           {f.options.map((o) => (
