@@ -81,7 +81,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   const mkHref = (id: number) => { const p = new URLSearchParams(sp); p.set("sel", String(id)); return `?${p.toString()}`; };
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
         <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt"
           action={

@@ -65,7 +65,7 @@ export default async function POListPage({ searchParams }: { searchParams: Promi
   const mkHref = (id: number) => { const p = new URLSearchParams(sp); p.set("sel", String(id)); return `?${p.toString()}`; };
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
         <ModuleBanner accent="indigo" icon="🧾" title="Đơn đặt hàng" subtitle="Đơn hàng được sinh tự động từ yêu cầu đã duyệt"
           action={
