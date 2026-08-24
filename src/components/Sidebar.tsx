@@ -22,7 +22,7 @@ const ROLE_VI: Record<string, string> = {
 function LinkPending() {
   const { pending } = useLinkStatus();
   if (!pending) return null;
-  return <span className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white" />;
+  return <span className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-500" />;
 }
 
 const GROUPS: { title: string; items: { href: string; label: string; icon: string }[] }[] = [
@@ -71,31 +71,32 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
   },
 ];
 
-/** Nội dung sidebar — dùng chung desktop & drawer mobile. Luôn nền tối "sang".
+/** Nội dung sidebar — dùng chung desktop & drawer mobile. Giao diện SÁNG kiểu Lark
+ *  (dùng lớp slate/white → chế độ tối tự remap qua .dark).
  *  collapsed = thu về thanh icon (ẩn nhãn, tiêu đề nhóm, chữ thương hiệu/hồ sơ). */
 export function SidebarContent({ onNavigate, user, collapsed }: { onNavigate?: () => void; user?: SidebarUser; collapsed?: boolean }) {
   const pathname = usePathname();
   return (
     <>
       {/* Thương hiệu — canh theo THÂN chữ logo (dấu È đẩy khối chữ lệch xuống ~1.5px) */}
-      <div className={clsx("flex h-16 shrink-0 items-center gap-2.5 border-b border-white/[0.06]", collapsed ? "justify-center px-0" : "px-5")}>
+      <div className={clsx("flex h-16 shrink-0 items-center gap-2.5 border-b border-slate-200", collapsed ? "justify-center px-0" : "px-5")}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="K‑HOMÈS" className="block h-6 w-auto shrink-0 select-none" />
         {!collapsed && (
           <>
-            <span className="h-3.5 w-px shrink-0 translate-y-px bg-white/15" />
-            <span className="translate-y-px text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-white/40">Mua hàng</span>
+            <span className="h-3.5 w-px shrink-0 translate-y-px bg-slate-200" />
+            <span className="translate-y-px text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-slate-400">Mua hàng</span>
           </>
         )}
       </div>
 
       {/* Điều hướng */}
-      <nav className={clsx("flex-1 space-y-7 overflow-y-auto py-5", collapsed ? "px-2" : "px-3")}>
+      <nav className={clsx("flex-1 space-y-6 overflow-y-auto py-5", collapsed ? "px-2" : "px-3")}>
         {GROUPS.map((g) => (
           <div key={g.title}>
             {collapsed
-              ? <div className="mb-2 h-px bg-white/[0.06]" />
-              : <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">{g.title}</div>}
+              ? <div className="mb-2 h-px bg-slate-200" />
+              : <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{g.title}</div>}
             <div className="space-y-1">
               {g.items.map((n) => {
                 const active = pathname === n.href || pathname.startsWith(n.href + "/");
@@ -109,15 +110,15 @@ export function SidebarContent({ onNavigate, user, collapsed }: { onNavigate?: (
                       "group relative flex items-center rounded-xl text-[15px] transition-colors",
                       collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
                       active
-                        ? "bg-white/[0.07] font-semibold text-white"
-                        : "font-medium text-white/55 hover:bg-white/[0.04] hover:text-white"
+                        ? "bg-brand-500/10 font-semibold text-brand-700 dark:text-brand-300"
+                        : "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     )}
                   >
                     {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-brand-500" />}
                     <Icon
                       name={n.icon}
                       size={19}
-                      className={clsx("shrink-0 transition-colors", active ? "text-brand-400" : "text-white/45 group-hover:text-white/80")}
+                      className={clsx("shrink-0 transition-colors", active ? "text-brand-500" : "text-slate-400 group-hover:text-slate-600")}
                     />
                     {!collapsed && (<>{n.label}<LinkPending /></>)}
                   </Link>
@@ -130,15 +131,15 @@ export function SidebarContent({ onNavigate, user, collapsed }: { onNavigate?: (
 
       {/* Hồ sơ người dùng */}
       {user && (
-        <div className="border-t border-white/[0.06] p-3">
+        <div className="border-t border-slate-200 p-3">
           <div className={clsx("flex items-center gap-3 rounded-xl py-1.5", collapsed ? "justify-center px-0" : "px-2")} title={collapsed ? user.name : undefined}>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white">
               {user.name.charAt(0)}
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{user.name}</div>
-                <div className="truncate text-[11px] text-white/45">
+                <div className="truncate text-sm font-semibold text-slate-800">{user.name}</div>
+                <div className="truncate text-[11px] text-slate-400">
                   {ROLE_VI[user.role] ?? user.role}
                   {user.department ? ` · ${user.department}` : ""}
                 </div>
@@ -201,7 +202,7 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
   return (
     <aside
       className={clsx(
-        "relative hidden shrink-0 flex-col border-r border-white/[0.06] bg-[#121317] md:flex",
+        "relative hidden shrink-0 flex-col border-r border-slate-200 bg-white md:flex",
         !dragging && "transition-[width] duration-150"
       )}
       style={{ width: w }}
@@ -214,7 +215,7 @@ export function Sidebar({ user }: { user?: SidebarUser }) {
         onClick={() => setCollapsed((c) => !c)}
         aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
         title={collapsed ? "Mở rộng" : "Thu gọn"}
-        className="absolute -right-3 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#1c1e24] text-white/70 shadow-md transition hover:bg-[#23252c] hover:text-white"
+        className="absolute -right-3 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md transition hover:bg-slate-50 hover:text-slate-700"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden
              className={clsx("transition-transform", collapsed && "rotate-180")}>

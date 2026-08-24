@@ -35,7 +35,7 @@ export function MobileMenu({ user }: { user?: SidebarUser }) {
         }`}
       />
       <aside
-        className={`absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col bg-[#121317] shadow-2xl transition-transform duration-300 ${
+        className={`absolute inset-y-0 left-0 flex w-72 max-w-[82%] flex-col bg-white shadow-2xl transition-transform duration-300 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -43,7 +43,7 @@ export function MobileMenu({ user }: { user?: SidebarUser }) {
           type="button"
           onClick={() => setOpen(false)}
           aria-label="Đóng menu"
-          className="absolute right-3 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white"
+          className="absolute right-3 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
