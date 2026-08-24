@@ -2,10 +2,12 @@ import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { pushCompanyScope } from "@/lib/access";
-import { Card, ExportButton, StatusBadge, Th, Td, EmptyState } from "@/components/ui";
-import { ModuleBanner, StatStrip } from "@/components/module";
+import { Card, ExportButton, StatusBadge, EmptyState } from "@/components/ui";
+import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { Pagination } from "@/components/Pagination";
+import { MasterDetail, DetailEmpty } from "@/components/MasterDetail";
+import { PRQPane } from "./PRQPane";
 import { money, date } from "@/lib/format";
 
 const PER_PAGE = 20;
@@ -29,7 +31,6 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
   const params: unknown[] = [];
   if (sp.status) { params.push(sp.status); where.push(`prq.status = $${params.length}`); }
   if (sp.q) {
-    // Tìm từ khóa rộng: số đề nghị, NCC (tên/mã/MST), hoặc trong dòng (diễn giải, số HĐ).
     params.push(`%${sp.q}%`);
     const p = params.length;
     const qc = [
@@ -42,7 +43,6 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
     if (digits.length >= 2) { params.push(`%${digits}%`); qc.push(`round(prq.grand_total)::bigint::text ILIKE $${params.length}`); }
     where.push(`(${qc.join(" OR ")})`);
   }
-  // Lọc theo KHOẢNG NGÀY lập đề nghị.
   if (sp.df) { params.push(sp.df); where.push(`prq.created_at::date >= $${params.length}`); }
   if (sp.dt) { params.push(sp.dt); where.push(`prq.created_at::date <= $${params.length}`); }
   if (user) pushCompanyScope(user, "prq.company_id", where, params);
@@ -50,13 +50,7 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
 
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const sWhere: string[] = [];
-  const sParams: unknown[] = [];
-  if (user) pushCompanyScope(user, "company_id", sWhere, sParams);
-  const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-
-  // Đếm tổng, lấy trang, và số liệu StatStrip đều ĐỘC LẬP → chạy SONG SONG.
-  const [totalRow, rows, stats] = await Promise.all([
+  const [totalRow, rows] = await Promise.all([
     queryOne<{ n: number }>(`SELECT count(*)::int n FROM payment_requisitions prq LEFT JOIN suppliers s ON s.id=prq.supplier_id ${clause}`, params),
     query<PRQRow>(
       `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.payment_type, prq.due_date, prq.grand_total, prq.status,
@@ -73,96 +67,84 @@ export default async function PRQListPage({ searchParams }: { searchParams: Prom
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, PER_PAGE, (page - 1) * PER_PAGE]
     ),
-    queryOne<{ total: number; draft: number; submitted: number; approved: number; value: string }>(
-      `SELECT count(*)::int total,
-              count(*) FILTER (WHERE status='Draft')::int draft,
-              count(*) FILTER (WHERE status='Submitted')::int submitted,
-              count(*) FILTER (WHERE status IN ('Approved','Paid'))::int approved,
-              COALESCE(sum(grand_total),0) value
-         FROM payment_requisitions ${sClause}`,
-      sParams
-    ),
   ]);
   const total = totalRow?.n ?? 0;
 
-  return (
-    <div>
-      <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt" />
+  // Chọn chứng từ: ưu tiên tham số ?sel (người dùng chủ động chọn); nếu chưa có thì
+  // tự chọn chứng từ đầu tiên để pane phải không trống (chỉ ở desktop — mobile vẫn hiện danh sách).
+  const explicitSel = sp.sel ? Number(sp.sel) : null;
+  const selId = explicitSel ?? rows[0]?.id ?? null;
 
-      <div className="mb-4 flex justify-end gap-2">
-        <ExportButton href={`/export/prq?${new URLSearchParams(sp).toString()}`} />
-        <Link
-          href="/payment-requisitions/new"
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
-        >
-          ＋ Tạo đề nghị thanh toán
-        </Link>
+  const qs = new URLSearchParams(sp);
+  qs.delete("sel");
+  const backHref = `?${qs.toString()}`;
+  const mkHref = (id: number) => { const p = new URLSearchParams(sp); p.set("sel", String(id)); return `?${p.toString()}`; };
+
+  return (
+    <div className="flex h-full flex-col gap-4">
+      <div className="shrink-0">
+        <ModuleBanner accent="teal" icon="💸" title="Đề nghị thanh toán" subtitle="Payment Requisition — tạo tay từ các dòng PO đã duyệt"
+          action={
+            <div className="flex gap-2">
+              <ExportButton href={`/export/prq?${new URLSearchParams(sp).toString()}`} />
+              <Link href="/payment-requisitions/new" className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700">
+                ＋ Tạo đề nghị
+              </Link>
+            </div>
+          }
+        />
+        <div className="mt-3">
+          <Filters
+            searchPlaceholder="Tìm từ khóa (số đề nghị, NCC, diễn giải, số HĐ…)"
+            dateRange={{}}
+            filters={[{
+              key: "status", label: "Trạng thái",
+              options: [
+                { value: "Draft", label: "Nháp" }, { value: "Submitted", label: "Đã gửi" },
+                { value: "Approved", label: "Đã duyệt" }, { value: "Paid", label: "Đã thanh toán" },
+                { value: "Rejected", label: "Từ chối" }, { value: "Cancelled", label: "Đã hủy" },
+              ],
+            }]}
+          />
+        </div>
       </div>
 
-      <StatStrip
-        items={[
-          { label: "Tổng đề nghị", value: stats?.total ?? 0, tone: "teal" },
-          { label: "Nháp", value: stats?.draft ?? 0, tone: "slate" },
-          { label: "Đã gửi", value: stats?.submitted ?? 0, tone: "amber" },
-          { label: "Đã duyệt", value: stats?.approved ?? 0, tone: "emerald" },
-        ]}
-      />
-
-      <Filters
-        searchPlaceholder="Tìm từ khóa (số đề nghị, NCC, diễn giải, số HĐ…)"
-        dateRange={{}}
-        filters={[
-          {
-            key: "status",
-            label: "Trạng thái",
-            options: [
-              { value: "Draft", label: "Nháp" },
-              { value: "Submitted", label: "Đã gửi" },
-              { value: "Approved", label: "Đã duyệt" },
-              { value: "Paid", label: "Đã thanh toán" },
-              { value: "Rejected", label: "Từ chối" },
-              { value: "Cancelled", label: "Đã hủy" },
-            ],
-          },
-        ]}
-      />
-
-      <Card className="overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr>
-              <Th>Số đề nghị</Th>
-              <Th>Nhà cung cấp</Th>
-              <Th>Công ty</Th>
-              <Th>BU</Th>
-              <Th>Loại</Th>
-              <Th>Đến hạn</Th>
-              <Th className="text-right">Số tiền (gồm thuế)</Th>
-              <Th>Trạng thái</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-50">
-                <Td>
-                  <Link href={`/payment-requisitions/${r.id}`} className="font-medium text-brand-600 hover:underline">
-                    {r.prq_number ?? `PRQ-${r.id}`}
-                  </Link>
-                </Td>
-                <Td>{r.supplier_name ?? "—"}</Td>
-                <Td>{r.company_name}</Td>
-                <Td>{r.bu ?? "—"}</Td>
-                <Td>{r.payment_type === "Advance" ? "Ứng trước" : "Thường"}</Td>
-                <Td>{r.due_date ? date(r.due_date) : "—"}</Td>
-                <Td className="text-right font-medium">{money(r.grand_total)}</Td>
-                <Td><StatusBadge status={r.status} /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length === 0 && <EmptyState message="Chưa có đề nghị thanh toán nào. Bấm “Tạo đề nghị thanh toán” để lập từ các dòng PO đã duyệt." />}
-      </Card>
-      <Pagination page={page} total={total} per={PER_PAGE} />
+      <div className="min-h-0 flex-1">
+        {rows.length === 0 ? (
+          <Card className="p-0"><EmptyState message="Chưa có đề nghị thanh toán nào." /></Card>
+        ) : (
+          <MasterDetail
+            storageKey="prq"
+            hasSelection={!!explicitSel}
+            backHref={backHref}
+            listHeader={<div className="flex items-center justify-between text-xs text-slate-500"><span>{total} đề nghị</span></div>}
+            list={
+              <>
+                {rows.map((r) => {
+                  const active = r.id === selId;
+                  return (
+                    <Link key={r.id} href={mkHref(r.id)} scroll={false} replace
+                      className={`block rounded-xl border p-3 transition ${active ? "border-teal-300 bg-teal-50/60 ring-1 ring-teal-200" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-800">{r.prq_number ?? `PRQ-${r.id}`}</span>
+                        <StatusBadge status={r.status} />
+                      </div>
+                      <div className="mt-1 truncate text-[13px] text-slate-600">{r.supplier_name ?? "—"}</div>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-slate-400">
+                        <span className="truncate">{r.company_name}{r.bu ? ` · ${r.bu}` : ""}</span>
+                        <span className="shrink-0 font-medium text-slate-600">{money(r.grand_total)}</span>
+                      </div>
+                      {r.due_date && <div className="mt-1 text-[11px] text-slate-400">Đến hạn: {date(r.due_date)}</div>}
+                    </Link>
+                  );
+                })}
+                <div className="pt-1"><Pagination page={page} total={total} per={PER_PAGE} /></div>
+              </>
+            }
+            detail={selId ? <PRQPane prqId={selId} user={user} /> : <DetailEmpty />}
+          />
+        )}
+      </div>
     </div>
   );
 }
