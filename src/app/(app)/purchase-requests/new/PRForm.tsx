@@ -280,6 +280,7 @@ export function PRForm({
                     value={l.item_code}
                     onChange={(code) => onPickProduct(i, code)}
                     placeholder="Chọn mã hàng hóa/dịch vụ…"
+                    codeFirst
                   />
                   <p className="mt-1 text-[11px] text-slate-400">
                     Không có trong danh mục? Bỏ qua ô này và gõ trực tiếp vào “Tên hàng”.

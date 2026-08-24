@@ -19,6 +19,7 @@ export function SearchSelect({
   placeholder = "Tìm kiếm…",
   emptyText = "Không tìm thấy",
   allowClear = true,
+  codeFirst = false,
 }: {
   options: SSOption[];
   value: string;
@@ -26,6 +27,8 @@ export function SearchSelect({
   placeholder?: string;
   emptyText?: string;
   allowClear?: boolean;
+  // codeFirst: hiện MÃ (hint) bên TRÁI, TÊN (label) bên PHẢI — dùng cho ô chọn mã hàng.
+  codeFirst?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -63,7 +66,7 @@ export function SearchSelect({
       <input
         className={inputCls}
         placeholder={placeholder}
-        value={open ? q : selected?.label ?? ""}
+        value={open ? q : (codeFirst ? (selected?.hint ?? selected?.value ?? "") : (selected?.label ?? ""))}
         onFocus={() => { setOpen(true); setQ(""); setHi(0); }}
         onChange={(e) => { setQ(e.target.value); setOpen(true); setHi(0); }}
         onKeyDown={(e) => {
@@ -100,8 +103,17 @@ export function SearchSelect({
                 idx === hi ? "bg-brand-50" : "hover:bg-slate-50"
               } ${o.value === value ? "font-semibold text-brand-700" : "text-slate-700"}`}
             >
-              <span className="whitespace-nowrap">{o.label}</span>
-              {o.hint && <span className="shrink-0 font-mono text-xs text-slate-400">{o.hint}</span>}
+              {codeFirst ? (
+                <>
+                  <span className="shrink-0 whitespace-nowrap font-mono text-xs text-slate-500">{o.hint}</span>
+                  <span className="whitespace-nowrap">{o.label}</span>
+                </>
+              ) : (
+                <>
+                  <span className="whitespace-nowrap">{o.label}</span>
+                  {o.hint && <span className="shrink-0 font-mono text-xs text-slate-400">{o.hint}</span>}
+                </>
+              )}
             </button>
           ))}
           {options.length > filtered.length && (
