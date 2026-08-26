@@ -34,8 +34,12 @@ export function SearchSelect({
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value]);
+
+  // Chữ đang hiển thị khi CHƯA mở (mã hoặc tên tùy codeFirst) — dùng lại khi focus.
+  const displayText = codeFirst ? (selected?.hint ?? selected?.value ?? "") : (selected?.label ?? "");
 
   const filtered = useMemo(() => {
     const nq = norm(q.trim());
@@ -64,10 +68,18 @@ export function SearchSelect({
   return (
     <div ref={boxRef} className="relative">
       <input
+        ref={inputRef}
         className={inputCls}
         placeholder={placeholder}
-        value={open ? q : (codeFirst ? (selected?.hint ?? selected?.value ?? "") : (selected?.label ?? ""))}
-        onFocus={() => { setOpen(true); setQ(""); setHi(0); }}
+        value={open ? q : displayText}
+        onFocus={() => {
+          // Giữ nguyên giá trị đang chọn (để copy được) & bôi đen sẵn: gõ phím
+          // đầu tiên sẽ thay thế toàn bộ → vẫn tìm kiếm được như cũ.
+          setQ(displayText);
+          setOpen(true);
+          setHi(0);
+          requestAnimationFrame(() => inputRef.current?.select());
+        }}
         onChange={(e) => { setQ(e.target.value); setOpen(true); setHi(0); }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, filtered.length - 1)); }
