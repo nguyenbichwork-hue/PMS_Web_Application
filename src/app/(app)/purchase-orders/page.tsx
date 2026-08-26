@@ -71,7 +71,7 @@ export default async function POListPage({ searchParams }: { searchParams: Promi
           action={
             <div className="flex gap-2">
               <ExportButton href={`/export/po?${qs}`} />
-              {user && can(user.role, "po.manage") && <DocImport kind="po" variant="banner" />}
+              {user && can(user.role, "po.manage") && <DocImport kind="po" variant="light" />}
             </div>
           }
         />

@@ -76,7 +76,7 @@ export default async function PRListPage({ searchParams }: { searchParams: Promi
           action={
             <div className="flex gap-2">
               <ExportButton href={`/export/pr?${qs}`} />
-              {user && can(user.role, "pr.create") && <DocImport kind="pr" variant="banner" />}
+              {user && can(user.role, "pr.create") && <DocImport kind="pr" variant="light" />}
               {user && can(user.role, "pr.create") && <LinkButton href="/purchase-requests/new">+ Tạo yêu cầu</LinkButton>}
             </div>
           }
