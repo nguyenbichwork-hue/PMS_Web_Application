@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { getMyNotifications, markNotificationRead, markAllNotificationsRead, type NotificationFeed } from "@/actions/notification";
 import { Icon } from "@/components/icons";
 
-const DOC_PATH: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices" };
-const DOC_LABEL: Record<string, string> = { PR: "Yêu cầu mua", PO: "Đơn đặt hàng", Invoice: "Hóa đơn" };
+const DOC_PATH: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices", PRQ: "/payment-requisitions" };
+const DOC_LABEL: Record<string, string> = { PR: "Yêu cầu mua", PO: "Đơn đặt hàng", Invoice: "Hóa đơn", PRQ: "Đề nghị thanh toán" };
 
 function ago(iso: string): string {
   const t = new Date(iso).getTime();

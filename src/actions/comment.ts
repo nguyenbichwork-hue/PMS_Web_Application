@@ -8,8 +8,8 @@ import { createMentionNotifications } from "@/actions/notification";
 // Bình luận ĐỘC LẬP: không gắn cấp duyệt, KHÔNG đổi trạng thái chứng từ.
 // Ai truy cập được chứng từ (cùng công ty, hoặc Admin) thì bình luận được.
 
-const PATHS: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices" };
-const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices" };
+const PATHS: Record<string, string> = { PR: "/purchase-requests", PO: "/purchase-orders", Invoice: "/invoices", PRQ: "/payment-requisitions" };
+const DOC_TABLE: Record<string, string> = { PR: "purchase_requests", PO: "purchase_orders", Invoice: "invoices", PRQ: "payment_requisitions" };
 
 /** Kiểm scope công ty của chứng từ; trả về companyId (để lọc @nhắc cùng công ty). */
 async function assertDocAccess(

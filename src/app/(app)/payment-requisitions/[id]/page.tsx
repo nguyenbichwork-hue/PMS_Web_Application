@@ -12,6 +12,7 @@ import { PrqDirtyProvider } from "./DirtyContext";
 import { PRQActions } from "./PRQActions";
 import { PaymentHistory } from "./PaymentHistory";
 import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { CommentPanel, type CommentItem } from "@/components/CommentPanel";
 import { ArchiveNowButton } from "@/components/ArchiveNowButton";
 
 interface PRQHead {
@@ -61,8 +62,8 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
   if (!prq) notFound();
   if (user && !canAccessCompany(user, prq.company_id)) notFound();
 
-  // 4 truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
-  const [lines, attachments, payments] = await Promise.all([
+  // Các truy vấn phụ ĐỘC LẬP → chạy SONG SONG.
+  const [lines, attachments, payments, comments, mentionUsers] = await Promise.all([
     query<PRQLine>(
       `SELECT it.id, it.po_id, po.po_number, it.inv_no, it.inv_date, it.description,
               it.tax_code, it.gl_account, it.cost_center, it.currency, it.amount, it.vat_rate, it.line_no
@@ -83,6 +84,16 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
          FROM prq_payments pp LEFT JOIN users u ON u.id = pp.paid_by
         WHERE pp.prq_id = $1 ORDER BY pp.id ASC`,
       [prqId]
+    ),
+    query<CommentItem>(
+      `SELECT id, author_id, author_name, body, created_at
+         FROM comments WHERE document_type='PRQ' AND document_id=$1 ORDER BY id`,
+      [prqId]
+    ),
+    // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+    query<{ id: number; name: string }>(
+      `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+      [prq.company_id]
     ),
   ]);
 
@@ -296,6 +307,15 @@ export default async function PRQDetail({ params }: { params: Promise<{ id: stri
           />
 
           <AttachmentPanel documentType="PRQ" documentId={prqId} attachments={attachments} canManage={canManage} />
+
+          <CommentPanel
+            documentType="PRQ"
+            documentId={prqId}
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            isAdmin={user?.role === "Admin"}
+            mentionUsers={mentionUsers}
+          />
 
           <Card className="p-5 text-xs text-slate-500">
             <p>PRQ được lập tay từ các dòng PO đã duyệt (cùng một nhà cung cấp). Có thể gộp nhiều PO, sửa số tiền để thanh toán từng phần, rồi in PDF/xuất Excel để ký & nộp cùng hồ sơ (hợp đồng, hóa đơn, PO, biên bản…).</p>

@@ -34,7 +34,7 @@ export function CommentPanel({
   isAdmin = false,
   mentionUsers = [],
 }: {
-  documentType: "PR" | "PO" | "Invoice";
+  documentType: "PR" | "PO" | "Invoice" | "PRQ";
   documentId: number;
   comments: CommentItem[];
   currentUserId?: number | null;

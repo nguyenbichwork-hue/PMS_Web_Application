@@ -10,6 +10,8 @@ import { money, date } from "@/lib/format";
 import { amountInWordsVi } from "@/lib/num-to-words-vi";
 import { PRQActions } from "./[id]/PRQActions";
 import { PrqDirtyProvider } from "./[id]/DirtyContext";
+import { AttachmentPanel, type AttachmentItem } from "@/components/AttachmentPanel";
+import { CommentPanel, type CommentItem } from "@/components/CommentPanel";
 import type { User } from "@/lib/types";
 
 const ROLE_VI: Record<string, string> = { Employee: "Người tạo lệnh", Purchasing: "Mua hàng", Manager: "Quản lý", Finance: "Kế toán", Admin: "Quản trị" };
@@ -41,7 +43,7 @@ export async function PRQPane({ prqId, user }: { prqId: number; user: User | nul
   if (!h) return <DetailEmpty message="Không tìm thấy đề nghị thanh toán." />;
   if (user && !canAccessCompany(user, h.company_id)) return <DetailEmpty message="Bạn không có quyền xem chứng từ này." />;
 
-  const [lines, payments, chain] = await Promise.all([
+  const [lines, payments, attachments, comments, mentionUsers, chain] = await Promise.all([
     query<{ id: number; description: string | null; amount: string; po_number: string | null; po_id: number | null }>(
       `SELECT it.id, it.description, it.amount, po.po_number, it.po_id
          FROM payment_requisition_items it LEFT JOIN purchase_orders po ON po.id = it.po_id
@@ -53,6 +55,22 @@ export async function PRQPane({ prqId, user }: { prqId: number; user: User | nul
          FROM prq_payments pp LEFT JOIN users u ON u.id = pp.paid_by
         WHERE pp.prq_id = $1 ORDER BY pp.id`,
       [prqId]
+    ),
+    query<AttachmentItem>(
+      `SELECT a.id, a.kind, a.file_name, a.uploaded_at, u.name AS uploader
+         FROM attachments a LEFT JOIN users u ON u.id = a.uploaded_by
+        WHERE a.document_type='PRQ' AND a.document_id=$1 ORDER BY a.id DESC`,
+      [prqId]
+    ),
+    query<CommentItem>(
+      `SELECT id, author_id, author_name, body, created_at
+         FROM comments WHERE document_type='PRQ' AND document_id=$1 ORDER BY id`,
+      [prqId]
+    ),
+    // Ứng viên @nhắc tên: thành viên cùng công ty (+ Quản trị), đang hoạt động.
+    query<{ id: number; name: string }>(
+      `SELECT id, name FROM users WHERE status='Active' AND (role='Admin' OR company_id = $1) ORDER BY name LIMIT 100`,
+      [h.company_id]
     ),
     resolveApprovalChain(0, "PRQ"),
   ]);
@@ -175,9 +193,16 @@ export async function PRQPane({ prqId, user }: { prqId: number; user: User | nul
               remaining={remaining}
             />
           </PrqDirtyProvider>
-          <p className="rounded-xl border border-dashed border-slate-200 p-3 text-center text-xs text-slate-400">
-            Sửa nháp, đính kèm chứng từ chi, bình luận… bấm <b className="text-slate-500">Mở đầy đủ</b>.
-          </p>
+          <AttachmentPanel documentType="PRQ" documentId={h.id} attachments={attachments} canManage={canManage} />
+
+          <CommentPanel
+            documentType="PRQ"
+            documentId={h.id}
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            isAdmin={user?.role === "Admin"}
+            mentionUsers={mentionUsers}
+          />
         </div>
       </div>
     </div>
