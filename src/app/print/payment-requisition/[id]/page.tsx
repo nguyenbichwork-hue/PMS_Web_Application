@@ -34,15 +34,18 @@ interface PRQHead {
   created_at: string | null;
 }
 
-interface PRQLine {
+// Dòng SẢN PHẨM lấy trực tiếp từ (các) PO gắn với PRQ — để chứng từ liệt kê
+// đầy đủ hàng hóa (đối chiếu theo PO), KHÔNG phụ thuộc chi lần mấy.
+interface PRQProductLine {
   id: number;
-  inv_no: string | null;
-  inv_date: string | null;
-  description: string | null;
-  tax_code: string | null;
   po_number: string | null;
-  currency: string;
-  amount: string;
+  item_code: string | null;
+  description: string;
+  quantity: string;
+  unit: string | null;
+  unit_price: string;
+  discount: string;
+  vat_rate: string;
 }
 
 export default async function PRQPrintPage({ params }: { params: Promise<{ id: string }> }) {
@@ -65,14 +68,20 @@ export default async function PRQPrintPage({ params }: { params: Promise<{ id: s
   if (!prq) notFound();
   if (!canAccessCompany(user, prq.company_id)) notFound();
 
-  const lines = await query<PRQLine>(
-    `SELECT it.id, it.inv_no, it.inv_date, it.description, it.tax_code, it.currency, it.amount,
-            po.po_number
-       FROM payment_requisition_items it
-       LEFT JOIN purchase_orders po ON po.id = it.po_id
-      WHERE it.prq_id = $1 ORDER BY it.line_no, it.id`,
+  // Liệt kê SẢN PHẨM của (các) PO mà PRQ này thanh toán — đối chiếu theo PO, bất
+  // kể đang chi lần thứ mấy (feedback 26/08/2026).
+  const lines = await query<PRQProductLine>(
+    `SELECT poi.id, po.po_number, poi.item_code, poi.description,
+            poi.quantity, poi.unit, poi.unit_price, poi.discount, poi.vat_rate
+       FROM purchase_order_items poi
+       JOIN purchase_orders po ON po.id = poi.po_id
+      WHERE poi.po_id IN (
+        SELECT DISTINCT po_id FROM payment_requisition_items WHERE prq_id = $1 AND po_id IS NOT NULL
+      )
+      ORDER BY po.po_number, poi.line_no, poi.id`,
     [prqId]
   );
+  const multiPO = new Set(lines.map((l) => l.po_number)).size > 1;
   const company = await queryOne<Company>(`SELECT * FROM companies WHERE id=$1`, [prq.company_id]);
 
   return (
@@ -117,29 +126,45 @@ export default async function PRQPrintPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* Bảng dòng thanh toán */}
+        {/* Bảng SẢN PHẨM (đối chiếu theo PO) */}
         <table className="mt-6 w-full border-collapse text-sm">
           <thead>
             <tr className="bg-teal-600 text-white">
               <th className="border border-teal-600 px-2 py-2 text-center">#</th>
-              <th className="border border-teal-600 px-2 py-2 text-left">Số HĐ</th>
-              <th className="border border-teal-600 px-2 py-2 text-left">Ngày HĐ</th>
-              <th className="border border-teal-600 px-2 py-2 text-left">Diễn giải</th>
-              <th className="border border-teal-600 px-2 py-2 text-left">PO</th>
-              <th className="border border-teal-600 px-2 py-2 text-right">Số tiền</th>
+              {multiPO && <th className="border border-teal-600 px-2 py-2 text-left">PO</th>}
+              <th className="border border-teal-600 px-2 py-2 text-left">Mã</th>
+              <th className="border border-teal-600 px-2 py-2 text-left">Tên hàng</th>
+              <th className="border border-teal-600 px-2 py-2 text-right">SL</th>
+              <th className="border border-teal-600 px-2 py-2 text-left">ĐVT</th>
+              <th className="border border-teal-600 px-2 py-2 text-right">Đơn giá</th>
+              <th className="border border-teal-600 px-2 py-2 text-right">VAT%</th>
+              <th className="border border-teal-600 px-2 py-2 text-right">Thành tiền</th>
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => (
-              <tr key={l.id} className="even:bg-slate-50">
-                <td className="border border-slate-200 px-2 py-1.5 text-center">{i + 1}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{l.inv_no ?? "—"}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{l.inv_date ? date(l.inv_date) : "—"}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{l.description}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{l.po_number ?? "—"}</td>
-                <td className="border border-slate-200 px-2 py-1.5 text-right font-medium">{money(l.amount)}</td>
+            {lines.length === 0 && (
+              <tr>
+                <td className="border border-slate-200 px-2 py-3 text-center text-slate-400" colSpan={multiPO ? 9 : 8}>
+                  Không có dòng hàng hóa từ PO.
+                </td>
               </tr>
-            ))}
+            )}
+            {lines.map((l, i) => {
+              const lineTotal = Number(l.quantity) * Number(l.unit_price) - Number(l.discount);
+              return (
+                <tr key={l.id} className="even:bg-slate-50">
+                  <td className="border border-slate-200 px-2 py-1.5 text-center">{i + 1}</td>
+                  {multiPO && <td className="border border-slate-200 px-2 py-1.5">{l.po_number ?? "—"}</td>}
+                  <td className="border border-slate-200 px-2 py-1.5">{l.item_code ?? "—"}</td>
+                  <td className="border border-slate-200 px-2 py-1.5">{l.description}</td>
+                  <td className="border border-slate-200 px-2 py-1.5 text-right">{Number(l.quantity)}</td>
+                  <td className="border border-slate-200 px-2 py-1.5">{l.unit ?? "—"}</td>
+                  <td className="border border-slate-200 px-2 py-1.5 text-right">{money(l.unit_price)}</td>
+                  <td className="border border-slate-200 px-2 py-1.5 text-right">{Number(l.vat_rate)}%</td>
+                  <td className="border border-slate-200 px-2 py-1.5 text-right font-medium">{money(lineTotal)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -149,7 +174,7 @@ export default async function PRQPrintPage({ params }: { params: Promise<{ id: s
             <div className="flex justify-between text-slate-600"><span>Tạm tính (chưa thuế)</span><span>{money(prq.subtotal)}</span></div>
             <div className="flex justify-between text-slate-600"><span>Thuế VAT</span><span>{money(prq.vat_total)}</span></div>
             <div className="flex justify-between border-t-2 border-slate-300 pt-2 text-base font-bold text-teal-700">
-              <span>TỔNG CỘNG</span><span>{money(prq.grand_total)}</span>
+              <span>SỐ TIỀN ĐỀ NGHỊ TT</span><span>{money(prq.grand_total)}</span>
             </div>
           </div>
         </div>
