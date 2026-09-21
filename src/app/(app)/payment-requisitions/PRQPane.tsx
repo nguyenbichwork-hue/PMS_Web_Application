@@ -194,16 +194,19 @@ export async function PRQPane({ prqId, user }: { prqId: number; user: User | nul
             />
           </PrqDirtyProvider>
           <AttachmentPanel documentType="PRQ" documentId={h.id} attachments={attachments} canManage={canManage} />
-
-          <CommentPanel
-            documentType="PRQ"
-            documentId={h.id}
-            comments={comments}
-            currentUserId={user?.id ?? null}
-            isAdmin={user?.role === "Admin"}
-            mentionUsers={mentionUsers}
-          />
         </div>
+      </div>
+
+      {/* Bình luận: dải full-width phía dưới cho rộng, dễ đọc và nhắc tên */}
+      <div className="mt-4">
+        <CommentPanel
+          documentType="PRQ"
+          documentId={h.id}
+          comments={comments}
+          currentUserId={user?.id ?? null}
+          isAdmin={user?.role === "Admin"}
+          mentionUsers={mentionUsers}
+        />
       </div>
     </div>
   );

@@ -105,40 +105,50 @@ export function CommentPanel({
 
   return (
     <Card className="p-5">
-      <h3 className="mb-3 text-sm font-semibold text-slate-700">💬 Bình luận</h3>
+      <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-800">
+        💬 Bình luận
+        {comments.length > 0 && (
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-600">{comments.length}</span>
+        )}
+      </h3>
 
-      <ul className="mb-3 space-y-3">
+      <ul className="mb-4 space-y-3">
         {comments.map((c) => {
           const canDelete = isAdmin || (currentUserId != null && c.author_id === currentUserId);
           return (
-            <li key={c.id} className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-slate-700">{c.author_name ?? "—"}</span>
-                <span className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400" suppressHydrationWarning>{fmt(c.created_at)}</span>
-                  {canDelete && (
-                    <button
-                      onClick={() =>
-                        start(async () => {
-                          const res = await deleteCommentAction(c.id);
-                          if (!res.ok) toast(res.error ?? "Không xóa được bình luận.", "error");
-                          else router.refresh();
-                        })
-                      }
-                      disabled={pending}
-                      title="Xóa bình luận"
-                      className="text-xs text-rose-400 transition hover:text-rose-600 disabled:opacity-40"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </span>
+            <li key={c.id} className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white">
+                {(c.author_name ?? "—").charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[15px] font-semibold text-slate-800">{c.author_name ?? "—"}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400" suppressHydrationWarning>{fmt(c.created_at)}</span>
+                    {canDelete && (
+                      <button
+                        onClick={() =>
+                          start(async () => {
+                            const res = await deleteCommentAction(c.id);
+                            if (!res.ok) toast(res.error ?? "Không xóa được bình luận.", "error");
+                            else router.refresh();
+                          })
+                        }
+                        disabled={pending}
+                        title="Xóa bình luận"
+                        className="text-sm text-rose-400 transition hover:text-rose-600 disabled:opacity-40"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-700">{renderBody(c.body)}</div>
               </div>
-              <div className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">{renderBody(c.body)}</div>
             </li>
           );
         })}
-        {comments.length === 0 && <li className="text-xs text-slate-400">Chưa có bình luận nào.</li>}
+        {comments.length === 0 && <li className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">Chưa có bình luận nào.</li>}
       </ul>
 
       <form
@@ -167,7 +177,7 @@ export function CommentPanel({
             value={value}
             onChange={onChange}
             placeholder={mentionUsers.length > 0 ? "Viết bình luận… gõ @ để nhắc tên đồng nghiệp" : "Viết bình luận…"}
-            className={`${inputCls} h-20`}
+            className={`${inputCls} h-28 text-[15px] leading-relaxed`}
           />
           {menu.open && suggestions.length > 0 && (
             <ul className="absolute z-20 mt-1 max-h-52 w-64 overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
@@ -186,9 +196,11 @@ export function CommentPanel({
             </ul>
           )}
         </div>
-        <Button type="submit" disabled={pending} className="w-full justify-center">
-          {pending ? "Đang gửi…" : "Gửi bình luận"}
-        </Button>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={pending} className="justify-center px-6">
+            {pending ? "Đang gửi…" : "Gửi bình luận"}
+          </Button>
+        </div>
       </form>
     </Card>
   );
