@@ -2,7 +2,7 @@ import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
 import { pushCompanyScope } from "@/lib/access";
-import { Card, StatusBadge, Th, Td, EmptyState } from "@/components/ui";
+import { Card, StatusBadge, Th, Td, EmptyState, ExportButton } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { money, date } from "@/lib/format";
@@ -39,6 +39,11 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
   }
   if (user) pushCompanyScope(user, "prq.company_id", where, params);
   const clause = `WHERE ${where.join(" AND ")}`;
+
+  // Query xuất Excel: giữ đúng tab + từ khóa đang xem.
+  const exportQs = new URLSearchParams();
+  exportQs.set("status", tab === "da-chi" ? "Paid" : "Approved");
+  if (sp.q) exportQs.set("q", sp.q);
 
   const rows = await query<Row>(
     `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.grand_total, prq.status,
@@ -78,7 +83,13 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
 
   return (
     <div>
-      <ModuleBanner accent="teal" icon="🏦" title="Chi tiền (Kế toán)" subtitle="Hàng đợi đề nghị thanh toán ĐÃ DUYỆT — kế toán đánh dấu đã chuyển tiền" />
+      <ModuleBanner
+        accent="teal"
+        icon="🏦"
+        title="Chi tiền (Kế toán)"
+        subtitle="Hàng đợi đề nghị thanh toán ĐÃ DUYỆT — kế toán đánh dấu đã chuyển tiền"
+        action={<ExportButton href={`/export/ke-toan?${exportQs}`} />}
+      />
 
       <StatStrip
         items={[

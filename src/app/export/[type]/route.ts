@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { pushCompanyScope } from "@/lib/access";
+import { pushCompanyScope, isCrossCompany } from "@/lib/access";
 import type { User } from "@/lib/types";
 
 // Xuất danh sách ra Excel (.xlsx) — có phân quyền công ty + lọc theo trạng thái/từ khóa.
@@ -27,7 +27,7 @@ const PRQ_STATUS_VI: Record<string, string> = {
   Draft: "Nháp", Submitted: "Đã gửi", Approved: "Đã duyệt", Paid: "Đã thanh toán", Cancelled: "Đã hủy", Rejected: "Từ chối",
 };
 
-function build(type: string, user: User, status: string, q: string, category: string, df: string, dt: string): Conf | null {
+function build(type: string, user: User, status: string, q: string, category: string, df: string, dt: string, sp?: URLSearchParams): Conf | null {
   const admin = user.role === "Admin";
   switch (type) {
     case "pr": {
@@ -249,6 +249,90 @@ function build(type: string, user: User, status: string, q: string, category: st
         },
       };
     }
+    case "ke-toan": {
+      // Khớp trang "Chi tiền (Kế toán)": tab Chờ chi (Approved) / Đã chi (Paid) + từ khóa.
+      const paid = status === "Paid";
+      const where: string[] = []; const params: unknown[] = [];
+      where.push(`prq.status = '${paid ? "Paid" : "Approved"}'`);
+      if (q) {
+        params.push(`%${q}%`); const p = params.length;
+        where.push(`(prq.prq_number ILIKE $${p} OR s.supplier_name ILIKE $${p} OR s.supplier_code ILIKE $${p} OR s.tax_code ILIKE $${p})`);
+      }
+      pushCompanyScope(user, "prq.company_id", where, params);
+      const clause = `WHERE ${where.join(" AND ")}`;
+      const sql = `SELECT prq.prq_number, s.supplier_name, c.company_name, prq.grand_total,
+                          COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = prq.id),0) AS paid,
+                          prq.paid_date, prq.paid_ref, u.name AS paid_by_name
+                     FROM payment_requisitions prq
+                     JOIN companies c ON c.id = prq.company_id
+                     LEFT JOIN suppliers s ON s.id = prq.supplier_id
+                     LEFT JOIN users u ON u.id = prq.paid_by
+                     ${clause} ORDER BY prq.id DESC`;
+      if (paid) {
+        return {
+          sheet: "DaChi", file: "chi-tien-da-chi", sql, params,
+          columns: [
+            { h: "Số đề nghị", k: "a", w: 18 }, { h: "Nhà cung cấp", k: "b", w: 36 }, { h: "Công ty", k: "c", w: 18 },
+            { h: "Số tiền (gồm thuế)", k: "d", w: 18 }, { h: "Ngày chi", k: "e", w: 14 },
+            { h: "Số lệnh chi", k: "f", w: 18 }, { h: "Người chi", k: "g", w: 20 },
+          ],
+          map: (r) => ({ a: s(r.prq_number), b: s(r.supplier_name), c: s(r.company_name), d: n(r.grand_total), e: fdate(r.paid_date), f: s(r.paid_ref), g: s(r.paid_by_name) }),
+        };
+      }
+      return {
+        sheet: "ChoChi", file: "chi-tien-cho-chi", sql, params,
+        columns: [
+          { h: "Số đề nghị", k: "a", w: 18 }, { h: "Nhà cung cấp", k: "b", w: 36 }, { h: "Công ty", k: "c", w: 18 },
+          { h: "Số tiền (gồm thuế)", k: "d", w: 18 }, { h: "Đã chi", k: "e", w: 16 }, { h: "Còn lại", k: "f", w: 16 },
+        ],
+        map: (r) => { const total = n(r.grand_total); const pd = n(r.paid); return { a: s(r.prq_number), b: s(r.supplier_name), c: s(r.company_name), d: total, e: pd, f: total - pd }; },
+      };
+    }
+    case "cong-no": {
+      // Khớp trang "Công nợ nhà cung cấp": tổng hợp theo NCC + tuổi nợ, lọc ngày HĐ/NCC/ưu tiên.
+      const where: string[] = []; const params: unknown[] = [];
+      if (!isCrossCompany(user)) { params.push(user.company_id); where.push(`po.company_id = $${params.length}`); }
+      if (df) { params.push(df); where.push(`i.invoice_date >= $${params.length}`); }
+      if (dt) { params.push(dt); where.push(`i.invoice_date <= $${params.length}`); }
+      const sup = sp?.get("sup"); const pri = sp?.get("pri");
+      if (sup) { params.push(Number(sup)); where.push(`i.supplier_id = $${params.length}`); }
+      if (pri) { params.push(pri); where.push(`pr.priority = $${params.length}`); }
+      const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      return {
+        sheet: "CongNoNCC", file: "cong-no-ncc",
+        sql: `WITH inv AS (
+                SELECT s.supplier_name, s.supplier_code,
+                       (COALESCE(i.total_amount,0) - COALESCE(p.paid,0) - COALESCE(cn.credited,0)) AS outstanding,
+                       (CURRENT_DATE - (i.invoice_date + (COALESCE(NULLIF(regexp_replace(COALESCE(s.payment_term,'NET30'), '\\D', '', 'g'), '')::int, 30)) * INTERVAL '1 day')::date) AS overdue_days
+                  FROM invoices i
+                  LEFT JOIN suppliers s ON s.id = i.supplier_id
+                  LEFT JOIN purchase_orders po ON po.id = i.po_id
+                  LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+                  LEFT JOIN (SELECT invoice_id, sum(amount) paid     FROM payments     GROUP BY 1) p  ON p.invoice_id  = i.id
+                  LEFT JOIN (SELECT invoice_id, sum(amount) credited FROM credit_notes GROUP BY 1) cn ON cn.invoice_id = i.id
+                  ${clause}
+              )
+              SELECT COALESCE(supplier_name, '— Không rõ NCC —') AS supplier_name, supplier_code,
+                     count(*) AS cnt,
+                     COALESCE(sum(outstanding) FILTER (WHERE overdue_days <= 0), 0) AS not_due,
+                     COALESCE(sum(outstanding) FILTER (WHERE overdue_days BETWEEN 1 AND 30), 0) AS b1,
+                     COALESCE(sum(outstanding) FILTER (WHERE overdue_days BETWEEN 31 AND 60), 0) AS b2,
+                     COALESCE(sum(outstanding) FILTER (WHERE overdue_days BETWEEN 61 AND 90), 0) AS b3,
+                     COALESCE(sum(outstanding) FILTER (WHERE overdue_days > 90), 0) AS b4,
+                     COALESCE(sum(outstanding), 0) AS total
+                FROM inv
+               WHERE outstanding > 0
+               GROUP BY supplier_name, supplier_code
+               ORDER BY total DESC`,
+        params,
+        columns: [
+          { h: "Nhà cung cấp", k: "a", w: 36 }, { h: "Mã NCC", k: "b", w: 16 }, { h: "Số HĐ", k: "c", w: 10 },
+          { h: "Chưa đến hạn", k: "d", w: 16 }, { h: "1–30 ngày", k: "e", w: 14 }, { h: "31–60", k: "f", w: 14 },
+          { h: "61–90", k: "g", w: 14 }, { h: "> 90", k: "h", w: 14 }, { h: "Tổng phải trả", k: "i", w: 18 },
+        ],
+        map: (r) => ({ a: s(r.supplier_name), b: s(r.supplier_code), c: n(r.cnt), d: n(r.not_due), e: n(r.b1), f: n(r.b2), g: n(r.b3), h: n(r.b4), i: n(r.total) }),
+      };
+    }
     default:
       return null;
   }
@@ -259,7 +343,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
   if (!user) return new Response("Chưa đăng nhập", { status: 401 });
   const { type } = await params;
   const sp = req.nextUrl.searchParams;
-  const conf = build(type, user, sp.get("status") ?? "", sp.get("q") ?? "", sp.get("category") ?? "", sp.get("df") ?? "", sp.get("dt") ?? "");
+  const conf = build(type, user, sp.get("status") ?? "", sp.get("q") ?? "", sp.get("category") ?? "", sp.get("df") ?? "", sp.get("dt") ?? "", sp);
   if (!conf) return new Response("Loại xuất không hợp lệ", { status: 400 });
 
   const rows = await query<Record<string, unknown>>(conf.sql, conf.params);

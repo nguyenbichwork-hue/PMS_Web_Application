@@ -2,7 +2,7 @@ import Link from "next/link";
 import { query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isCrossCompany } from "@/lib/access";
-import { Card, Th, Td, EmptyState } from "@/components/ui";
+import { Card, Th, Td, EmptyState, ExportButton } from "@/components/ui";
 import { ModuleBanner, StatStrip } from "@/components/module";
 import { money } from "@/lib/format";
 import { PayablesFilters } from "./PayablesFilters";
@@ -58,6 +58,10 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
   if (sp.sup) { params.push(Number(sp.sup)); where.push(`i.supplier_id = $${params.length}`); }
   if (sp.pri) { params.push(sp.pri); where.push(`pr.priority = $${params.length}`); }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  // Query xuất Excel: giữ đúng bộ lọc đang xem (ngày HĐ, NCC, ưu tiên).
+  const exportQs = new URLSearchParams();
+  for (const k of ["df", "dt", "sup", "pri"] as const) if (sp[k]) exportQs.set(k, sp[k]);
 
   const rows = await query<OpenInv>(
     `SELECT i.id, i.invoice_date, i.total_amount, i.supplier_id,
@@ -147,6 +151,7 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
         accent="rose"
         title="Công nợ nhà cung cấp"
         subtitle="Số tiền còn phải trả (hóa đơn − đã trả − giảm trừ) theo tuổi nợ"
+        action={<ExportButton href={`/export/cong-no?${exportQs}`} />}
       />
 
       {/* THẺ CẢNH BÁO: quá hạn · sắp đến hạn · vượt ngân sách */}
