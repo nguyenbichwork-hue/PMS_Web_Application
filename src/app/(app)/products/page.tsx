@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, StatusBadge, EmptyState, ExportButton } from "@/components/ui";
+import { Card, StatusBadge, EmptyState, ExportButton, Th, Td } from "@/components/ui";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { ProductManager } from "./ProductManager";
@@ -58,48 +58,45 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         filters={[{ key: "category", label: "Nhóm", options: cats.map((c) => ({ value: c.category, label: c.category })) }]}
       />
 
-      {/* Bố cục dạng LƯỚI THẺ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {rows.map((r) => (
-          <Card key={r.id} className="lift p-5">
-            <div className="flex items-start justify-between">
-              <span className="rounded-lg bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700">
-                {r.category ?? "Khác"}
-              </span>
-              <StatusBadge status={r.status} />
-            </div>
-            <div className="mt-3 font-semibold text-slate-900">{r.item_name}</div>
-            <div className="text-xs text-slate-400">{r.item_code}</div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-              <Mini label="ĐVT" value={r.unit} />
-              <Mini label="VAT" value={`${Number(r.vat_rate)}%`} />
-              <Mini label="NCC mặc định" value={r.supplier_name ?? "—"} />
-              <Mini label="Mã kế toán" value={r.accounting_code ?? "—"} />
-            </div>
-
-            {canManage && (
-              <div className="mt-4 flex justify-end border-t border-slate-100 pt-3">
-                <ProductManager suppliers={suppliers} product={r} />
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
-      {rows.length === 0 && (
-        <Card>
-          <EmptyState message="Chưa có hàng hóa." />
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function Mini({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-slate-50 px-2.5 py-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="truncate font-medium text-slate-700">{value}</div>
+      {/* Bố cục dạng BẢNG gọn — tận dụng tối đa chiều ngang */}
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[880px]">
+          <thead>
+            <tr>
+              <Th>Hàng hóa</Th>
+              <Th>Nhóm</Th>
+              <Th>ĐVT</Th>
+              <Th className="text-right">VAT</Th>
+              <Th>NCC mặc định</Th>
+              <Th>Mã kế toán</Th>
+              <Th>Trạng thái</Th>
+              {canManage && <Th className="text-right">Thao tác</Th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-slate-50">
+                <Td>
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-slate-900">{r.item_name}</div>
+                    <div className="text-xs text-slate-400">{r.item_code}</div>
+                  </div>
+                </Td>
+                <Td>
+                  <span className="rounded-lg bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700">{r.category ?? "Khác"}</span>
+                </Td>
+                <Td className="whitespace-nowrap text-slate-600">{r.unit}</Td>
+                <Td className="whitespace-nowrap text-right text-slate-600">{`${Number(r.vat_rate)}%`}</Td>
+                <Td className="text-slate-600">{r.supplier_name ?? "—"}</Td>
+                <Td className="whitespace-nowrap text-slate-600">{r.accounting_code ?? "—"}</Td>
+                <Td><StatusBadge status={r.status} /></Td>
+                {canManage && <Td className="text-right"><ProductManager suppliers={suppliers} product={r} /></Td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && <EmptyState message="Chưa có hàng hóa." />}
+      </Card>
     </div>
   );
 }

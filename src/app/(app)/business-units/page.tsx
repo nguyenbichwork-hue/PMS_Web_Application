@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { getCurrentUser, can } from "@/lib/auth";
-import { Card, EmptyState } from "@/components/ui";
+import { Card, EmptyState, Th, Td } from "@/components/ui";
 import { ModuleBanner } from "@/components/module";
 import { Filters } from "@/components/Filters";
 import { SectionImport } from "@/components/SectionImport";
@@ -54,35 +54,38 @@ export default async function BusinessUnitsPage({ searchParams }: { searchParams
         ]}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.map((r) => (
-          <Card key={r.id} className="lift p-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500 text-lg font-bold text-white shadow-sm">
-                  {r.bu_name.charAt(0)}
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-900">{r.bu_name}</div>
-                  <div className="text-xs text-slate-400">{r.bu_code}</div>
-                </div>
-              </div>
-            </div>
-            <dl className="mt-4 space-y-1.5 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="shrink-0 text-slate-400">Công ty</dt>
-                <dd className="truncate text-right font-medium text-slate-700">{r.company_name ?? "—"}</dd>
-              </div>
-            </dl>
-            {canManage && (
-              <div className="mt-4 flex justify-end border-t border-slate-100 pt-3">
-                <BUManager bu={r} companies={companies} />
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
-      {rows.length === 0 && <Card><EmptyState message="Chưa có BU. Bấm '+ Thêm BU'." /></Card>}
+      {/* Bố cục dạng BẢNG gọn — tận dụng tối đa chiều ngang */}
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[520px]">
+          <thead>
+            <tr>
+              <Th>BU (Business Unit)</Th>
+              <Th>Công ty</Th>
+              {canManage && <Th className="text-right">Thao tác</Th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-slate-50">
+                <Td>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500 text-sm font-bold text-white">
+                      {r.bu_name.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-slate-900">{r.bu_name}</div>
+                      <div className="text-xs text-slate-400">{r.bu_code}</div>
+                    </div>
+                  </div>
+                </Td>
+                <Td className="text-slate-600">{r.company_name ?? "—"}</Td>
+                {canManage && <Td className="text-right"><BUManager bu={r} companies={companies} /></Td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && <EmptyState message="Chưa có BU. Bấm '+ Thêm BU'." />}
+      </Card>
     </div>
   );
 }
