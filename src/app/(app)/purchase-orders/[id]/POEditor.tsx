@@ -1,6 +1,7 @@
 "use client";
 import { updatePOAction } from "@/actions/po";
 import { Card, Field, inputCls, Button } from "@/components/ui";
+import { dateInput } from "@/lib/format";
 import type { PurchaseOrder, POItem, Supplier } from "@/lib/types";
 
 export function POEditor({
@@ -37,7 +38,7 @@ export function POEditor({
             <input
               type="date"
               name="delivery_date"
-              defaultValue={po.delivery_date ?? ""}
+              defaultValue={dateInput(po.delivery_date)}
               className={inputCls}
             />
           </Field>

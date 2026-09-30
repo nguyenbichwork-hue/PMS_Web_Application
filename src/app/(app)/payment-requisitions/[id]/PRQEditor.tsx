@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { updatePRQAction, removePRQLineAction } from "@/actions/prq";
 import { Card, Field, inputCls } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
+import { dateInput } from "@/lib/format";
 import { usePrqDirty } from "./DirtyContext";
 
 export interface PRQLine {
@@ -33,18 +34,7 @@ interface PRQHeadLite {
   reason: string | null;
 }
 
-// Chuẩn hóa về 'YYYY-MM-DD' cho <input type=date>. Postgres (Neon) trả cột DATE
-// dưới dạng đối tượng Date → phải format theo NGÀY ĐỊA PHƯƠNG (tránh lệch múi giờ),
-// không dùng String(date).slice (ra "Thu Aug 2..." → input bỏ trống). PGlite trả chuỗi.
-const d10 = (v: string | Date | null | undefined): string => {
-  if (!v) return "";
-  if (v instanceof Date) {
-    const y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, "0"), d = String(v.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : "";
-};
+const d10 = dateInput;
 
 export function PRQEditor({
   prq,

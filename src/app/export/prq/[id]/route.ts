@@ -4,6 +4,7 @@ import { query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { canAccessCompany } from "@/lib/access";
 import { amountInWordsVi } from "@/lib/num-to-words-vi";
+import { dateInput } from "@/lib/format";
 
 // GET /export/prq/<id> → xuất mẫu "Payment Requisition" (.xlsx) điền sẵn từ PRQ.
 
@@ -21,7 +22,8 @@ interface Line {
   quantity: string | null;
 }
 
-const fmtDate = (v: string | null) => (v ? String(v).slice(0, 10).split("-").reverse().join("/") : "");
+// Neon trả cột DATE là đối tượng Date → dùng dateInput để ra 'YYYY-MM-DD' rồi đảo thành DD/MM/YYYY.
+const fmtDate = (v: string | Date | null) => { const s = dateInput(v); return s ? s.split("-").reverse().join("/") : ""; };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();

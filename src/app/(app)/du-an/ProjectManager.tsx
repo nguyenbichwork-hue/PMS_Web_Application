@@ -6,6 +6,7 @@ import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { dateInput } from "@/lib/format";
 import type { Project } from "@/lib/types";
 
 interface Opt { id: number; name: string }
@@ -24,7 +25,7 @@ export function ProjectManager({
   const router = useRouter();
   const toast = useToast();
   const editing = !!project;
-  const d10 = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : "");
+  const d10 = dateInput;
 
   const remove = () => {
     if (!project) return;
