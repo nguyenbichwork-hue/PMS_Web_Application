@@ -142,7 +142,7 @@ export async function createInvoiceAction(formData: FormData) {
 
   if (po_id) {
     const po = await queryOne<{ supplier_id: number | null; company_id: number | null; order_date: string; grand_total: string; vat_total: string; po_qty: string; po_sub: string }>(
-      `SELECT po.supplier_id, po.company_id, po.order_date, po.grand_total, po.vat_total,
+      `SELECT po.supplier_id, po.company_id, po.order_date::text AS order_date, po.grand_total, po.vat_total,
               COALESCE((SELECT sum(quantity) FROM purchase_order_items WHERE po_id = po.id),0) AS po_qty,
               COALESCE((SELECT sum(quantity*unit_price - discount) FROM purchase_order_items WHERE po_id = po.id),0) AS po_sub
          FROM purchase_orders po WHERE po.id = $1`,
