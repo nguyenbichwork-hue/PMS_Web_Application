@@ -44,6 +44,9 @@ const nextConfig = {
     // là 30MB (kiểm ở attachment.ts/pr.ts); đặt cap request ở 60MB để một tệp 30MB
     // (kèm dữ liệu form / vài tệp nhỏ) luôn qua được lớp framework trước khi kiểm.
     serverActions: { bodySizeLimit: "60mb" },
+    // Tree-shake recharts (thư viện biểu đồ nặng, kéo cả d3) → giảm JS bundle
+    // của route Dashboard, chỉ nạp đúng thành phần được import.
+    optimizePackageImports: ["recharts"],
   },
   // Đặt security headers cho MỌI route.
   async headers() {

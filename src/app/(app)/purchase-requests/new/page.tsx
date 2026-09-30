@@ -10,32 +10,34 @@ export default async function NewPRPage() {
   if (!user) redirect("/login");
   if (!can(user.role, "pr.create")) redirect("/purchase-requests");
 
-  const companies = await query<Company>(`SELECT * FROM companies WHERE status='Active' ORDER BY company_name`);
-  const products = await query<Product>(`SELECT * FROM products WHERE status='Active' ORDER BY item_name`);
-  const suppliers = await query<Supplier>(`SELECT * FROM suppliers WHERE status='Active' ORDER BY supplier_name`);
-  // BU / Phòng ban theo công ty (combobox — người yêu cầu tự chọn).
-  const businessUnits = await query<{ id: number; company_id: number; bu_code: string; bu_name: string }>(
-    `SELECT id, company_id, bu_code, bu_name FROM business_units ORDER BY bu_name`
-  );
-  // Khách hàng + dự án để gắn PR (liên kết mua↔bán, kiểm soát ngân sách dự án).
-  const customers = await query<{ id: number; customer_name: string }>(
-    `SELECT id, customer_name FROM customers WHERE status='Active' ORDER BY customer_name`
-  );
-  const projects = await query<{ id: number; project_code: string; project_name: string; customer_id: number | null }>(
-    `SELECT id, project_code, project_name, customer_id FROM projects WHERE status='Active' ORDER BY project_name`
-  );
-
-  // NCC ĐỀ XUẤT theo lịch sử: các nhà cung cấp đã từng có PO chứa mã hàng này
-  // (đếm số lần để xếp hạng), gộp theo item_code → truyền cho form gợi ý khi chọn hàng.
-  const hist = await query<{ item_code: string; supplier_id: number; supplier_name: string; times: number }>(
-    `SELECT poi.item_code, po.supplier_id, s.supplier_name, COUNT(*)::int AS times
-       FROM purchase_order_items poi
-       JOIN purchase_orders po ON po.id = poi.po_id AND po.supplier_id IS NOT NULL
-       JOIN suppliers s ON s.id = po.supplier_id AND s.status='Active'
-      WHERE poi.item_code IS NOT NULL AND poi.item_code <> ''
-      GROUP BY poi.item_code, po.supplier_id, s.supplier_name
-      ORDER BY times DESC`
-  );
+  // Tất cả query dưới đây ĐỘC LẬP → chạy song song (1 đợt round-trip thay vì 7).
+  const [companies, products, suppliers, businessUnits, customers, projects, hist] = await Promise.all([
+    query<Company>(`SELECT * FROM companies WHERE status='Active' ORDER BY company_name`),
+    query<Product>(`SELECT * FROM products WHERE status='Active' ORDER BY item_name`),
+    query<Supplier>(`SELECT * FROM suppliers WHERE status='Active' ORDER BY supplier_name`),
+    // BU / Phòng ban theo công ty (combobox — người yêu cầu tự chọn).
+    query<{ id: number; company_id: number; bu_code: string; bu_name: string }>(
+      `SELECT id, company_id, bu_code, bu_name FROM business_units ORDER BY bu_name`
+    ),
+    // Khách hàng + dự án để gắn PR (liên kết mua↔bán, kiểm soát ngân sách dự án).
+    query<{ id: number; customer_name: string }>(
+      `SELECT id, customer_name FROM customers WHERE status='Active' ORDER BY customer_name`
+    ),
+    query<{ id: number; project_code: string; project_name: string; customer_id: number | null }>(
+      `SELECT id, project_code, project_name, customer_id FROM projects WHERE status='Active' ORDER BY project_name`
+    ),
+    // NCC ĐỀ XUẤT theo lịch sử: các nhà cung cấp đã từng có PO chứa mã hàng này
+    // (đếm số lần để xếp hạng), gộp theo item_code → truyền cho form gợi ý khi chọn hàng.
+    query<{ item_code: string; supplier_id: number; supplier_name: string; times: number }>(
+      `SELECT poi.item_code, po.supplier_id, s.supplier_name, COUNT(*)::int AS times
+         FROM purchase_order_items poi
+         JOIN purchase_orders po ON po.id = poi.po_id AND po.supplier_id IS NOT NULL
+         JOIN suppliers s ON s.id = po.supplier_id AND s.status='Active'
+        WHERE poi.item_code IS NOT NULL AND poi.item_code <> ''
+        GROUP BY poi.item_code, po.supplier_id, s.supplier_name
+        ORDER BY times DESC`
+    ),
+  ]);
   const productSuppliers: Record<string, { id: number; name: string; times: number }[]> = {};
   for (const h of hist) {
     (productSuppliers[h.item_code] ??= []).push({ id: h.supplier_id, name: h.supplier_name, times: h.times });

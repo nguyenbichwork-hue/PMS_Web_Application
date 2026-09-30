@@ -45,32 +45,34 @@ export default async function KeToanPage({ searchParams }: { searchParams: Promi
   exportQs.set("status", tab === "da-chi" ? "Paid" : "Approved");
   if (sp.q) exportQs.set("q", sp.q);
 
-  const rows = await query<Row>(
-    `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.grand_total, prq.status,
-            COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = prq.id),0) AS paid,
-            prq.paid_date, prq.paid_ref, u.name AS paid_by_name
-       FROM payment_requisitions prq
-       JOIN companies c ON c.id = prq.company_id
-       LEFT JOIN suppliers s ON s.id = prq.supplier_id
-       LEFT JOIN users u ON u.id = prq.paid_by
-       ${clause}
-      ORDER BY prq.id DESC`,
-    params
-  );
-
-  // Thống kê hàng đợi (theo phạm vi công ty).
+  // Thống kê hàng đợi (theo phạm vi công ty) — dựng clause riêng để chạy SONG SONG với rows.
   const sWhere: string[] = [];
   const sParams: unknown[] = [];
   if (user) pushCompanyScope(user, "company_id", sWhere, sParams);
   const sClause = sWhere.length ? `WHERE ${sWhere.join(" AND ")}` : "";
-  const stats = await queryOne<{ cho_chi: number; gt_cho_chi: string; da_chi: number; gt_da_chi: string }>(
-    `SELECT count(*) FILTER (WHERE status='Approved')::int cho_chi,
-            COALESCE(sum(grand_total - COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = payment_requisitions.id),0)) FILTER (WHERE status='Approved'),0) gt_cho_chi,
-            count(*) FILTER (WHERE status='Paid')::int da_chi,
-            COALESCE(sum(grand_total) FILTER (WHERE status='Paid'),0) gt_da_chi
-       FROM payment_requisitions ${sClause}`,
-    sParams
-  );
+
+  const [rows, stats] = await Promise.all([
+    query<Row>(
+      `SELECT prq.id, prq.prq_number, c.company_name, s.supplier_name, prq.grand_total, prq.status,
+              COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = prq.id),0) AS paid,
+              prq.paid_date, prq.paid_ref, u.name AS paid_by_name
+         FROM payment_requisitions prq
+         JOIN companies c ON c.id = prq.company_id
+         LEFT JOIN suppliers s ON s.id = prq.supplier_id
+         LEFT JOIN users u ON u.id = prq.paid_by
+         ${clause}
+        ORDER BY prq.id DESC`,
+      params
+    ),
+    queryOne<{ cho_chi: number; gt_cho_chi: string; da_chi: number; gt_da_chi: string }>(
+      `SELECT count(*) FILTER (WHERE status='Approved')::int cho_chi,
+              COALESCE(sum(grand_total - COALESCE((SELECT sum(amount) FROM prq_payments pp WHERE pp.prq_id = payment_requisitions.id),0)) FILTER (WHERE status='Approved'),0) gt_cho_chi,
+              count(*) FILTER (WHERE status='Paid')::int da_chi,
+              COALESCE(sum(grand_total) FILTER (WHERE status='Paid'),0) gt_da_chi
+         FROM payment_requisitions ${sClause}`,
+      sParams
+    ),
+  ]);
 
   const TabLink = ({ k, label }: { k: string; label: string }) => (
     <Link

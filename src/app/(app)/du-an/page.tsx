@@ -34,21 +34,31 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  const rows = await query<Row>(
-    `SELECT p.*, c.company_name, cu.customer_name,
-            COALESCE((SELECT sum(po.grand_total) FROM purchase_orders po
-                       WHERE po.project_id = p.id AND po.status NOT IN ('Draft','Cancelled')),0) AS committed,
-            (SELECT count(*)::int FROM purchase_orders po WHERE po.project_id = p.id) AS po_count
-       FROM projects p
-       LEFT JOIN companies c  ON c.id  = p.company_id
-       LEFT JOIN customers cu ON cu.id = p.customer_id
-       ${clause}
-      ORDER BY p.status, p.project_name`,
-    params
-  );
-
-  const companies = (await query<{ id: number; name: string }>(`SELECT id, company_name AS name FROM companies WHERE status='Active' ORDER BY company_name`, []));
-  const customers = (await query<{ id: number; name: string }>(`SELECT id, customer_name AS name FROM customers WHERE status='Active' ORDER BY customer_name`, []));
+  // "committed" + "po_count" gộp qua 1 subquery GROUP BY (quét purchase_orders MỘT LẦN)
+  // thay vì 2 subquery tương quan cho MỖI dòng dự án. 3 query độc lập chạy song song.
+  const [rows, companies, customers] = await Promise.all([
+    query<Row>(
+      `SELECT p.*, c.company_name, cu.customer_name,
+              COALESCE(agg.committed,0) AS committed,
+              COALESCE(agg.po_count,0)  AS po_count
+         FROM projects p
+         LEFT JOIN companies c  ON c.id  = p.company_id
+         LEFT JOIN customers cu ON cu.id = p.customer_id
+         LEFT JOIN (
+           SELECT project_id,
+                  sum(grand_total) FILTER (WHERE status NOT IN ('Draft','Cancelled')) AS committed,
+                  count(*)::int AS po_count
+             FROM purchase_orders
+            WHERE project_id IS NOT NULL
+            GROUP BY project_id
+         ) agg ON agg.project_id = p.id
+         ${clause}
+        ORDER BY p.status, p.project_name`,
+      params
+    ),
+    query<{ id: number; name: string }>(`SELECT id, company_name AS name FROM companies WHERE status='Active' ORDER BY company_name`, []),
+    query<{ id: number; name: string }>(`SELECT id, customer_name AS name FROM customers WHERE status='Active' ORDER BY customer_name`, []),
+  ]);
 
   const eq = new URLSearchParams();
   if (sp.q) eq.set("q", sp.q);

@@ -415,3 +415,9 @@ ALTER TABLE payment_requisitions ADD COLUMN IF NOT EXISTS current_level INT NOT 
 -- Cột NÀY chỉ ở DB nghiệp vụ (Neon runtime); KHÔNG đồng bộ từ Supabase nên
 -- không bị pullUsersIntoLocal ghi đè. Xem accounts.ts.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+
+-- ---------- INDEX BỔ SUNG (30/09/2026) — FK/JOIN nóng còn thiếu ----------
+-- products.default_supplier: JOIN mỗi lần mở trang Hàng hóa (products/page.tsx).
+CREATE INDEX IF NOT EXISTS idx_products_default_supplier ON products(default_supplier);
+-- projects.customer_id: JOIN ở trang Dự án + lọc theo khách hàng (du-an/page.tsx).
+CREATE INDEX IF NOT EXISTS idx_projects_customer ON projects(customer_id);

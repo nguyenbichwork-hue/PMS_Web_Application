@@ -25,13 +25,16 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  const rows = await query<Product & { supplier_name: string | null }>(
-    `SELECT p.*, s.supplier_name FROM products p
-       LEFT JOIN suppliers s ON s.id = p.default_supplier ${clause} ORDER BY p.item_name`,
-    params
-  );
-  const suppliers = await query<Supplier>(`SELECT * FROM suppliers ORDER BY supplier_name`);
-  const cats = await query<{ category: string }>(`SELECT DISTINCT category FROM products WHERE category IS NOT NULL`);
+  // 3 query độc lập → chạy song song (1 đợt round-trip).
+  const [rows, suppliers, cats] = await Promise.all([
+    query<Product & { supplier_name: string | null }>(
+      `SELECT p.*, s.supplier_name FROM products p
+         LEFT JOIN suppliers s ON s.id = p.default_supplier ${clause} ORDER BY p.item_name`,
+      params
+    ),
+    query<Supplier>(`SELECT * FROM suppliers ORDER BY supplier_name`),
+    query<{ category: string }>(`SELECT DISTINCT category FROM products WHERE category IS NOT NULL`),
+  ]);
 
   const eq = new URLSearchParams();
   if (sp.q) eq.set("q", sp.q);

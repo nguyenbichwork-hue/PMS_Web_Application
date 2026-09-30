@@ -63,18 +63,21 @@ async function ChainForPO({ poId, user }: { poId: number; user: { role: string; 
   if (!po) return null;
   if (!canAccessCompany(user as never, po.company_id)) return null;
 
-  const grs = await query<{ id: number; gr_number: string | null; status: string; receive_date: string; recv: string }>(
-    `SELECT gr.id, gr.gr_number, gr.status, gr.receive_date,
-            COALESCE((SELECT sum(received_qty) FROM goods_receipt_items WHERE gr_id = gr.id),0) AS recv
-       FROM goods_receipts gr WHERE gr.po_id = $1 ORDER BY gr.id`,
-    [poId]
-  );
-  const invs = await query<{ id: number; invoice_number: string; status: string; total_amount: string; match_result: string | null; paid: string }>(
-    `SELECT i.id, i.invoice_number, i.status, i.total_amount, i.match_result,
-            COALESCE((SELECT sum(amount) FROM payments WHERE invoice_id = i.id),0) AS paid
-       FROM invoices i WHERE i.po_id = $1 ORDER BY i.id`,
-    [poId]
-  );
+  // GRN + Hóa đơn của PO này độc lập → chạy song song.
+  const [grs, invs] = await Promise.all([
+    query<{ id: number; gr_number: string | null; status: string; receive_date: string; recv: string }>(
+      `SELECT gr.id, gr.gr_number, gr.status, gr.receive_date,
+              COALESCE((SELECT sum(received_qty) FROM goods_receipt_items WHERE gr_id = gr.id),0) AS recv
+         FROM goods_receipts gr WHERE gr.po_id = $1 ORDER BY gr.id`,
+      [poId]
+    ),
+    query<{ id: number; invoice_number: string; status: string; total_amount: string; match_result: string | null; paid: string }>(
+      `SELECT i.id, i.invoice_number, i.status, i.total_amount, i.match_result,
+              COALESCE((SELECT sum(amount) FROM payments WHERE invoice_id = i.id),0) AS paid
+         FROM invoices i WHERE i.po_id = $1 ORDER BY i.id`,
+      [poId]
+    ),
+  ]);
 
   const Step = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="relative border-l-2 border-slate-200 pl-4">
