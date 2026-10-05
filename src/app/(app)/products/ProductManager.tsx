@@ -6,6 +6,7 @@ import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Product, Supplier } from "@/lib/types";
 
 export function ProductManager({ product, suppliers }: { product?: Product; suppliers: Supplier[] }) {
@@ -13,11 +14,12 @@ export function ProductManager({ product, suppliers }: { product?: Product; supp
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const editing = !!product;
 
-  const remove = () => {
+  const remove = async () => {
     if (!product) return;
-    if (!confirm(`Xóa hàng hóa "${product.item_name}" (${product.item_code})?`)) return;
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa hàng hóa "${product.item_name}" (${product.item_code})?` }))) return;
     start(async () => {
       const res = await deleteProductAction(product.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }

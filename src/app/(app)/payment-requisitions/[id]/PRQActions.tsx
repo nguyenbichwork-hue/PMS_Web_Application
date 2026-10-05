@@ -5,6 +5,7 @@ import { submitPRQAction, approvePRQAction, rejectPRQAction, cancelPRQAction } f
 import { Card, Button } from "@/components/ui";
 import { MarkPaidModal } from "@/components/MarkPaidModal";
 import { useToast } from "@/components/Toast";
+import { usePrompt } from "@/components/ConfirmDialog";
 import { usePrqDirty } from "./DirtyContext";
 
 export function PRQActions({
@@ -33,6 +34,7 @@ export function PRQActions({
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const prompt = usePrompt();
   const { dirty } = usePrqDirty();
   const run = (fn: () => Promise<void>) => () => start(async () => { await fn(); router.refresh(); });
 
@@ -77,8 +79,8 @@ export function PRQActions({
               variant="danger"
               className="w-full justify-center"
               loading={pending}
-              onClick={() => {
-                const reason = window.prompt("Lý do từ chối đề nghị thanh toán:");
+              onClick={async () => {
+                const reason = await prompt({ title: "Từ chối", message: "Lý do từ chối đề nghị thanh toán:" });
                 if (reason === null) return;
                 start(async () => { await rejectPRQAction(prqId, reason); router.refresh(); });
               }}
@@ -96,8 +98,8 @@ export function PRQActions({
               variant="danger"
               className="w-full justify-center"
               loading={pending}
-              onClick={() => {
-                const reason = window.prompt("Lý do hủy đề nghị thanh toán:");
+              onClick={async () => {
+                const reason = await prompt({ title: "Hủy đề nghị", message: "Lý do hủy đề nghị thanh toán:" });
                 if (reason === null) return;
                 start(async () => { await cancelPRQAction(prqId, reason); router.refresh(); });
               }}

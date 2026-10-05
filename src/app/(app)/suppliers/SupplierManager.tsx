@@ -6,6 +6,7 @@ import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Supplier } from "@/lib/types";
 
 export function SupplierManager({ supplier }: { supplier?: Supplier }) {
@@ -13,11 +14,12 @@ export function SupplierManager({ supplier }: { supplier?: Supplier }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const editing = !!supplier;
 
-  const remove = () => {
+  const remove = async () => {
     if (!supplier) return;
-    if (!confirm(`Xóa nhà cung cấp "${supplier.supplier_name}" (${supplier.supplier_code})?`)) return;
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa nhà cung cấp "${supplier.supplier_name}" (${supplier.supplier_code})?` }))) return;
     start(async () => {
       const res = await deleteSupplierAction(supplier.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }

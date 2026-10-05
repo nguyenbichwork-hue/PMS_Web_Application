@@ -1,11 +1,10 @@
 import "server-only";
-import { dbExec, firstRow, type Executor } from "./db";
-import { docNumber } from "./numbering";
+import { type Executor } from "./db";
 
 // =====================================================================
-// Payment Requisition (Đề nghị thanh toán) — sinh tự động từ PO đã DUYỆT.
+// Payment Requisition (Đề nghị thanh toán) — tính lại tổng tiền từ các dòng.
 // Số tiền mỗi dòng GỒM THUẾ (lấy từ purchase_order_items.amount). Một PRQ trả
-// cho MỘT nhà cung cấp; có thể gộp thêm dòng của các PO khác cùng NCC ở actions.
+// cho MỘT nhà cung cấp.
 // =====================================================================
 
 /** Tính lại tổng PRQ từ các dòng. subtotal/vat suy ngược theo vat_rate của dòng
@@ -33,57 +32,4 @@ export async function recomputePRQTotals(exec: Executor, prqId: number): Promise
       WHERE id = $4`,
     [Math.round(subtotal), Math.round(vat), Math.round(grand), prqId]
   );
-}
-
-/**
- * Sinh PRQ nháp từ một PO đã duyệt. Nếu PO ĐÃ nằm trong một PRQ rồi thì trả về
- * id PRQ đó (không tạo trùng). Trả về id PRQ.
- */
-export async function generatePRQFromPO(poId: number, exec: Executor = dbExec, userId?: number): Promise<number> {
-  const existing = await firstRow<{ prq_id: number }>(
-    exec,
-    `SELECT prq_id FROM payment_requisition_items WHERE po_id = $1 LIMIT 1`,
-    [poId]
-  );
-  if (existing) return existing.prq_id;
-
-  const po = await firstRow<{ company_id: number; supplier_id: number | null; currency: string }>(
-    exec,
-    `SELECT company_id, supplier_id, currency FROM purchase_orders WHERE id = $1`,
-    [poId]
-  );
-  if (!po) throw new Error("PO not found");
-
-  const sup = po.supplier_id
-    ? await firstRow<{ bank_account: string | null; tax_code: string | null }>(
-        exec,
-        `SELECT bank_account, tax_code FROM suppliers WHERE id = $1`,
-        [po.supplier_id]
-      )
-    : null;
-
-  const prq = await firstRow<{ id: number }>(
-    exec,
-    `INSERT INTO payment_requisitions
-       (company_id, supplier_id, payment_type, currency, bank_account, status, created_by)
-     VALUES ($1,$2,'Normal',$3,$4,'Draft',$5) RETURNING id`,
-    [po.company_id, po.supplier_id, po.currency || "VND", sup?.bank_account ?? null, userId ?? null]
-  );
-  await exec(`UPDATE payment_requisitions SET prq_number = $1 WHERE id = $2`, [docNumber("PRQ", prq!.id), prq!.id]);
-
-  const items = await exec<{ id: number; description: string; amount: string; vat_rate: string | null }>(
-    `SELECT id, description, amount, vat_rate FROM purchase_order_items WHERE po_id = $1 ORDER BY line_no`,
-    [poId]
-  );
-  let line = 1;
-  for (const it of items) {
-    await exec(
-      `INSERT INTO payment_requisition_items
-         (prq_id, po_id, po_item_id, description, tax_code, currency, amount, vat_rate, line_no)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [prq!.id, poId, it.id, it.description, sup?.tax_code ?? null, po.currency || "VND", Number(it.amount), it.vat_rate != null ? Number(it.vat_rate) : null, line++]
-    );
-  }
-  await recomputePRQTotals(exec, prq!.id);
-  return prq!.id;
 }

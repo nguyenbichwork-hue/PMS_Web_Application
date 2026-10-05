@@ -7,6 +7,7 @@ import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { dateInput } from "@/lib/format";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Project } from "@/lib/types";
 
 interface Opt { id: number; name: string }
@@ -24,12 +25,13 @@ export function ProjectManager({
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const editing = !!project;
   const d10 = dateInput;
 
-  const remove = () => {
+  const remove = async () => {
     if (!project) return;
-    if (!confirm(`Xóa dự án "${project.project_name}" (${project.project_code})?`)) return;
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa dự án "${project.project_name}" (${project.project_code})?` }))) return;
     start(async () => {
       const res = await deleteProjectAction(project.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }

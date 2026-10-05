@@ -8,6 +8,7 @@ import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton, Spinn
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { SectionImport } from "@/components/SectionImport";
 import { PasswordInput } from "@/components/PasswordInput";
 import { AccentPicker } from "@/components/AccentPicker";
@@ -499,6 +500,7 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
+  const confirm = useConfirm();
 
   return (
     <Card className="p-5">
@@ -532,7 +534,7 @@ function RulesPanel({ rules }: { rules: Rule[] }) {
                     <button className="text-sm text-brand-600 hover:underline" onClick={() => setEditing(r)}>Sửa</button>
                     <button
                       className="text-sm text-rose-500 hover:underline"
-                      onClick={() => { if (confirm("Xóa ngưỡng này?")) start(async () => { await deleteApprovalRuleAction(r.id); router.refresh(); }); }}
+                      onClick={async () => { if (await confirm({ danger: true, confirmText: "Xóa", message: "Xóa ngưỡng này?" })) start(async () => { await deleteApprovalRuleAction(r.id); router.refresh(); }); }}
                       disabled={pending}
                     >Xóa</button>
                   </div>
@@ -605,9 +607,10 @@ function UsersPanel({ users, companies }: { users: UserRow[]; companies: Company
   const [confirming, setConfirming] = useState<{ user: UserRow; usage: UsageItem[] } | null>(null);
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
 
-  const remove = (u: UserRow) => {
-    if (!confirm(`Xóa tài khoản "${u.name}" (${u.email})?`)) return;
+  const remove = async (u: UserRow) => {
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa tài khoản "${u.name}" (${u.email})?` }))) return;
     start(async () => {
       const res = await deleteUserAction(u.id);
       if (res.ok) { router.refresh(); return; }
@@ -753,9 +756,10 @@ function CompaniesPanel({ companies }: { companies: CompanyRow[] }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
 
-  const remove = (c: CompanyRow) => {
-    if (!confirm(`Xóa pháp nhân "${c.company_name}" (${c.company_code})?`)) return;
+  const remove = async (c: CompanyRow) => {
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa pháp nhân "${c.company_name}" (${c.company_code})?` }))) return;
     start(async () => {
       const res = await deleteCompanyAction(c.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được pháp nhân.", "error"); return; }
@@ -845,10 +849,11 @@ function BUsPanel({ businessUnits, companies }: { businessUnits: BURow[]; compan
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const activeCompanies = companies.filter((c) => c.status !== "Inactive");
 
-  const remove = (b: BURow) => {
-    if (!confirm(`Xóa phòng ban "${b.bu_name}" (${b.bu_code})?`)) return;
+  const remove = async (b: BURow) => {
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa phòng ban "${b.bu_name}" (${b.bu_code})?` }))) return;
     start(async () => {
       const res = await deleteBUAction(b.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được phòng ban.", "error"); return; }
@@ -940,6 +945,7 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   const [busyKind, setBusyKind] = useState<"all" | "history" | null>(null);
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
 
   // Tự động làm mới mỗi 4 giây (poll) khi bật.
   useEffect(() => {
@@ -965,8 +971,8 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   }, [auto]);
 
   // Dọn nhật ký (dữ liệu ảo/demo) → tạm dừng auto để kết quả không bị ghi đè ngay.
-  const removeOne = (a: AuditRow) => {
-    if (!confirm(`Xóa dòng nhật ký này?\n${a.action} · ${a.document_type}${a.document_id ? ` #${a.document_id}` : ""}`)) return;
+  const removeOne = async (a: AuditRow) => {
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa dòng nhật ký này?\n${a.action} · ${a.document_type}${a.document_id ? ` #${a.document_id}` : ""}` }))) return;
     setAuto(false);
     setRows((p) => p.filter((x) => x.id !== a.id)); // xóa lạc quan
     start(async () => {
@@ -975,8 +981,8 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
     });
   };
 
-  const clearAll = () => {
-    if (!confirm("Dọn SẠCH toàn bộ nhật ký? Thao tác này không thể hoàn tác.")) return;
+  const clearAll = async () => {
+    if (!(await confirm({ danger: true, title: "Dọn nhật ký", confirmText: "Dọn sạch", message: "Dọn SẠCH toàn bộ nhật ký? Thao tác này không thể hoàn tác." }))) return;
     setAuto(false);
     setBusyKind("all");
     start(async () => {
@@ -987,9 +993,9 @@ function AuditPanel({ audit }: { audit: AuditRow[] }) {
   };
 
   // ⚠️ TẠM (demo): xóa TOÀN BỘ lịch sử chứng từ, giữ tài khoản + danh mục.
-  const clearHistory = () => {
-    if (!confirm("⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Đề nghị thanh toán · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm (kể cả tệp trên kho) · Thông báo · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt, dự án, khách hàng.\nSố chứng từ sẽ chạy LẠI TỪ ĐẦU (PR-2026-00001…).\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo.")) return;
-    if (!confirm("Xác nhận LẦN 2: xóa sạch toàn bộ chứng từ để làm lại demo?")) return;
+  const clearHistory = async () => {
+    if (!(await confirm({ danger: true, title: "Xóa lịch sử chứng từ", confirmText: "Tôi hiểu, tiếp tục", message: "⚠️ XÓA TOÀN BỘ lịch sử chứng từ?\n\nGồm: PR · PO · Nhận hàng · Hóa đơn · Đề nghị thanh toán · Thanh toán · Lịch sử duyệt/điều chỉnh · Bình luận · Đính kèm (kể cả tệp trên kho) · Thông báo · Nhật ký.\nGIỮ NGUYÊN: tài khoản, công ty, NCC, hàng hóa, ngưỡng duyệt, dự án, khách hàng.\nSố chứng từ sẽ chạy LẠI TỪ ĐẦU (PR-2026-00001…).\n\nKhông thể hoàn tác — chỉ dùng để reset dữ liệu demo." }))) return;
+    if (!(await confirm({ danger: true, title: "Xác nhận lần 2", confirmText: "Xóa sạch", message: "Xác nhận LẦN 2: xóa sạch toàn bộ chứng từ để làm lại demo?" }))) return;
     setAuto(false);
     setBusyKind("history");
     start(async () => {

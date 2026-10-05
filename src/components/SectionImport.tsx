@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { importSectionAction, type SectionImportResult } from "@/actions/import-section";
 import { Button } from "@/components/ui";
 import { Modal } from "@/components/Modal";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Section } from "@/lib/import-section";
 
 const META: Record<Section, { title: string; entity: string; hint: string; btn: string }> = {
@@ -54,12 +55,13 @@ export function SectionImport({ section, variant = "banner" }: { section: Sectio
   const [sync, setSync] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const confirm = useConfirm();
   const canSync = ["suppliers", "products", "customers", "projects"].includes(section);
 
-  const submit = () => {
+  const submit = async () => {
     const f = inputRef.current?.files?.[0];
     if (!f) { setResult({ ok: false, error: "Chưa chọn file Excel." }); return; }
-    if (sync && !confirm("Chế độ đồng bộ: các mục KHÔNG có trong file sẽ bị XÓA (hoặc chuyển Ngưng nếu đã có chứng từ). Tiếp tục?")) return;
+    if (sync && !(await confirm({ danger: true, title: "Đồng bộ dữ liệu", confirmText: "Tiếp tục", message: "Chế độ đồng bộ: các mục KHÔNG có trong file sẽ bị XÓA (hoặc chuyển Ngưng nếu đã có chứng từ). Tiếp tục?" }))) return;
     const fd = new FormData();
     fd.append("file", f);
     fd.append("sync", sync ? "1" : "0");

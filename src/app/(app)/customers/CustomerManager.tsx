@@ -6,6 +6,7 @@ import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Customer } from "@/lib/types";
 
 export function CustomerManager({ customer }: { customer?: Customer }) {
@@ -13,11 +14,12 @@ export function CustomerManager({ customer }: { customer?: Customer }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const editing = !!customer;
 
-  const remove = () => {
+  const remove = async () => {
     if (!customer) return;
-    if (!confirm(`Xóa khách hàng "${customer.customer_name}" (${customer.customer_code})?`)) return;
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa khách hàng "${customer.customer_name}" (${customer.customer_code})?` }))) return;
     start(async () => {
       const res = await deleteCustomerAction(customer.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }

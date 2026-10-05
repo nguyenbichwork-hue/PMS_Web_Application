@@ -3,6 +3,7 @@ import { useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 import { approvePOAction, sendPOAction, confirmPOAction, cancelPOAction } from "@/actions/po";
 import { Card, Button } from "@/components/ui";
+import { usePrompt } from "@/components/ConfirmDialog";
 
 export function POActions({
   poId,
@@ -18,6 +19,7 @@ export function POActions({
   const [pending, start] = useTransition();
   const [sent, setSent] = useState(false);
   const router = useRouter();
+  const prompt = usePrompt();
 
   const run = (fn: () => Promise<void>) => () =>
     start(async () => {
@@ -86,8 +88,8 @@ export function POActions({
               variant="danger"
               className="w-full justify-center"
               disabled={pending}
-              onClick={() => {
-                const reason = window.prompt("Lý do hủy đơn hàng:");
+              onClick={async () => {
+                const reason = await prompt({ title: "Hủy đơn hàng", message: "Lý do hủy đơn hàng:" });
                 if (!reason) return;
                 start(async () => {
                   await cancelPOAction(poId, reason);

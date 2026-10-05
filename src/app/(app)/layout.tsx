@@ -13,6 +13,7 @@ import { NavProgress } from "@/components/NavProgress";
 import { PageTransition } from "@/components/PageTransition";
 import { logoutAction } from "@/actions/auth";
 import { ToastProvider } from "@/components/Toast";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider>
+    <ConfirmProvider>
     <div className="flex h-screen overflow-hidden">
       <NavProgress />
       <Sidebar user={{ name: user.name, role: user.role, department: user.department }} />
@@ -73,6 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+    </ConfirmProvider>
     </ToastProvider>
   );
 }

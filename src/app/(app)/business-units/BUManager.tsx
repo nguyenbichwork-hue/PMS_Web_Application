@@ -6,6 +6,7 @@ import { Field, inputCls, Button, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export interface BURow { id: number; company_id: number | null; bu_code: string; bu_name: string; company_name: string | null }
 interface CompanyOpt { id: number; company_name: string }
@@ -15,11 +16,12 @@ export function BUManager({ bu, companies }: { bu?: BURow; companies: CompanyOpt
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
   const editing = !!bu;
 
-  const remove = () => {
+  const remove = async () => {
     if (!bu) return;
-    if (!confirm(`Xóa BU "${bu.bu_name}" (${bu.bu_code})?`)) return;
+    if (!(await confirm({ danger: true, confirmText: "Xóa", message: `Xóa BU "${bu.bu_name}" (${bu.bu_code})?` }))) return;
     start(async () => {
       const res = await deleteBUAction(bu.id);
       if (!res.ok) { toast(res.error ?? "Không xóa được.", "error"); return; }
