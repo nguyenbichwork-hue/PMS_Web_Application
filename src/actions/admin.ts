@@ -512,6 +512,6 @@ export async function clearAllHistoryAction(): Promise<{ ok: boolean; error?: st
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Xóa thất bại." };
   }
-  for (const p of ["/dashboard", "/purchase-requests", "/purchase-orders", "/goods-receipts", "/invoices", "/payment-requisitions", "/reconciliation", "/settings", "/my-tasks"]) revalidatePath(p);
+  for (const p of ["/dashboard", "/purchase-requests", "/purchase-orders", "/goods-receipts", "/invoices", "/payment-requisitions", "/settings", "/my-tasks"]) revalidatePath(p);
   return { ok: true };
 }

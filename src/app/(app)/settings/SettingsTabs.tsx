@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveUserAction, deleteUserAction, forceDeleteUserAction, saveApprovalRuleAction, deleteApprovalRuleAction, fetchAuditAction, deleteAuditEntryAction, clearAuditLogAction, clearAllHistoryAction, saveMatchSettingsAction, getStorageStatsAction, getAccessLogAction, getDataHealthAction, type UsageItem, type StorageStats, type AccessEntry, type DataHealth } from "@/actions/admin";
-import { syncDiagnosticAction, type SyncDiagnostic } from "@/actions/invoice-sync";
 import { saveCompanyAction, deleteCompanyAction, saveBUAction, deleteBUAction } from "@/actions/master";
 import { Card, Button, Field, inputCls, StatusBadge, Th, Td, ExportButton, Spinner } from "@/components/ui";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
@@ -121,28 +120,18 @@ export function MonitorTabs({ audit }: { audit: AuditRow[] }) {
   );
 }
 
-// ---------------- Kiểm tra DỮ LIỆU kéo về (DB + Google Sheet + Drive) ----------------
-const LEVEL_VI: Record<string, { label: string; cls: string }> = {
-  AUTO: { label: "Tự động", cls: "bg-emerald-100 text-emerald-700" },
-  REVIEW: { label: "Cần xem", cls: "bg-amber-100 text-amber-700" },
-  NONE: { label: "Chưa ghép", cls: "bg-rose-100 text-rose-700" },
-  IMPORTED: { label: "Đã nhập", cls: "bg-slate-100 text-slate-600" },
-};
-
+// ---------------- Kiểm tra DỮ LIỆU nghiệp vụ trong hệ thống ----------------
 function DataPanel() {
   const [health, setHealth] = useState<DataHealth | null>(null);
-  const [sync, setSync] = useState<SyncDiagnostic | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
     setErr(null);
-    Promise.allSettled([getDataHealthAction(), syncDiagnosticAction()])
-      .then(([h, s]) => {
-        if (h.status === "fulfilled") setHealth(h.value); else setErr("Không đếm được dữ liệu.");
-        if (s.status === "fulfilled") setSync(s.value); else setSync(null);
-      })
+    getDataHealthAction()
+      .then(setHealth)
+      .catch(() => setErr("Không đếm được dữ liệu."))
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -185,66 +174,6 @@ function DataPanel() {
               </div>
             )}
             <p className="text-xs text-slate-400">Số 0 (đỏ) nghĩa là bảng đó chưa có dữ liệu. Cập nhật {new Date(health.generatedAt).toLocaleString("vi-VN")}.</p>
-          </div>
-        )}
-      </Card>
-
-      {/* Google Sheet + Drive — hóa đơn có kéo về / ghép được không */}
-      <Card className="p-5">
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">Đồng bộ hóa đơn (Google Sheet + Drive)</h3>
-        {!sync && <p className="text-sm text-slate-400">Đang tải…</p>}
-        {sync && !sync.configured && (
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Chưa cấu hình Google (thiếu khóa service account / INVOICE_SHEET_ID). Đồng bộ chưa hoạt động.</p>
-        )}
-        {sync && sync.configured && sync.error && (
-          <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-600">Lỗi đọc Sheet: {sync.error}</p>
-        )}
-        {sync && sync.configured && !sync.error && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              <Stat label="HĐ mua-vào đọc được" value={sync.totalPurchase} />
-              <Stat label="PO đang mở (ứng viên)" value={sync.openPoCount} tone={sync.openPoCount === 0 ? "rose" : "slate"} />
-              <Stat label="Tự động" value={sync.counts.auto} />
-              <Stat label="Cần xem" value={sync.counts.review} />
-              <Stat label="Chưa ghép" value={sync.counts.none} tone={sync.counts.none > 0 ? "rose" : "slate"} />
-              <Stat label="Đã nhập" value={sync.alreadyImported} />
-            </div>
-
-            {/* Trạng thái Drive */}
-            <div className={`rounded-lg border p-3 text-sm ${sync.drive.probed && !sync.drive.ok ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-              <b>Google Drive (file XML gốc): </b>
-              {!sync.drive.probed
-                ? "Không có hóa đơn nào kèm link XML để kiểm tra."
-                : sync.drive.ok
-                ? `✓ Đọc được Drive (thử file “${sync.drive.fileName ?? "?"}”). ${sync.drive.withXml} hóa đơn có XML, ${sync.drive.withoutXml} không có.`
-                : `✗ KHÔNG đọc được Drive (mã ${sync.drive.status}). Có thể folder/file chưa chia sẻ cho service account. ${sync.drive.error ?? ""}`}
-            </div>
-            {sync.companyTaxId != null && (
-              <p className="text-xs text-slate-400">Đang lọc hóa đơn theo MST bên mua = <b>{sync.companyTaxId || "(trống — lấy tất cả)"}</b> (biến COMPANY_TAX_ID).</p>
-            )}
-
-            <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-200">
-              <table className="w-full">
-                <thead className="sticky top-0 bg-slate-50"><tr><Th>Số HĐ</Th><Th>Người bán</Th><Th>MST</Th><Th className="text-right">Tổng</Th><Th>Trạng thái</Th><Th>Lý do</Th></tr></thead>
-                <tbody>
-                  {sync.items.length === 0 && <tr><Td colSpan={6} className="text-slate-400">Không có hóa đơn mua-vào nào từ Sheet.</Td></tr>}
-                  {sync.items.map((it, i) => {
-                    const lv = LEVEL_VI[it.level];
-                    return (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <Td className="text-xs font-medium">{it.invoiceNumber ?? "—"}</Td>
-                        <Td className="max-w-[180px] truncate text-xs">{it.sellerName ?? "—"}</Td>
-                        <Td className="font-mono text-xs">{it.sellerTaxId ?? "—"}</Td>
-                        <Td className="text-right text-xs">{money(it.total)}</Td>
-                        <Td><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${lv.cls}`}>{lv.label}</span></Td>
-                        <Td className="text-xs text-slate-500">{it.reason}</Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-xs text-slate-400">Danh sách hiện tối đa 300 hóa đơn, ưu tiên loại “Chưa ghép” lên đầu kèm lý do để xử lý.</p>
           </div>
         )}
       </Card>

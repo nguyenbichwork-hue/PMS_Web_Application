@@ -40,9 +40,10 @@ const GROUPS: { title: string; items: { href: string; label: string; icon: strin
       { href: "/purchase-orders", label: "Đơn đặt hàng", icon: "po" },
       { href: "/payment-requisitions", label: "Đề nghị thanh toán", icon: "invoice" },
       { href: "/goods-receipts", label: "Nhận hàng", icon: "gr" },
-      // Ẩn menu "Hóa đơn" / "Đồng bộ hóa đơn" / "Đối chiếu" (giữ route + dữ liệu,
-      // giống cách ẩn tab "Khách hàng"). Các trang /invoices, /invoices/sync,
-      // /reconciliation vẫn truy cập được qua link trực tiếp/cross-link.
+      // Ẩn menu "Hóa đơn": GIỮ route /invoices + dữ liệu (Công nợ/Chi tiền/Dashboard
+      // vẫn cần), chỉ bỏ khỏi menu — truy cập qua link trực tiếp/cross-link.
+      // "Đồng bộ hóa đơn" (/invoices/sync) và "Đối chiếu" (/reconciliation) đã bị
+      // XÓA HẲN (route + code) theo yêu cầu — không còn truy cập được.
     ],
   },
   {

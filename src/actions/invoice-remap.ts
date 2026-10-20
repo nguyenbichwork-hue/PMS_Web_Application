@@ -44,7 +44,6 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
       );
     });
     revalidatePath(`/invoices/${invoiceId}`);
-    revalidatePath("/reconciliation");
     return { ok: true };
   }
 
@@ -156,6 +155,5 @@ export async function remapInvoiceAction(invoiceId: number, poId: number | null)
   });
 
   revalidatePath(`/invoices/${invoiceId}`);
-  revalidatePath("/reconciliation");
   return { ok: true };
 }
